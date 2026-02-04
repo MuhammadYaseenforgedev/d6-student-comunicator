@@ -1,14 +1,14 @@
 import { Router } from "express";
 import { requireRole } from "../middleware/rbac";
-import { announcementRepo } from "../repos/announcementRepo";
+import { repos } from "../persistence";
 
 export const announcementRouter = Router();
 
 // List announcements for a channel
 announcementRouter.get("/channels/:channelId/announcements", (req, res) => {
-  const { channelId } = req.params;
-  const list = announcementRepo.listByChannel(channelId);
-  res.json(list);
+  const { channelId } = req.params as { channelId: string };
+  const list = repos.announcements.listByChannel(channelId);
+  return res.json(list);
 });
 
 // Create announcement (ADMIN, LECTURER)
@@ -27,11 +27,11 @@ announcementRouter.post(
       return res.status(400).json({ error: "Missing title or body" });
     }
 
-    const created = announcementRepo.create({
+    const created = repos.announcements.create({
       channelId,
       title,
       body,
-      pinned,
+      pinned: Boolean(pinned),
       createdBy: req.user!.id,
     });
 

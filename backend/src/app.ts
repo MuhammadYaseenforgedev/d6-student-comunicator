@@ -1,3 +1,4 @@
+import { eventRouter } from "./routes/events";
 import { messageRouter } from "./routes/messages";
 import express from "express";
 import cors from "cors";
@@ -18,6 +19,7 @@ export function createApp() {
   // announcements router already contains "/channels/:channelId/announcements"
   app.use(announcementRouter);
   app.use(messageRouter);
+  app.use(eventRouter);
 
   return app;
 }

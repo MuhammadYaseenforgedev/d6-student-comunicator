@@ -1,17 +1,17 @@
 import { Router } from "express";
 import { requireRole } from "../middleware/rbac";
-import { messageRepo } from "../repos/messageRepo";
+import { repos } from "../persistence";
 
 export const messageRouter = Router();
 
-// GET: list messages for a channel
+// List messages for a channel
 messageRouter.get("/channels/:channelId/messages", (req, res) => {
   const { channelId } = req.params as { channelId: string };
-  const list = messageRepo.listByChannel(channelId);
+  const list = repos.messages.listByChannel(channelId);
   return res.json(list);
 });
 
-// POST: create message (everyone logged in can post)
+// Create message (ADMIN, LECTURER, STUDENT)
 messageRouter.post(
   "/channels/:channelId/messages",
   requireRole("ADMIN", "LECTURER", "STUDENT"),
@@ -23,7 +23,7 @@ messageRouter.post(
       return res.status(400).json({ error: "Missing body" });
     }
 
-    const created = messageRepo.create({
+    const created = repos.messages.create({
       channelId,
       body: body.trim(),
       createdBy: req.user!.id,
@@ -33,16 +33,15 @@ messageRouter.post(
   }
 );
 
-// DELETE: moderation (ADMIN, LECTURER)
+// Delete message (moderation)
 messageRouter.delete(
   "/channels/:channelId/messages/:messageId",
   requireRole("ADMIN", "LECTURER"),
   (req, res) => {
     const { messageId } = req.params as { messageId: string };
-    const ok = messageRepo.delete(messageId);
+    const ok = repos.messages.delete(messageId);
 
     if (!ok) return res.status(404).json({ error: "Message not found" });
     return res.status(204).send();
   }
 );
-

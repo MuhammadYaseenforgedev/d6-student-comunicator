@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { randomUUID } from "crypto";
-import { channels } from "../store/channelStore";
-import { Channel, ChannelType } from "../models/channel";
 import { requireRole } from "../middleware/rbac";
+import { repos } from "../persistence";
+import type { ChannelType } from "../models/channel";
 
 export const channelRouter = Router();
 
 // List channels (everyone)
 channelRouter.get("/", (_req, res) => {
-  res.json(channels);
+  const list = repos.channels.list();
+  res.json(list);
 });
 
 // Create channel (ADMIN, LECTURER)
@@ -23,28 +23,26 @@ channelRouter.post("/", requireRole("ADMIN", "LECTURER"), (req, res) => {
     return res.status(400).json({ error: "Missing name or type" });
   }
 
-  const channel: Channel = {
-    id: randomUUID(),
+  const created = repos.channels.create({
     name,
     type,
     isPrivate: Boolean(isPrivate),
     createdBy: req.user!.id,
-    members: [],
-    createdAt: new Date().toISOString(),
-  };
+  });
 
-  channels.push(channel);
-  return res.status(201).json(channel);
+  return res.status(201).json(created);
 });
 
 // Join channel (STUDENT)
 channelRouter.post("/:id/join", requireRole("STUDENT"), (req, res) => {
-  const channel = channels.find((c) => c.id === req.params.id);
-  if (!channel) return res.status(404).json({ error: "Channel not found" });
+  // Force params typing so TS stops treating it like string | string[]
+  const { id } = req.params as { id: string };
 
-  if (!channel.members.includes(req.user!.id)) {
-    channel.members.push(req.user!.id);
+  const updated = repos.channels.join(id, req.user!.id);
+
+  if (!updated) {
+    return res.status(404).json({ error: "Channel not found" });
   }
 
-  return res.json(channel);
+  return res.json(updated);
 });
