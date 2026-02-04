@@ -1,37 +1,42 @@
 import { randomUUID } from "crypto";
-import { Announcement } from "../models/announcement";
+import type { Announcement } from "../models/announcement";
+import { announcements } from "../store/announcementStore";
 
-type CreateAnnouncementInput = {
-  channelId: string;
-  title: string;
-  body: string;
-  pinned?: boolean;
-  createdBy: string;
-};
+export const announcementRepo = {
+  listByChannel(channelId: string) {
+    // Return a new array so we don't mutate the store when sorting
+    return announcements
+      .filter((a) => a.channelId === channelId)
+      .slice()
+      .sort((a, b) => {
+        // 1) pinned first
+        const pinnedA = a.pinned ? 1 : 0;
+        const pinnedB = b.pinned ? 1 : 0;
+        if (pinnedA !== pinnedB) return pinnedB - pinnedA;
 
-class InMemoryAnnouncementRepo {
-  private announcements: Announcement[] = [];
+        // 2) newest first
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+  },
 
-  listByChannel(channelId: string): Announcement[] {
-    return this.announcements.filter((a) => a.channelId === channelId);
-  }
-
-  create(input: CreateAnnouncementInput): Announcement {
-    const now = new Date().toISOString();
-
-    const announcement: Announcement = {
+  create(input: {
+    channelId: string;
+    title: string;
+    body: string;
+    pinned?: boolean;
+    createdBy: string;
+  }): Announcement {
+    const created: Announcement = {
       id: randomUUID(),
       channelId: input.channelId,
       title: input.title,
       body: input.body,
       pinned: Boolean(input.pinned),
       createdBy: input.createdBy,
-      createdAt: now,
+      createdAt: new Date().toISOString(),
     };
 
-    this.announcements.push(announcement);
-    return announcement;
-  }
-}
-
-export const announcementRepo = new InMemoryAnnouncementRepo();
+    announcements.push(created);
+    return created;
+  },
+};
