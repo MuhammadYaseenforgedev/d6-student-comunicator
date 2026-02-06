@@ -5,6 +5,7 @@ Thumbs.db
 # Env
 .env
 .env.*
+backend/.env
 *.local
 
 # Logs
@@ -28,3 +29,7 @@ coverage/
 .vscode/
 .idea/
 *.iml
+
+# Local DB test script
+backend/src/config/dbTest.ts
+backend/src/config/dbTest.*
