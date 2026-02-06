@@ -1,8 +1,11 @@
-import type { Channel } from "../models/channel";
+import type { Channel, ChannelType } from "../models/channel";
 import type { Announcement } from "../models/announcement";
 import type { Message } from "../models/message";
 import type { Event } from "../models/event";
-import type { ChannelType } from "../models/channel";
+
+/* =========
+   Inputs
+   ========= */
 
 export type CreateChannelInput = {
   name: string;
@@ -35,28 +38,36 @@ export type CreateEventInput = {
   createdBy: string;
 };
 
+/* =========
+   Repos (ASYNC)
+   ========= */
+
 export type ChannelRepo = {
-  list(): Channel[];
-  create(input: CreateChannelInput): Channel;
-  join(channelId: string, userId: string): Channel | null;
+  list(): Promise<Channel[]>;
+  create(input: CreateChannelInput): Promise<Channel>;
+  join(channelId: string, userId: string): Promise<Channel | null>;
 };
 
 export type AnnouncementRepo = {
-  listByChannel(channelId: string): Announcement[];
-  create(input: CreateAnnouncementInput): Announcement;
+  listByChannel(channelId: string): Promise<Announcement[]>;
+  create(input: CreateAnnouncementInput): Promise<Announcement>;
 };
 
 export type MessageRepo = {
-  listByChannel(channelId: string): Message[];
-  create(input: CreateMessageInput): Message;
-  delete(messageId: string): boolean;
+  listByChannel(channelId: string): Promise<Message[]>;
+  create(input: CreateMessageInput): Promise<Message>;
+  delete(messageId: string): Promise<boolean>;
 };
 
 export type EventRepo = {
-  listByChannel(channelId: string): Event[];
-  create(input: CreateEventInput): Event;
-  delete(eventId: string): boolean;
+  listByChannel(channelId: string): Promise<Event[]>;
+  create(input: CreateEventInput): Promise<Event>;
+  delete(eventId: string): Promise<boolean>;
 };
+
+/* =========
+   Repos Container
+   ========= */
 
 export type Repos = {
   channels: ChannelRepo;

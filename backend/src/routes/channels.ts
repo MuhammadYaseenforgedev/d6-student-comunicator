@@ -6,13 +6,13 @@ import type { ChannelType } from "../models/channel";
 export const channelRouter = Router();
 
 // List channels (everyone)
-channelRouter.get("/", (_req, res) => {
-  const list = repos.channels.list();
+channelRouter.get("/", async (_req, res) => {
+  const list = await repos.channels.list();
   res.json(list);
 });
 
 // Create channel (ADMIN, LECTURER)
-channelRouter.post("/", requireRole("ADMIN", "LECTURER"), (req, res) => {
+channelRouter.post("/", requireRole("ADMIN", "LECTURER"), async (req, res) => {
   const { name, type, isPrivate } = req.body as {
     name?: string;
     type?: ChannelType;
@@ -23,7 +23,7 @@ channelRouter.post("/", requireRole("ADMIN", "LECTURER"), (req, res) => {
     return res.status(400).json({ error: "Missing name or type" });
   }
 
-  const created = repos.channels.create({
+  const created = await repos.channels.create({
     name,
     type,
     isPrivate: Boolean(isPrivate),
@@ -34,11 +34,10 @@ channelRouter.post("/", requireRole("ADMIN", "LECTURER"), (req, res) => {
 });
 
 // Join channel (STUDENT)
-channelRouter.post("/:id/join", requireRole("STUDENT"), (req, res) => {
-  // Force params typing so TS stops treating it like string | string[]
+channelRouter.post("/:id/join", requireRole("STUDENT"), async (req, res) => {
   const { id } = req.params as { id: string };
 
-  const updated = repos.channels.join(id, req.user!.id);
+  const updated = await repos.channels.join(id, req.user!.id);
 
   if (!updated) {
     return res.status(404).json({ error: "Channel not found" });
