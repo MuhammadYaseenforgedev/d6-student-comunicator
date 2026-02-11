@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 
-export type Role = "ADMIN" | "LECTURER" | "STUDENT";
+export type Role = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
 
 export type AuthUser = {
   id: string;

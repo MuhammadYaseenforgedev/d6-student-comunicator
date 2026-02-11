@@ -38,6 +38,15 @@ export type CreateEventInput = {
   createdBy: string;
 };
 
+export type UpdateEventInput = {
+  eventId: string;
+  title?: string;
+  description?: string | null;
+  location?: string | null;
+  startsAt?: string;
+  endsAt?: string;
+};
+
 /* =========
    Repos (ASYNC)
    ========= */
@@ -62,6 +71,14 @@ export type MessageRepo = {
 export type EventRepo = {
   listByChannel(channelId: string): Promise<Event[]>;
   create(input: CreateEventInput): Promise<Event>;
+  update(input: {
+    eventId: string;
+    title?: string;
+    description?: string | null;
+    location?: string | null;
+    startsAt?: string;
+    endsAt?: string;
+  }): Promise<Event | null>;
   delete(eventId: string): Promise<boolean>;
 };
 

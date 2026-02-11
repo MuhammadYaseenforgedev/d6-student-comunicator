@@ -4,18 +4,22 @@ import { repos } from "../persistence";
 
 export const eventRouter = Router();
 
-// List events for a channel
-eventRouter.get("/channels/:channelId/events", (req, res) => {
-  const { channelId } = req.params as { channelId: string };
-  const list = repos.events.listByChannel(channelId);
-  return res.json(list);
-});
+// List events for a channel (read-only allowed for PARENT + STUDENT)
+eventRouter.get(
+  "/channels/:channelId/events",
+  requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"),
+  async (req, res) => {
+    const { channelId } = req.params as { channelId: string };
+    const list = await repos.events.listByChannel(channelId);
+    return res.json(list);
+  }
+);
 
 // Create event (ADMIN, LECTURER)
 eventRouter.post(
   "/channels/:channelId/events",
   requireRole("ADMIN", "LECTURER"),
-  (req, res) => {
+  async (req, res) => {
     const { channelId } = req.params as { channelId: string };
     const { title, description, location, startsAt, endsAt } = req.body as {
       title?: string;
@@ -26,28 +30,61 @@ eventRouter.post(
     };
 
     if (!title || !startsAt || !endsAt) {
-      return res
-        .status(400)
-        .json({ error: "Missing title, startsAt, or endsAt" });
+      return res.status(400).json({ error: "Missing title, startsAt, or endsAt" });
     }
 
-    try {
-      const created = repos.events.create({
-        channelId,
-        title,
-        description,
-        location,
-        startsAt,
-        endsAt,
-        createdBy: req.user!.id,
-      });
+    const created = await repos.events.create({
+      channelId,
+      title: title.trim(),
+      description,
+      location,
+      startsAt,
+      endsAt,
+      createdBy: req.user!.id,
+    });
 
-      return res.status(201).json(created);
-    } catch (err) {
+    return res.status(201).json(created);
+  }
+);
+
+// PATCH event (ADMIN, LECTURER) partial update
+eventRouter.patch(
+  "/channels/:channelId/events/:eventId",
+  requireRole("ADMIN", "LECTURER"),
+  async (req, res) => {
+    const { eventId } = req.params as { eventId: string };
+
+    const { title, description, location, startsAt, endsAt } = req.body as {
+      title?: string;
+      description?: string | null;
+      location?: string | null;
+      startsAt?: string;
+      endsAt?: string;
+    };
+
+    // prevent empty title if provided
+    if (title !== undefined && !title.trim()) {
+      return res.status(400).json({ error: "Title cannot be empty" });
+    }
+
+    // If one date provided, require both
+    if ((startsAt && !endsAt) || (!startsAt && endsAt)) {
       return res.status(400).json({
-        error: err instanceof Error ? err.message : "Invalid event input",
+        error: "Provide both startsAt and endsAt together",
       });
     }
+
+    const updated = await repos.events.update({
+      eventId,
+      title: title?.trim(),
+      description,
+      location,
+      startsAt,
+      endsAt,
+    });
+
+    if (!updated) return res.status(404).json({ error: "Event not found" });
+    return res.json(updated);
   }
 );
 
@@ -55,9 +92,9 @@ eventRouter.post(
 eventRouter.delete(
   "/channels/:channelId/events/:eventId",
   requireRole("ADMIN", "LECTURER"),
-  (req, res) => {
+  async (req, res) => {
     const { eventId } = req.params as { eventId: string };
-    const ok = repos.events.delete(eventId);
+    const ok = await repos.events.delete(eventId);
 
     if (!ok) return res.status(404).json({ error: "Event not found" });
     return res.status(204).send();
