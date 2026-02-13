@@ -33,3 +33,5 @@ coverage/
 # Local DB test script
 backend/src/config/dbTest.ts
 backend/src/config/dbTest.*
+
+uploads/
