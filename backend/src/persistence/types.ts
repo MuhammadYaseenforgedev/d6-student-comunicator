@@ -21,6 +21,35 @@ export type Upload = {
 };
 
 /* =========
+   Parent Links model (inline for now)
+   ========= */
+
+export type ParentChild = {
+  id: string;
+  email: string;
+};
+
+/* =========
+   Threads model (inline for now)
+   ========= */
+
+export type ThreadParticipant = { email: string };
+
+export type Thread = {
+  id: string;
+  participants: ThreadParticipant[];
+  lastMessageAt: string | null;
+};
+
+export type ThreadMessage = {
+  id: string;
+  threadId: string;
+  body: string;
+  createdBy: string;
+  createdAt: string;
+};
+
+/* =========
    Inputs
    ========= */
 
@@ -114,6 +143,19 @@ export type UploadRepo = {
   getById(id: string): Promise<Upload | null>;
 };
 
+export type ParentLinksRepo = {
+  listChildren(parentUserId: string): Promise<ParentChild[]>;
+  linkChildByEmail(parentUserId: string, studentEmail: string): Promise<{ created: boolean; child: ParentChild | null }>;
+  unlinkChild(parentUserId: string, studentUserId: string): Promise<boolean>;
+};
+
+export type ThreadRepo = {
+  listForUser(userId: string): Promise<Thread[]>;
+  createThread(createdBy: string, participantEmails: string[]): Promise<Thread>;
+  listMessages(threadId: string, userId: string): Promise<ThreadMessage[]>;
+  createMessage(threadId: string, userId: string, body: string): Promise<ThreadMessage>;
+};
+
 /* =========
    Repos Container
    ========= */
@@ -124,4 +166,6 @@ export type Repos = {
   messages: MessageRepo;
   events: EventRepo;
   uploads: UploadRepo;
+  parentLinks: ParentLinksRepo;
+  threads: ThreadRepo;
 };

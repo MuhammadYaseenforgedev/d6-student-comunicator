@@ -5,6 +5,8 @@ import { pgAnnouncementRepo } from "../repos/pgAnnouncementRepo";
 import { pgMessageRepo } from "../repos/pgMessageRepo";
 import { pgEventRepo } from "../repos/pgEventRepo";
 import { pgUploadRepo } from "../repos/pgUploadRepo";
+import { pgParentLinksRepo } from "../repos/pgParentLinksRepo";
+import { pgThreadRepo } from "../repos/pgThreadRepo";
 
 export const pgRepos: Repos = {
   channels: pgChannelRepo,
@@ -12,4 +14,6 @@ export const pgRepos: Repos = {
   messages: pgMessageRepo,
   events: pgEventRepo,
   uploads: pgUploadRepo,
+  parentLinks: pgParentLinksRepo,
+  threads: pgThreadRepo,
 };
