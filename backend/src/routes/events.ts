@@ -4,7 +4,7 @@ import { repos } from "../persistence";
 
 export const eventRouter = Router();
 
-// List events for a channel (read-only allowed for PARENT + STUDENT)
+// List events for a channel (all logged-in roles incl PARENT)
 eventRouter.get(
   "/channels/:channelId/events",
   requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"),
@@ -47,7 +47,7 @@ eventRouter.post(
   }
 );
 
-// PATCH event (ADMIN, LECTURER) partial update
+// PATCH event (ADMIN, LECTURER)
 eventRouter.patch(
   "/channels/:channelId/events/:eventId",
   requireRole("ADMIN", "LECTURER"),
@@ -62,16 +62,12 @@ eventRouter.patch(
       endsAt?: string;
     };
 
-    // prevent empty title if provided
     if (title !== undefined && !title.trim()) {
       return res.status(400).json({ error: "Title cannot be empty" });
     }
 
-    // If one date provided, require both
     if ((startsAt && !endsAt) || (!startsAt && endsAt)) {
-      return res.status(400).json({
-        error: "Provide both startsAt and endsAt together",
-      });
+      return res.status(400).json({ error: "Provide both startsAt and endsAt together" });
     }
 
     const updated = await repos.events.update({

@@ -4,18 +4,22 @@ import { repos } from "../persistence";
 
 export const announcementRouter = Router();
 
-// List announcements for a channel
-announcementRouter.get("/channels/:channelId/announcements", (req, res) => {
-  const { channelId } = req.params as { channelId: string };
-  const list = repos.announcements.listByChannel(channelId);
-  return res.json(list);
-});
+// List announcements for a channel (all logged-in roles, including PARENT)
+announcementRouter.get(
+  "/channels/:channelId/announcements",
+  requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"),
+  async (req, res) => {
+    const { channelId } = req.params as { channelId: string };
+    const list = await repos.announcements.listByChannel(channelId);
+    return res.json(list);
+  }
+);
 
 // Create announcement (ADMIN, LECTURER)
 announcementRouter.post(
   "/channels/:channelId/announcements",
   requireRole("ADMIN", "LECTURER"),
-  (req, res) => {
+  async (req, res) => {
     const { channelId } = req.params as { channelId: string };
     const { title, body, pinned } = req.body as {
       title?: string;
@@ -27,10 +31,10 @@ announcementRouter.post(
       return res.status(400).json({ error: "Missing title or body" });
     }
 
-    const created = repos.announcements.create({
+    const created = await repos.announcements.create({
       channelId,
-      title,
-      body,
+      title: title.trim(),
+      body: body.trim(),
       pinned: Boolean(pinned),
       createdBy: req.user!.id,
     });

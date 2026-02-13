@@ -1,30 +1,36 @@
 import express from "express";
 import cors from "cors";
+
 import { healthRouter } from "./routes/health";
-import { fakeAuth } from "./middleware/rbac";
+import { authRouter } from "./routes/auth";
+
+import { requireAuth } from "./middleware/auth";
+
 import { channelRouter } from "./routes/channels";
 import { announcementRouter } from "./routes/announcements";
 import { messageRouter } from "./routes/messages";
 import { eventRouter } from "./routes/events";
+import { uploadRouter } from "./routes/uploads";
 
 export function createApp() {
   const app = express();
 
   app.use(cors());
   app.use(express.json());
-  app.use(fakeAuth);
 
+  // Public routes
   app.use(healthRouter);
+  app.use(authRouter);
 
-  // Channels
+  // Everything below requires a valid Bearer token
+  app.use(requireAuth);
+
+  // Protected routes
   app.use("/channels", channelRouter);
-
-  // Announcements router already includes /channels/:channelId/announcements
   app.use(announcementRouter);
-
-  // Messages / Events routers (whatever paths they define internally)
   app.use(messageRouter);
   app.use(eventRouter);
+  app.use(uploadRouter);
 
   return app;
 }

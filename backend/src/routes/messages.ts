@@ -4,24 +4,28 @@ import { repos } from "../persistence";
 
 export const messageRouter = Router();
 
-// List messages for a channel
-messageRouter.get("/channels/:channelId/messages", async (req, res) => {
-  const { channelId } = req.params as { channelId: string };
-
-  try {
-    const list = await repos.messages.listByChannel(channelId);
-    return res.json(list);
-  } catch (err) {
-    return res.status(500).json({
-      error: err instanceof Error ? err.message : "Failed to list messages",
-    });
-  }
-});
-
-// Create message (ADMIN, LECTURER, STUDENT)
-messageRouter.post(
+// List messages for a channel (all logged-in roles incl PARENT)
+messageRouter.get(
   "/channels/:channelId/messages",
   requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"),
+  async (req, res) => {
+    const { channelId } = req.params as { channelId: string };
+
+    try {
+      const list = await repos.messages.listByChannel(channelId);
+      return res.json(list);
+    } catch (err) {
+      return res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to list messages",
+      });
+    }
+  }
+);
+
+// Create message (ADMIN, LECTURER, STUDENT) — NOT PARENT (view-only)
+messageRouter.post(
+  "/channels/:channelId/messages",
+  requireRole("ADMIN", "LECTURER", "STUDENT"),
   async (req, res) => {
     const { channelId } = req.params as { channelId: string };
     const { body } = req.body as { body?: string };
