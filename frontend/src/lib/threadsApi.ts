@@ -1,0 +1,157 @@
+// src/lib/threadsApi.ts
+// Inbox API client.
+// This file is NOT React, so:
+// - No hooks
+// - No component state
+// - No "any"
+// It only talks to the backend and returns typed data.
+
+import { getToken } from "./auth";
+
+// ---------- Types that match backend contract ----------
+
+export type ThreadParticipant = {
+  email: string;
+};
+
+export type Thread = {
+  id: string;
+  participants: ThreadParticipant[];
+  lastMessageAt: string | null;
+};
+
+export type ThreadMessage = {
+  id: string;
+  threadId: string;
+  body: string;
+  createdBy: string; // userId
+  createdAt: string; // ISO timestamp
+};
+
+// Shared paging envelope used by backend for lists
+export type Paged<T> = {
+  value: T[];
+  count: number;
+  nextBefore: string | null; // cursor for the next request
+};
+
+// ---------- Config ----------
+
+// Vite env config: set this later when you deploy.
+// For local dev, this should match your backend port.
+const BASE_URL = (import.meta as unknown as { env: Record<string, string | undefined> }).env
+  ?.VITE_API_URL?.trim()
+  || "http://localhost:4000";
+
+// If your backend mounts routes at /api, keep this.
+// If your backend already includes /api in BASE_URL, remove "/api" here.
+const API_PREFIX = "/api";
+
+// ---------- Helpers ----------
+
+function requireToken(): string {
+  const token = getToken();
+  if (!token) throw new Error("Not authenticated. Please log in again.");
+  return token;
+}
+
+async function readErrorMessage(res: Response): Promise<string> {
+  // Backend error shape: { error: { code, message } } OR { message }
+  try {
+    const data = (await res.json()) as unknown;
+
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "error" in data &&
+      typeof (data as { error?: unknown }).error === "object" &&
+      (data as { error?: { message?: unknown } }).error &&
+      typeof (data as { error: { message?: unknown } }).error.message === "string"
+    ) {
+      return (data as { error: { message: string } }).error.message;
+    }
+
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "message" in data &&
+      typeof (data as { message?: unknown }).message === "string"
+    ) {
+      return (data as { message: string }).message;
+    }
+  } catch {
+    // ignore parse failures
+  }
+
+  return `Request failed (${res.status})`;
+}
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = requireToken();
+
+  const res = await fetch(`${BASE_URL}${API_PREFIX}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+
+  // Safe JSON parsing (some endpoints might return empty body later)
+  const text = await res.text();
+  return (text ? (JSON.parse(text) as T) : ({} as T));
+}
+
+// ---------- Public API ----------
+
+export const threadsApi = {
+  // GET /api/threads
+  // Optional paging: limit + before
+  async listThreads(params?: { limit?: number; before?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.before) qs.set("before", params.before);
+
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api<Paged<Thread>>(`/threads${suffix}`);
+  },
+
+  // GET /api/threads/:id
+  async getThread(threadId: string) {
+    return api<Thread>(`/threads/${threadId}`);
+  },
+
+  // GET /api/threads/:id/messages
+  // Optional paging: limit + before (cursor)
+  async listMessages(threadId: string, params?: { limit?: number; before?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.before) qs.set("before", params.before);
+
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api<Paged<ThreadMessage>>(`/threads/${threadId}/messages${suffix}`);
+  },
+
+  // POST /api/threads
+  // Body: { participantEmails: ["student1@forge.local"] }
+  async createThread(participantEmail: string) {
+    return api<Thread & { created: boolean }>(`/threads`, {
+      method: "POST",
+      body: JSON.stringify({ participantEmails: [participantEmail] }),
+    });
+  },
+
+  // POST /api/threads/:id/messages
+  // Body: { body: "Hello" }
+  async sendMessage(threadId: string, body: string) {
+    return api<ThreadMessage>(`/threads/${threadId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    });
+  },
+};

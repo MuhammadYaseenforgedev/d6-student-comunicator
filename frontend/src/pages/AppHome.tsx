@@ -5,7 +5,7 @@ export default function AppHome() {
     <ChannelPage
       channel="general"
       title="Dashboard"
-      subtitle="Announcement feed (Week 1 local mock storage)."
+      subtitle="Announcement feed"
     />
   );
 }
