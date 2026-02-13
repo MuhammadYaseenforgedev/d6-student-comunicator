@@ -4,6 +4,23 @@ import type { Message } from "../models/message";
 import type { Event } from "../models/event";
 
 /* =========
+   Uploads model (inline for now)
+   ========= */
+
+export type UploadKind = "LECTURER_MATERIAL" | "STUDENT_SUBMISSION";
+
+export type Upload = {
+  id: string;
+  kind: UploadKind;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  uploadedBy: string;
+  createdAt: string;
+};
+
+/* =========
    Inputs
    ========= */
 
@@ -47,6 +64,15 @@ export type UpdateEventInput = {
   endsAt?: string;
 };
 
+export type CreateUploadInput = {
+  kind: UploadKind;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  uploadedBy: string;
+};
+
 /* =========
    Repos (ASYNC)
    ========= */
@@ -82,6 +108,12 @@ export type EventRepo = {
   delete(eventId: string): Promise<boolean>;
 };
 
+export type UploadRepo = {
+  listForUser(user: { id: string; role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" }): Promise<Upload[]>;
+  create(input: CreateUploadInput): Promise<Upload>;
+  getById(id: string): Promise<Upload | null>;
+};
+
 /* =========
    Repos Container
    ========= */
@@ -91,4 +123,5 @@ export type Repos = {
   announcements: AnnouncementRepo;
   messages: MessageRepo;
   events: EventRepo;
+  uploads: UploadRepo;
 };
