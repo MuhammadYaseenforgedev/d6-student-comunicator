@@ -1,51 +1,160 @@
+// src/routes/parent.ts
 import { Router } from "express";
+import { pool } from "../config/db";
 import { requireRole } from "../middleware/rbac";
-import { pgParentLinksRepo } from "../repos/pgParentLinksRepo";
 
 export const parentRouter = Router();
 
 // requireAuth is already applied globally in app.ts
 parentRouter.use(requireRole("PARENT"));
 
+function err(res: any, status: number, code: string, message: string) {
+  return res.status(status).json({ error: { code, message } });
+}
+
+async function parentCanLinkChildren(parentId: string): Promise<boolean> {
+  const q = `
+    SELECT can_link_children
+    FROM users
+    WHERE id = $1
+    LIMIT 1
+  `;
+  const r = await pool.query<{ can_link_children: boolean }>(q, [parentId]);
+  return (r.rowCount ?? 0) > 0 ? Boolean(r.rows[0].can_link_children) : false;
+}
+
 // GET /parent/children
 parentRouter.get("/children", async (req, res) => {
-  const parentId = req.user!.id;
+  try {
+    const parentId = req.user!.id;
 
-  const children = await pgParentLinksRepo.listChildren(parentId);
-  return res.json({ children });
+    const q = `
+      SELECT
+        u.id,
+        u.email,
+        u.public_student_id
+      FROM parent_links pl
+      JOIN users u ON u.id = pl.student_user_id
+      WHERE pl.parent_user_id = $1
+      ORDER BY lower(u.email) ASC
+    `;
+    const r = await pool.query<{ id: string; email: string; public_student_id: string | null }>(
+      q,
+      [parentId]
+    );
+
+    const children = r.rows.map((x) => ({
+      id: x.id,
+      email: x.email,
+      publicStudentId: x.public_student_id,
+    }));
+
+    return res.json({ children });
+  } catch {
+    return err(res, 500, "INTERNAL", "Unexpected error");
+  }
 });
 
-// POST /parent/children { studentEmail }
+// POST /parent/children { studentPublicId }  (preferred)
+// POST /parent/children { studentEmail }     (legacy fallback)
 parentRouter.post("/children", async (req, res) => {
-  const parentId = req.user!.id;
-  const studentEmail = String(req.body?.studentEmail ?? "").trim();
+  try {
+    const parentId = req.user!.id;
 
-  if (!studentEmail) {
-    return res.status(400).json({ error: "studentEmail is required" });
+    const allowed = await parentCanLinkChildren(parentId);
+    if (!allowed) {
+      return err(
+        res,
+        403,
+        "FORBIDDEN",
+        "Parent is not allowed to link children yet (await admin approval)"
+      );
+    }
+
+    const studentPublicId = String(req.body?.studentPublicId ?? "").trim();
+    const studentEmail = String(req.body?.studentEmail ?? "").trim().toLowerCase();
+
+    if (!studentPublicId && !studentEmail) {
+      return err(
+        res,
+        400,
+        "VALIDATION",
+        "Provide studentPublicId (preferred) or studentEmail (legacy)"
+      );
+    }
+
+    const findQ = studentPublicId
+      ? `
+        SELECT id, email, public_student_id
+        FROM users
+        WHERE role = 'STUDENT'
+          AND public_student_id = $1
+        LIMIT 1
+      `
+      : `
+        SELECT id, email, public_student_id
+        FROM users
+        WHERE role = 'STUDENT'
+          AND lower(email) = lower($1)
+        LIMIT 1
+      `;
+
+    const findArg = studentPublicId ? studentPublicId : studentEmail;
+    const studentRes = await pool.query<{
+      id: string;
+      email: string;
+      public_student_id: string | null;
+    }>(findQ, [findArg]);
+
+    if ((studentRes.rowCount ?? 0) === 0) {
+      return err(res, 404, "NOT_FOUND", "Student not found");
+    }
+
+    const student = studentRes.rows[0];
+
+    const linkQ = `
+      INSERT INTO parent_links (parent_user_id, student_user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (parent_user_id, student_user_id) DO NOTHING
+      RETURNING 1 AS inserted
+    `;
+    const linkRes = await pool.query<{ inserted: number }>(linkQ, [parentId, student.id]);
+
+    // FIX: rowCount can be null in typings, so coalesce to 0
+    const created = (linkRes.rowCount ?? 0) > 0;
+
+    return res.status(created ? 201 : 200).json({
+      created,
+      child: {
+        id: student.id,
+        email: student.email,
+        publicStudentId: student.public_student_id,
+      },
+    });
+  } catch {
+    return err(res, 500, "INTERNAL", "Unexpected error");
   }
-
-  const result = await pgParentLinksRepo.linkChildByEmail(parentId, studentEmail);
-
-  if (!result.child) {
-    return res.status(404).json({ error: "Student not found" });
-  }
-
-  return res.status(result.created ? 201 : 200).json({
-    created: result.created,
-    child: result.child,
-  });
 });
 
 // DELETE /parent/children/:studentId
 parentRouter.delete("/children/:studentId", async (req, res) => {
-  const parentId = req.user!.id;
-  const studentId = req.params.studentId;
+  try {
+    const parentId = req.user!.id;
+    const studentId = req.params.studentId;
 
-  const ok = await pgParentLinksRepo.unlinkChild(parentId, studentId);
+    const q = `
+      DELETE FROM parent_links
+      WHERE parent_user_id = $1
+        AND student_user_id = $2
+    `;
+    const r = await pool.query(q, [parentId, studentId]);
 
-  if (!ok) {
-    return res.status(404).json({ error: "Link not found" });
+    if ((r.rowCount ?? 0) === 0) {
+      return err(res, 404, "NOT_FOUND", "Link not found");
+    }
+
+    return res.status(204).send();
+  } catch {
+    return err(res, 500, "INTERNAL", "Unexpected error");
   }
-
-  return res.status(204).send();
 });

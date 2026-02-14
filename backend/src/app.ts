@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 
 import { healthRouter } from "./routes/health";
 import { authRouter } from "./routes/auth";
@@ -18,11 +19,44 @@ import { threadRouter } from "./routes/threads";
 import { calendarRouter } from "./routes/calendar";
 import { financeRouter } from "./routes/finance";
 
+function buildCorsOrigins(): string[] | null {
+  const raw = String(process.env.CORS_ORIGIN ?? "").trim();
+  if (!raw) return null;
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function createApp() {
   const app = express();
 
-  app.use(cors());
-  app.use(express.json());
+  // Important for correct req.ip behind proxies (Render/AWS/nginx)
+  // If you are not behind a proxy, this is still fine.
+  app.set("trust proxy", 1);
+
+  // Security headers
+  app.use(
+    helmet({
+      // Keep defaults. If you later serve frontend from same server you can tune CSP.
+      contentSecurityPolicy: false,
+    })
+  );
+
+  // JSON limit (avoid huge payload DOS)
+  app.use(express.json({ limit: "1mb" }));
+
+  // CORS
+  const origins = buildCorsOrigins();
+  app.use(
+    cors({
+      origin: origins ?? true, // if not set, allow all in dev
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+      maxAge: 86400,
+    })
+  );
 
   // Public routes (legacy)
   app.use(healthRouter);
