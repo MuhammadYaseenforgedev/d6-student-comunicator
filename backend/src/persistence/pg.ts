@@ -8,6 +8,9 @@ import { pgUploadRepo } from "../repos/pgUploadRepo";
 import { pgParentLinksRepo } from "../repos/pgParentLinksRepo";
 import { pgThreadRepo } from "../repos/pgThreadRepo";
 
+import { pgCalendarRepo } from "../repos/pgCalendarRepo";
+import { pgFinanceRepo } from "../repos/pgFinanceRepo";
+
 export const pgRepos: Repos = {
   channels: pgChannelRepo,
   announcements: pgAnnouncementRepo,
@@ -16,4 +19,6 @@ export const pgRepos: Repos = {
   uploads: pgUploadRepo,
   parentLinks: pgParentLinksRepo,
   threads: pgThreadRepo,
+  calendar: pgCalendarRepo,
+  finance: pgFinanceRepo,
 };
