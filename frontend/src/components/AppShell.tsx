@@ -1,5 +1,7 @@
+// src/components/AppShell.tsx
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { setDevBypass } from "../lib/auth";
+import { clearAuth, getUser } from "../lib/auth";
+import AppErrorBoundary from "./AppErrorBoundary";
 
 function Item({ to, label }: { to: string; label: string }) {
   return (
@@ -9,8 +11,8 @@ function Item({ to, label }: { to: string; label: string }) {
         [
           "block rounded-lg px-3 py-2 text-sm border transition",
           isActive
-            ? "bg-slate-800/70 border-slate-700 text-white"
-            : "bg-transparent border-transparent text-slate-300 hover:bg-slate-900/60 hover:border-slate-800 hover:text-white",
+            ? "bg-white/10 border-white/15 text-white"
+            : "bg-transparent border-transparent text-white/75 hover:bg-white/5 hover:border-white/10 hover:text-white",
         ].join(" ")
       }
     >
@@ -22,9 +24,14 @@ function Item({ to, label }: { to: string; label: string }) {
 export default function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
+  const user = getUser();
 
   const title =
-    location.pathname.includes("/modules")
+    location.pathname.includes("/calendar")
+      ? "Calendar"
+      : location.pathname.includes("/uploads")
+      ? "Uploads"
+      : location.pathname.includes("/modules")
       ? "Modules"
       : location.pathname.includes("/faculty")
       ? "Faculty"
@@ -32,55 +39,99 @@ export default function AppShell() {
       ? "Clubs"
       : location.pathname.includes("/emergency")
       ? "Emergency"
+      : location.pathname.includes("/messages")
+      ? "Messages"
+      : location.pathname.includes("/parent")
+      ? "Parent Portal"
+      : location.pathname.includes("/c/")
+      ? "Channel"
       : "Home";
 
-  function logoutDev() {
-    setDevBypass(false);
+  function logout() {
+    clearAuth();
     navigate("/login", { replace: true });
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-7xl p-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_1fr]">
-          <aside className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <Link to="/app" className="block">
-              <div className="text-xl font-bold">D6 Communicator</div>
-              <div className="text-xs text-slate-400 mt-1">Dev mode (login bypass)</div>
-            </Link>
-
-            <div className="mt-6 space-y-1">
-              <Item to="/app" label="Home" />
-              <Item to="/app/modules" label="Modules" />
-              <Item to="/app/faculty" label="Faculty" />
-              <Item to="/app/clubs" label="Clubs" />
-              <Item to="/app/emergency" label="Emergency" />
+    <div className="min-h-[calc(100vh-220px)]">
+      <div className="mx-auto max-w-7xl px-4 py-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[270px_1fr]">
+          {/* Sidebar */}
+          <aside className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950/35 backdrop-blur-xl p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
+            {/* Subtle brand accent */}
+            <div className="pointer-events-none absolute inset-0 opacity-60">
+              <div className="absolute -top-24 -left-24 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
+              <div className="absolute -bottom-28 -right-28 h-80 w-80 rounded-full bg-purple-500/10 blur-3xl" />
             </div>
 
-            <div className="mt-6 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-              <div className="text-xs text-slate-400">Signed in as</div>
-              <div className="text-sm font-semibold">Dev User</div>
-              <div className="text-xs text-slate-500">Role: Student (fake)</div>
+            <div className="relative">
+              <Link to="/app" className="block">
+                <div className="text-xl font-bold">
+                  <span className="bg-gradient-to-r from-cyan-300 to-purple-300 bg-clip-text text-transparent">
+                    D6 Communicator
+                  </span>
+                </div>
+                <div className="text-xs text-white/60 mt-1">
+                  Auth, Messaging, Uploads, Calendar, Parent Portal
+                </div>
+              </Link>
 
-              <button
-                onClick={logoutDev}
-                className="mt-3 w-full rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50"
-              >
-                Logout (Dev)
-              </button>
+              <div className="mt-5 space-y-1">
+                <Item to="/app" label="Home" />
+                <Item to="/app/modules" label="Modules" />
+                <Item to="/app/faculty" label="Faculty" />
+                <Item to="/app/clubs" label="Clubs" />
+                <Item to="/app/emergency" label="Emergency" />
+
+                <div className="my-3 h-px bg-white/10" />
+
+                <Item to="/app/uploads" label="Uploads" />
+                <Item to="/app/messages" label="Messages" />
+                <Item to="/app/calendar" label="Calendar" />
+
+                {/* Parent-only: show ONLY Parent Portal (no duplicate finance/results links here) */}
+                {user?.role === "PARENT" && (
+                  <>
+                    <div className="my-3 h-px bg-white/10" />
+                    <Item to="/app/parent" label="Parent Portal" />
+                  </>
+                )}
+              </div>
+
+              <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs text-white/60">Signed in as</div>
+                <div className="text-sm font-semibold truncate">{user?.email ?? "Unknown"}</div>
+                <div className="text-xs text-white/60">Role: {user?.role ?? "Unknown"}</div>
+
+                <button
+                  onClick={logout}
+                  type="button"
+                  className="mt-3 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 transition"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
           </aside>
 
-          <main className="rounded-2xl border border-slate-800 bg-slate-900/40">
-            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+          {/* Main */}
+          <main className="rounded-2xl border border-white/10 bg-slate-950/25 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
               <div>
                 <div className="text-lg font-semibold">{title}</div>
-                <div className="text-xs text-slate-400">{location.pathname}</div>
+                <div className="text-xs text-white/60">{location.pathname}</div>
+              </div>
+
+              <div className="hidden md:flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.6)]" />
+                <div className="text-xs text-white/60">Frontend active</div>
               </div>
             </div>
 
-            <div className="p-5">
-              <Outlet />
+            <div className="p-6">
+              <AppErrorBoundary>
+                <Outlet />
+              </AppErrorBoundary>
             </div>
           </main>
         </div>

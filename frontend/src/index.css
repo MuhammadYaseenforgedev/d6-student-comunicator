@@ -2,13 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
-body,
-#root {
-  height: 100%;
+/* =========================
+   Forge Theme Tokens
+   ========================= */
+@layer base {
+  :root {
+    /* Surfaces */
+    --bg: 10 10 22;            /* deep navy */
+    --panel: 14 14 32;         /* slightly lighter */
+    --panel-2: 18 18 42;       /* raised panels */
+    --border: 255 255 255;     /* we use with low opacity */
+
+    /* Text */
+    --text: 255 255 255;
+    --muted: 148 163 184;      /* slate-400-ish */
+
+    /* Brand accents (Forge-like cyan/purple) */
+    --brand-cyan: 34 211 238;  /* cyan-400 */
+    --brand-purple: 168 85 247;/* purple-500 */
+    --brand-blue: 59 130 246;  /* blue-500 */
+
+    /* Effects */
+    --glow: 34 211 238;        /* cyan glow */
+  }
+
+  body {
+    color: rgb(var(--text));
+    background: rgb(var(--bg));
+  }
 }
 
-body {
-  margin: 0;
-}
+/* =========================
+   Reusable Enterprise Components
+   ========================= */
+@layer components {
+  .app-bg {
+    @apply min-h-screen flex flex-col text-white;
+  }
 
+  .app-surface {
+    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl;
+  }
+
+  .app-surface-strong {
+    @apply rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl;
+  }
+
+  .app-muted {
+    color: rgb(var(--muted));
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-3 font-semibold transition;
+    background: linear-gradient(
+      135deg,
+      rgba(var(--brand-cyan), 0.95),
+      rgba(var(--brand-purple), 0.90)
+    );
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.08) inset,
+      0 10px 30px rgba(var(--glow), 0.18);
+  }
+
+  .btn-primary:hover {
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.10) inset,
+      0 12px 40px rgba(var(--glow), 0.26);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm transition hover:bg-white/10;
+  }
+
+  .nav-item {
+    @apply block rounded-lg px-3 py-2 text-sm border transition;
+  }
+
+  .nav-item-active {
+    @apply bg-white/10 border-white/15 text-white;
+  }
+
+  .nav-item-idle {
+    @apply bg-transparent border-transparent text-slate-300 hover:bg-white/5 hover:border-white/10 hover:text-white;
+  }
+}
