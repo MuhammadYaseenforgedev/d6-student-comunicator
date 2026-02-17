@@ -1,10 +1,10 @@
 // src/lib/auth.ts
-// Local auth storage helper.
-// Today: stores token + user in localStorage.
-// Later: token will be a real JWT from backend, and user will come from /auth/me or login response.
+// Auth storage helper.
+// Stores token + user in localStorage.
 
 const TOKEN_KEY = "token";
 const USER_KEY = "user";
+const DEV_BYPASS_KEY = "dev_bypass";
 
 /**
  * Roles used throughout the app.
@@ -14,19 +14,19 @@ export type UserRole = "STUDENT" | "LECTURER" | "ADMIN" | "PARENT";
 
 /**
  * Authenticated user shape stored on the frontend.
- * NOTE: campusId is the "ID" your manager requested (parent links child by ID, not email).
+ * campusId is optional (used for parent-child linking if your backend supports it later).
  */
 export type AuthUser = {
-  id: string; // backend user id (or dev id while backend not plugged in)
+  id: string;
   email: string;
   role: UserRole;
-  campusId?: string; // ✅ the ID used at registration (student ID / campus ID / etc)
+  campusId?: string;
 };
 
 /**
  * Save auth state.
  */
-export function setAuth(token: string, user: AuthUser) {
+export function setAuth(token: string, user: AuthUser): void {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
@@ -34,7 +34,7 @@ export function setAuth(token: string, user: AuthUser) {
 /**
  * Clear auth state.
  */
-export function clearAuth() {
+export function clearAuth(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
 }
@@ -42,7 +42,7 @@ export function clearAuth() {
 /**
  * Read token.
  */
-export function getToken() {
+export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
@@ -52,6 +52,7 @@ export function getToken() {
 export function getUser(): AuthUser | null {
   const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
+
   try {
     return JSON.parse(raw) as AuthUser;
   } catch {
@@ -62,6 +63,19 @@ export function getUser(): AuthUser | null {
 /**
  * Basic auth check.
  */
-export function isAuthed() {
+export function isAuthed(): boolean {
   return Boolean(getToken() && getUser());
+}
+
+/**
+ * DEV BYPASS SUPPORT
+ * Used by RequireDevBypass.tsx
+ */
+export function hasDevBypass(): boolean {
+  return localStorage.getItem(DEV_BYPASS_KEY) === "true";
+}
+
+export function setDevBypass(enabled: boolean): void {
+  if (enabled) localStorage.setItem(DEV_BYPASS_KEY, "true");
+  else localStorage.removeItem(DEV_BYPASS_KEY);
 }

@@ -1,10 +1,5 @@
 import { pool } from "../config/db";
-import type {
-  UploadRepo,
-  Upload,
-  CreateUploadInput,
-  UploadKind,
-} from "../persistence/types";
+import type { UploadRepo, Upload, CreateUploadInput, UploadKind } from "../persistence/types";
 
 type UploadRow = {
   id: string;
@@ -14,6 +9,7 @@ type UploadRow = {
   size_bytes: number | string;
   storage_path: string;
   uploaded_by: string;
+  uploaded_by_email: string | null;
   created_at: string;
 };
 
@@ -26,17 +22,26 @@ function mapRow(row: UploadRow): Upload {
     sizeBytes: Number(row.size_bytes),
     storagePath: row.storage_path,
     uploadedBy: row.uploaded_by,
+    uploadedByEmail: row.uploaded_by_email,
     createdAt: row.created_at,
   };
 }
 
 export const pgUploadRepo: UploadRepo = {
   async create(input: CreateUploadInput): Promise<Upload> {
+    // Return the created upload plus the uploader email in one round trip.
     const result = await pool.query<UploadRow>(
       `
-      INSERT INTO uploads (kind, original_name, mime_type, size_bytes, storage_path, uploaded_by)
-      VALUES ($1,$2,$3,$4,$5,$6)
-      RETURNING *
+      WITH ins AS (
+        INSERT INTO uploads (kind, original_name, mime_type, size_bytes, storage_path, uploaded_by)
+        VALUES ($1,$2,$3,$4,$5,$6)
+        RETURNING *
+      )
+      SELECT
+        ins.*,
+        u.email AS uploaded_by_email
+      FROM ins
+      LEFT JOIN users u ON u.id = ins.uploaded_by
       `,
       [
         input.kind,
@@ -51,33 +56,46 @@ export const pgUploadRepo: UploadRepo = {
     return mapRow(result.rows[0]);
   },
 
-  async listForUser(user: {
-    id: string;
-    role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
-  }): Promise<Upload[]> {
-    // ADMIN / LECTURER: everything
+  async listForUser(user: { id: string; role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" }): Promise<Upload[]> {
     if (user.role === "ADMIN" || user.role === "LECTURER") {
       const result = await pool.query<UploadRow>(
-        `SELECT * FROM uploads ORDER BY created_at DESC`
+        `
+        SELECT
+          up.*,
+          u.email AS uploaded_by_email
+        FROM uploads up
+        LEFT JOIN users u ON u.id = up.uploaded_by
+        ORDER BY up.created_at DESC
+        `
       );
       return result.rows.map(mapRow);
     }
 
-    // PARENT: lecturer materials only
     if (user.role === "PARENT") {
       const result = await pool.query<UploadRow>(
-        `SELECT * FROM uploads WHERE kind = 'LECTURER_MATERIAL' ORDER BY created_at DESC`
+        `
+        SELECT
+          up.*,
+          u.email AS uploaded_by_email
+        FROM uploads up
+        LEFT JOIN users u ON u.id = up.uploaded_by
+        WHERE up.kind = 'LECTURER_MATERIAL'
+        ORDER BY up.created_at DESC
+        `
       );
       return result.rows.map(mapRow);
     }
 
-    // STUDENT: lecturer materials + own submissions
     const result = await pool.query<UploadRow>(
       `
-      SELECT * FROM uploads
-      WHERE kind = 'LECTURER_MATERIAL'
-         OR (kind = 'STUDENT_SUBMISSION' AND uploaded_by = $1)
-      ORDER BY created_at DESC
+      SELECT
+        up.*,
+        u.email AS uploaded_by_email
+      FROM uploads up
+      LEFT JOIN users u ON u.id = up.uploaded_by
+      WHERE up.kind = 'LECTURER_MATERIAL'
+         OR (up.kind = 'STUDENT_SUBMISSION' AND up.uploaded_by = $1)
+      ORDER BY up.created_at DESC
       `,
       [user.id]
     );
@@ -87,7 +105,14 @@ export const pgUploadRepo: UploadRepo = {
 
   async getById(id: string): Promise<Upload | null> {
     const result = await pool.query<UploadRow>(
-      `SELECT * FROM uploads WHERE id = $1`,
+      `
+      SELECT
+        up.*,
+        u.email AS uploaded_by_email
+      FROM uploads up
+      LEFT JOIN users u ON u.id = up.uploaded_by
+      WHERE up.id = $1
+      `,
       [id]
     );
     if (result.rowCount === 0) return null;

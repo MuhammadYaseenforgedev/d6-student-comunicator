@@ -76,19 +76,12 @@ function generateOtpCode(): string {
 function normalizeIp(ip: string): string {
   const s = String(ip ?? "").trim();
   if (!s) return "unknown";
-
-  // If we get IPv4-mapped IPv6 like ::ffff:127.0.0.1
   if (s.startsWith("::ffff:")) return s.replace("::ffff:", "");
-
-  // If we get IPv6 loopback
   if (s === "::1") return "127.0.0.1";
-
   return s;
 }
 
 function getClientIp(req: any): string {
-  // When trust proxy is enabled, Express sets req.ip based on x-forwarded-for
-  // But we still defensively parse x-forwarded-for ourselves.
   const xf = String(req.headers?.["x-forwarded-for"] ?? "").trim();
   if (xf) {
     const first = xf.split(",")[0]?.trim();
@@ -122,7 +115,6 @@ async function checkEmailOtpRateLimit(email: string) {
 
 /**
  * DB-backed rate limit per IP
- * Requires: email_otps.request_ip column exists
  */
 async function checkIpOtpRateLimit(ip: string) {
   const { ipWindowMinutes, ipMaxPerWindow } = otpConfig();
@@ -144,10 +136,6 @@ async function checkIpOtpRateLimit(ip: string) {
   return { ok: true as const, retryAfterSeconds: 0 };
 }
 
-/**
- * Create a new OTP row (hashed). Never store OTP in plain text.
- * Stores request_ip for DB-backed IP rate limiting.
- */
 async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp: string) {
   const { ttlMinutes } = otpConfig();
   const code = generateOtpCode();
@@ -169,10 +157,6 @@ async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp
   return { expiresAt, devCode: shouldReturnDevCode() ? code : undefined };
 }
 
-/**
- * Verify newest valid OTP for (email, purpose), enforce attempts, consume on success.
- * Uses transaction + row lock to prevent double-consume under concurrency.
- */
 async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER", code: string) {
   const { maxAttempts } = otpConfig();
   const client = await pool.connect();
@@ -239,10 +223,10 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
 /* =========
    OTP: REQUEST
    =========
-   POST /auth/request-otp
+   POST /request-otp
    Body: { email, purpose: "LOGIN" | "REGISTER" }
 */
-authRouter.post("/auth/request-otp", async (req, res) => {
+authRouter.post("/request-otp", async (req, res) => {
   const email = normEmail(req.body?.email);
   const purposeRaw = req.body?.purpose;
 
@@ -254,7 +238,6 @@ authRouter.post("/auth/request-otp", async (req, res) => {
 
   const ip = getClientIp(req);
 
-  // Rate limit per IP (DB-backed)
   const ipCheck = await checkIpOtpRateLimit(ip);
   if (!ipCheck.ok) {
     res.setHeader("Retry-After", String(ipCheck.retryAfterSeconds));
@@ -263,7 +246,6 @@ authRouter.post("/auth/request-otp", async (req, res) => {
     });
   }
 
-  // Rate limit per email (DB-backed)
   const emailCheck = await checkEmailOtpRateLimit(email);
   if (!emailCheck.ok) {
     res.setHeader("Retry-After", String(emailCheck.retryAfterSeconds));
@@ -272,7 +254,6 @@ authRouter.post("/auth/request-otp", async (req, res) => {
     });
   }
 
-  // No enumeration: always ok:true, even if user doesn't exist.
   const out = await createOtp(email, purposeRaw, ip);
 
   return res.json({
@@ -285,10 +266,9 @@ authRouter.post("/auth/request-otp", async (req, res) => {
 /* =========
    REGISTER (requires OTP)
    =========
-   POST /auth/register
-   Body: { email, password, role, otp }
+   POST /register
 */
-authRouter.post("/auth/register", async (req, res) => {
+authRouter.post("/register", async (req, res) => {
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   const role = String(req.body?.role ?? "").toUpperCase();
@@ -331,10 +311,9 @@ authRouter.post("/auth/register", async (req, res) => {
 /* =========
    LOGIN (requires OTP)
    =========
-   POST /auth/login
-   Body: { email, password, otp }
+   POST /login
 */
-authRouter.post("/auth/login", async (req, res) => {
+authRouter.post("/login", async (req, res) => {
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   const otp = String(req.body?.otp ?? "").trim();
@@ -362,8 +341,8 @@ authRouter.post("/auth/login", async (req, res) => {
 });
 
 /* =========
-   ME
+   ME (protected)
    ========= */
-authRouter.get("/auth/me", requireAuth, (req, res) => {
+authRouter.get("/me", requireAuth, (req, res) => {
   return res.json({ user: req.user });
 });

@@ -1,3 +1,5 @@
+// frontend/src/hooks/useAnnouncements.ts
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Announcement, AnnouncementCreate, ChannelKey } from "../lib/types";
 import {
@@ -6,15 +8,33 @@ import {
   getAnnouncements,
   resetAnnouncementsDemo,
 } from "../lib/announcementStore";
-import * as apiAnnouncements from "../api/announcements";
+import { createAnnouncement, fetchAnnouncements } from "../api/announcements";
 
-// Change this later to "api" when backend is ready
-const MODE: "mock" | "api" = "mock";
+function getDataMode(): "mock" | "api" {
+  // Vite exposes import.meta.env, but typing can be strict depending on your setup.
+  // This approach avoids `any` and stays safe.
+  const env = import.meta.env as unknown;
+
+  if (typeof env === "object" && env !== null) {
+    const rec = env as Record<string, unknown>;
+    const v = rec["VITE_DATA_MODE"];
+    if (v === "api") return "api";
+  }
+
+  return "mock";
+}
+
+const MODE: "mock" | "api" = getDataMode();
+
+function safeTime(s?: string) {
+  const t = s ? new Date(s).getTime() : NaN;
+  return Number.isFinite(t) ? t : 0;
+}
 
 function sortAnnouncements(items: Announcement[]) {
   return [...items].sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return safeTime(b.createdAt) - safeTime(a.createdAt);
   });
 }
 
@@ -38,16 +58,17 @@ export function useAnnouncements(channel?: ChannelKey) {
     try {
       if (MODE === "mock") {
         ensureDemoSeeded();
-        const all = getAnnouncements();
-        if (mountedRef.current) setItems(sortAnnouncements(all));
-      } else {
-        const all = await apiAnnouncements.fetchAnnouncements(channel);
-        if (mountedRef.current) setItems(sortAnnouncements(all));
+        if (mountedRef.current) setItems(sortAnnouncements(getAnnouncements()));
+        return;
       }
+
+      const key: ChannelKey = channel ?? "general";
+      const rows = await fetchAnnouncements(key);
+
+      if (mountedRef.current) setItems(sortAnnouncements(rows));
     } catch (e: unknown) {
-      if (mountedRef.current) {
-        setError(e instanceof Error ? e.message : "Failed to load announcements");
-      }
+      if (!mountedRef.current) return;
+      setError(e instanceof Error ? e.message : "Failed to load announcements");
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -56,7 +77,6 @@ export function useAnnouncements(channel?: ChannelKey) {
   async function create(payload: AnnouncementCreate) {
     setError(null);
 
-    // MOCK: create then reload
     if (MODE === "mock") {
       try {
         addLocal(payload);
@@ -67,30 +87,26 @@ export function useAnnouncements(channel?: ChannelKey) {
       return;
     }
 
-    // API: optimistic UI
     const optimistic: Announcement = {
       id: `temp-${Date.now()}`,
       channel: payload.channel,
       title: payload.title,
       body: payload.body,
       pinned: payload.pinned,
-      author: payload.author,
+      author: payload.author ?? "You",
       createdAt: new Date().toISOString(),
     };
 
-    // Add optimistic item immediately
     setItems((prev) => sortAnnouncements([optimistic, ...prev]));
 
     try {
-      const saved = await apiAnnouncements.createAnnouncement(payload);
+      const saved = await createAnnouncement(payload);
 
-      // Replace optimistic with real one
       setItems((prev) => {
         const withoutTemp = prev.filter((a) => a.id !== optimistic.id);
         return sortAnnouncements([saved, ...withoutTemp]);
       });
     } catch (e: unknown) {
-      // Rollback optimistic
       setItems((prev) => prev.filter((a) => a.id !== optimistic.id));
       setError(e instanceof Error ? e.message : "Failed to create announcement");
     }
@@ -99,8 +115,7 @@ export function useAnnouncements(channel?: ChannelKey) {
   function resetDemo() {
     if (MODE !== "mock") return;
     resetAnnouncementsDemo();
-    const all = getAnnouncements();
-    setItems(sortAnnouncements(all));
+    setItems(sortAnnouncements(getAnnouncements()));
   }
 
   function clearError() {

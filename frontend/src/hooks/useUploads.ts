@@ -32,8 +32,17 @@ export function useUploads() {
   }
 
   async function remove(id: string) {
-    deleteUpload(id);
-    await load();
+    setError(null);
+    try {
+      await deleteUpload({
+        id,
+        requesterRole: role,
+        requesterEmail: email,
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete upload");
+    }
   }
 
   useEffect(() => {

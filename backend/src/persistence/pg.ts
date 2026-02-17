@@ -7,11 +7,10 @@ import { pgEventRepo } from "../repos/pgEventRepo";
 import { pgUploadRepo } from "../repos/pgUploadRepo";
 import { pgParentLinksRepo } from "../repos/pgParentLinksRepo";
 import { pgThreadRepo } from "../repos/pgThreadRepo";
-
 import { pgCalendarRepo } from "../repos/pgCalendarRepo";
 import { pgFinanceRepo } from "../repos/pgFinanceRepo";
 
-export const pgRepos: Repos = {
+export const pgRepos = {
   channels: pgChannelRepo,
   announcements: pgAnnouncementRepo,
   messages: pgMessageRepo,
@@ -21,4 +20,4 @@ export const pgRepos: Repos = {
   threads: pgThreadRepo,
   calendar: pgCalendarRepo,
   finance: pgFinanceRepo,
-};
+} satisfies Repos;

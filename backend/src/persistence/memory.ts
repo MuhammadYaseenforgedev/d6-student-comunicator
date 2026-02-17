@@ -11,7 +11,7 @@ import { pgThreadRepo } from "../repos/pgThreadRepo";
 import { pgCalendarRepo } from "../repos/pgCalendarRepo";
 import { pgFinanceRepo } from "../repos/pgFinanceRepo";
 
-export const memoryRepos: Repos = {
+export const memoryRepos = {
   channels: pgChannelRepo,
   announcements: pgAnnouncementRepo,
   messages: pgMessageRepo,
@@ -21,4 +21,4 @@ export const memoryRepos: Repos = {
   threads: pgThreadRepo,
   calendar: pgCalendarRepo,
   finance: pgFinanceRepo,
-};
+} satisfies Repos;

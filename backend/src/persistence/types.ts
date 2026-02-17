@@ -4,7 +4,7 @@ import type { Message } from "../models/message";
 import type { Event } from "../models/event";
 
 /* =========
-   Uploads model (inline for now)
+   Uploads model
    ========= */
 
 export type UploadKind = "LECTURER_MATERIAL" | "STUDENT_SUBMISSION";
@@ -17,11 +17,12 @@ export type Upload = {
   sizeBytes: number;
   storagePath: string;
   uploadedBy: string;
+  uploadedByEmail?: string | null;
   createdAt: string;
 };
 
 /* =========
-   Parent Links model (inline for now)
+   Parent Links
    ========= */
 
 export type ParentChild = {
@@ -30,7 +31,7 @@ export type ParentChild = {
 };
 
 /* =========
-   Threads model (inline for now)
+   Threads
    ========= */
 
 export type ThreadParticipant = { email: string };
@@ -65,7 +66,7 @@ export type ThreadMessageListResult = {
 };
 
 /* =========
-   Calendar model (inline for now)
+   Calendar
    ========= */
 
 export type CalendarEntry = {
@@ -80,7 +81,7 @@ export type CalendarEntry = {
 };
 
 /* =========
-   Finance model (inline for now)
+   Finance
    ========= */
 
 export type FinanceSummary = {
@@ -154,7 +155,7 @@ export type CreateUploadInput = {
 };
 
 /* =========
-   Repos (ASYNC)
+   Repo interfaces
    ========= */
 
 export type ChannelRepo = {
@@ -177,14 +178,7 @@ export type MessageRepo = {
 export type EventRepo = {
   listByChannel(channelId: string): Promise<Event[]>;
   create(input: CreateEventInput): Promise<Event>;
-  update(input: {
-    eventId: string;
-    title?: string;
-    description?: string | null;
-    location?: string | null;
-    startsAt?: string;
-    endsAt?: string;
-  }): Promise<Event | null>;
+  update(input: UpdateEventInput): Promise<Event | null>;
   delete(eventId: string): Promise<boolean>;
 };
 
@@ -201,41 +195,35 @@ export type ParentLinksRepo = {
   listChildren(parentUserId: string): Promise<ParentChild[]>;
   linkChildByEmail(
     parentUserId: string,
-    studentEmail: string
+    studentEmail: unknown
   ): Promise<{ created: boolean; child: ParentChild | null }>;
   unlinkChild(parentUserId: string, studentUserId: string): Promise<boolean>;
 };
 
 export type ThreadRepo = {
-  // matches GET /threads?limit=&before=
   listForUser(userId: string, opts?: ThreadListOptions): Promise<ThreadListResult>;
-
-  // matches GET /threads/:id
   getByIdForUser(threadId: string, userId: string): Promise<Thread>;
-
-  // matches POST /threads returning { created, thread }
   createThread(
     createdBy: string,
     participantEmails: unknown
   ): Promise<{ created: boolean; thread: Thread }>;
-
-  // matches GET /threads/:id/messages?limit=&before=
   listMessages(
     threadId: string,
     userId: string,
     opts?: ThreadListOptions
   ): Promise<ThreadMessageListResult>;
-
-  // matches POST /threads/:id/messages
-  createMessage(
-    threadId: string,
-    userId: string,
-    body: unknown
-  ): Promise<ThreadMessage>;
+  createMessage(threadId: string, userId: string, body: unknown): Promise<ThreadMessage>;
 };
 
+/* =========
+   CalendarRepo matches your pgCalendarRepo
+   ========= */
+
 export type CalendarRepo = {
-  listForUser(userId: string, opts?: { limit?: number }): Promise<CalendarEntry[]>;
+  listForUser(
+    userId: string,
+    opts?: { limit?: number }
+  ): Promise<CalendarEntry[]>;
   createForUser(
     userId: string,
     input: {
@@ -248,14 +236,22 @@ export type CalendarRepo = {
   ): Promise<CalendarEntry>;
 };
 
+/* =========
+   ✅ FIXED: FinanceRepo now matches your pgFinanceRepo
+   listTransactions returns an array in your implementation
+   ========= */
+
 export type FinanceRepo = {
   ensureAccount(userId: string): Promise<void>;
   getSummary(userId: string): Promise<FinanceSummary>;
-  listTransactions(userId: string, opts?: { limit?: number }): Promise<FinanceTransaction[]>;
+  listTransactions(
+    userId: string,
+    opts?: { limit?: number; before?: string }
+  ): Promise<FinanceTransaction[]>;
 };
 
 /* =========
-   Repos Container
+   Repos object shape
    ========= */
 
 export type Repos = {

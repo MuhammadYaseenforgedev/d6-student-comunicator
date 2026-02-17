@@ -7,21 +7,22 @@ import type { Announcement } from "../models/announcement";
 
 export const pgAnnouncementRepo: AnnouncementRepo = {
   async create(input: CreateAnnouncementInput): Promise<Announcement> {
-    const { channelId, title, body, createdBy } = input;
+    const { channelId, title, body, createdBy, pinned } = input;
 
     const result = await pool.query(
       `
-      insert into announcements (channel_id, title, body, created_by)
-      values ($1, $2, $3, $4)
+      insert into announcements (channel_id, title, body, pinned, created_by)
+      values ($1, $2, $3, $4, $5)
       returning
         id,
         channel_id as "channelId",
         title,
         body,
+        pinned,
         created_by as "createdBy",
         created_at as "createdAt"
       `,
-      [channelId, title, body, createdBy]
+      [channelId, title, body, Boolean(pinned), createdBy]
     );
 
     return result.rows[0];
@@ -35,11 +36,12 @@ export const pgAnnouncementRepo: AnnouncementRepo = {
         channel_id as "channelId",
         title,
         body,
+        pinned,
         created_by as "createdBy",
         created_at as "createdAt"
       from announcements
       where channel_id = $1
-      order by created_at desc
+      order by pinned desc, created_at desc
       `,
       [channelId]
     );

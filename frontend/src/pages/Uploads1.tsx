@@ -1,9 +1,10 @@
-// src/pages/Uploads1.tsx
+// frontend/src/pages/Uploads1.tsx
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
-import { addUpload, deleteUpload, listUploadsForRole } from "../lib/uploadStore";
 import type { UploadKind, UploadRecord } from "../lib/types";
+import { downloadUpload, listUploads, uploadFile } from "../api/uploads";
 
 function prettySize(bytes: number) {
   const kb = bytes / 1024;
@@ -28,7 +29,6 @@ export default function Uploads1() {
   const [error, setError] = useState<string | null>(null);
 
   const canUploadLecturerMaterial = role === "LECTURER" || role === "ADMIN";
-  const canDelete = role === "LECTURER" || role === "ADMIN";
 
   // Keep "Type" sensible when role changes (login as different role)
   useEffect(() => {
@@ -39,13 +39,14 @@ export default function Uploads1() {
     setLoading(true);
     setError(null);
     try {
-      setItems(listUploadsForRole(role, email));
+      const rows = await listUploads();
+      setItems(rows);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load uploads");
     } finally {
       setLoading(false);
     }
-  }, [role, email]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -67,14 +68,24 @@ export default function Uploads1() {
       return;
     }
 
+    if (role === "PARENT") {
+      setError("Parents cannot upload.");
+      return;
+    }
+
     if (kind === "LECTURER_MATERIAL" && !canUploadLecturerMaterial) {
       setError("Only lecturers (or admin) can upload lecturer materials.");
       return;
     }
 
+    if (kind === "STUDENT_SUBMISSION" && role !== "STUDENT") {
+      setError("Only students can upload student submissions.");
+      return;
+    }
+
     setBusy(true);
     try {
-      await addUpload({ file, kind, uploaderEmail: email, uploaderRole: role });
+      await uploadFile({ file, kind });
       setFile(null);
       await load();
     } catch (err) {
@@ -93,7 +104,7 @@ export default function Uploads1() {
         <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
           <div className="text-lg font-semibold text-white">Upload a file</div>
           <div className="mt-1 text-sm text-slate-400">
-            Stored locally for now. Backend will move this into PostgreSQL.
+            Saved to backend (disk) + metadata in PostgreSQL.
           </div>
 
           <form onSubmit={onUpload} className="mt-4 space-y-3">
@@ -103,6 +114,7 @@ export default function Uploads1() {
                 value={kind}
                 onChange={(e) => setKind(e.target.value as UploadKind)}
                 className="mt-2 w-full rounded-lg bg-slate-950 border border-slate-800 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600"
+                disabled={busy || role === "PARENT"}
               >
                 {canUploadLecturerMaterial && (
                   <option value="LECTURER_MATERIAL">Lecturer material</option>
@@ -131,6 +143,7 @@ export default function Uploads1() {
                 type="file"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 className="mt-2 block w-full text-sm text-slate-300 file:mr-4 file:rounded-lg file:border file:border-slate-700 file:bg-slate-900/60 file:px-4 file:py-2 file:text-slate-200 hover:file:bg-slate-900"
+                disabled={busy || role === "PARENT"}
               />
             </div>
 
@@ -198,35 +211,22 @@ export default function Uploads1() {
                     </div>
 
                     <div className="flex gap-2">
-                      <a
-                        href={u.dataUrl}
-                        download={u.fileName}
+                      <button
+                        type="button"
+                        onClick={() => downloadUpload({ uploadId: u.id, fileName: u.fileName })}
                         className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
                       >
                         Download
-                      </a>
-
-                      {canDelete && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            deleteUpload({
-                              id: u.id,
-                              requesterRole: role,
-                              requesterEmail: email,
-                              });
-                            load();
-                          }}
-                          className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs hover:bg-slate-900/50"
-                        >
-                          Delete
-                        </button>
-                      )}
+                      </button>
                     </div>
                   </div>
                 </div>
               ))
             )}
+          </div>
+
+          <div className="mt-4 text-xs text-slate-500">
+            Logged in as: {email} ({role})
           </div>
         </div>
       </div>
