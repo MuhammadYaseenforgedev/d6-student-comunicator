@@ -21,7 +21,7 @@ import ChannelPage from "./pages/ChannelPage";
 import Inbox from "./pages/Inbox";
 import ThreadPage from "./pages/ThreadPage";
 import Uploads from "./pages/Uploads1";
-import Calendar from "./pages/Calendar1";
+import Calendar from "./pages/Calendar"; // ✅ was Calendar1
 
 import ParentPortalLayout from "./pages/parent/ParentPortalLayout";
 import ParentOverview from "./pages/parent/ParentOverview";
@@ -87,29 +87,28 @@ export default function App() {
           </Routes>
         </div>
 
-        {/* Global footer (proportional + app-like) */}
-{/* Global footer (enterprise) */}
-<footer className="relative z-50 px-4 pb-4">
-  <div className="mx-auto w-full max-w-7xl">
-    <div className="relative h-[5cm] overflow-hidden rounded-2xl border border-white/10 bg-slate-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
-      {/* No cropping */}
-      <img
-        src={forgeFooter}
-        alt="Forge Academy footer banner"
-        className="h-full w-full object-contain"
-        draggable={false}
-      />
+        {/* Global footer (enterprise) */}
+        <footer className="relative z-50 px-4 pb-4">
+          <div className="mx-auto w-full max-w-7xl">
+            <div className="relative h-[5cm] overflow-hidden rounded-2xl border border-white/10 bg-slate-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
+              {/* No cropping */}
+              <img
+                src={forgeFooter}
+                alt="Forge Academy footer banner"
+                className="h-full w-full object-contain"
+                draggable={false}
+              />
 
-      {/* Blend into background (subtle fade + polish) */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-transparent" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-slate-950/15 via-transparent to-slate-950/15" />
-    </div>
+              {/* Blend into background (subtle fade + polish) */}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-transparent" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-slate-950/15 via-transparent to-slate-950/15" />
+            </div>
 
-    <div className="mt-3 text-center text-xs text-white/60">
-      © {new Date().getFullYear()} Forge Academy. All rights reserved.
-    </div>
-  </div>
-</footer>
+            <div className="mt-3 text-center text-xs text-white/60">
+              © {new Date().getFullYear()} Forge Academy. All rights reserved.
+            </div>
+          </div>
+        </footer>
       </div>
     </BrowserRouter>
   );

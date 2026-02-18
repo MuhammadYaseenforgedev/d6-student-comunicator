@@ -1,8 +1,13 @@
-import { Router } from "express";
+// src/routes/finance.ts
+import { Router, type Request, type Response } from "express";
 import { pool } from "../config/db";
 import { pgFinanceRepo } from "../repos/pgFinanceRepo";
 
-function err(res: any, status: number, code: string, message: string) {
+type AuthedRequest = Request & {
+  user?: { id: string; role: string };
+};
+
+function err(res: Response, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
 }
 
@@ -13,8 +18,8 @@ async function canParentViewStudent(parentId: string, studentId: string): Promis
     WHERE parent_user_id = $1 AND student_user_id = $2
     LIMIT 1
   `;
-  const res = await pool.query(q, [parentId, studentId]);
-  return res.rowCount === 1;
+  const r = await pool.query(q, [parentId, studentId]);
+  return (r.rowCount ?? 0) > 0;
 }
 
 export const financeRouter = Router();
@@ -22,25 +27,29 @@ export const financeRouter = Router();
 // requireAuth is already applied globally in app.ts
 
 // GET /finance/summary?userId=&studentId=
-financeRouter.get("/finance/summary", async (req, res) => {
+financeRouter.get("/finance/summary", async (req: AuthedRequest, res: Response) => {
   try {
-    const user = req.user as any;
-    const role = String(user.role ?? "").toUpperCase();
-    const me = String(user.id);
+    const user = req.user;
+    const role = String(user?.role ?? "").toUpperCase();
+    const me = String(user?.id ?? "");
+
+    if (!me) return err(res, 401, "UNAUTHORIZED", "Missing user");
 
     let targetUserId = me;
 
-    // Admin can view anyone
-    if (role === "ADMIN" && req.query.userId) {
-      targetUserId = String(req.query.userId);
-    }
+    if (role === "ADMIN") {
+      if (req.query.userId) targetUserId = String(req.query.userId);
+    } else if (role === "PARENT") {
+      const sid = String(req.query.studentId ?? "").trim();
+      if (!sid) return err(res, 400, "VALIDATION", "studentId is required for parent finance view");
 
-    // Parent can view linked student
-    if (role === "PARENT" && req.query.studentId) {
-      const sid = String(req.query.studentId);
       const ok = await canParentViewStudent(me, sid);
       if (!ok) return err(res, 403, "FORBIDDEN", "Not linked to this student");
+
       targetUserId = sid;
+    } else {
+      // STUDENT / LECTURER: only allow own finance
+      targetUserId = me;
     }
 
     const summary = await pgFinanceRepo.getSummary(targetUserId);
@@ -51,26 +60,32 @@ financeRouter.get("/finance/summary", async (req, res) => {
 });
 
 // GET /finance/transactions?limit=&userId=&studentId=
-financeRouter.get("/finance/transactions", async (req, res) => {
+financeRouter.get("/finance/transactions", async (req: AuthedRequest, res: Response) => {
   try {
-    const user = req.user as any;
-    const role = String(user.role ?? "").toUpperCase();
-    const me = String(user.id);
+    const user = req.user;
+    const role = String(user?.role ?? "").toUpperCase();
+    const me = String(user?.id ?? "");
+
+    if (!me) return err(res, 401, "UNAUTHORIZED", "Missing user");
 
     let targetUserId = me;
 
-    if (role === "ADMIN" && req.query.userId) {
-      targetUserId = String(req.query.userId);
-    }
+    if (role === "ADMIN") {
+      if (req.query.userId) targetUserId = String(req.query.userId);
+    } else if (role === "PARENT") {
+      const sid = String(req.query.studentId ?? "").trim();
+      if (!sid) return err(res, 400, "VALIDATION", "studentId is required for parent finance view");
 
-    if (role === "PARENT" && req.query.studentId) {
-      const sid = String(req.query.studentId);
       const ok = await canParentViewStudent(me, sid);
       if (!ok) return err(res, 403, "FORBIDDEN", "Not linked to this student");
+
       targetUserId = sid;
+    } else {
+      targetUserId = me;
     }
 
-    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    const limitRaw = req.query.limit ? Number(req.query.limit) : undefined;
+    const limit = Number.isFinite(limitRaw as number) ? (limitRaw as number) : undefined;
 
     const tx = await pgFinanceRepo.listTransactions(targetUserId, { limit });
     return res.json({ value: tx, count: tx.length });

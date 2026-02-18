@@ -55,14 +55,22 @@ export const pgCalendarRepo = {
 
   async createForUser(
     userId: string,
-    input: { title: string; description?: string | null; location?: string | null; startsAt: string; endsAt: string }
+    input: {
+      title: string;
+      description?: string | null;
+      location?: string | null;
+      startsAt: string;
+      endsAt: string;
+    }
   ): Promise<CalendarEntry> {
     const title = String(input.title ?? "").trim();
     if (!title) throw Object.assign(new Error("title is required"), { code: "VALIDATION" });
 
     const startsAt = String(input.startsAt ?? "").trim();
     const endsAt = String(input.endsAt ?? "").trim();
-    if (!startsAt || !endsAt) throw Object.assign(new Error("startsAt and endsAt are required"), { code: "VALIDATION" });
+    if (!startsAt || !endsAt) {
+      throw Object.assign(new Error("startsAt and endsAt are required"), { code: "VALIDATION" });
+    }
 
     const q = `
       INSERT INTO calendar_entries (user_id, title, description, location, starts_at, ends_at)
@@ -89,5 +97,19 @@ export const pgCalendarRepo = {
       endsAt: r.ends_at,
       createdAt: r.created_at,
     };
+  },
+
+  async deleteForUser(userId: string, entryId: string): Promise<boolean> {
+    const id = String(entryId ?? "").trim();
+    if (!id) throw Object.assign(new Error("id is required"), { code: "VALIDATION" });
+
+    const q = `
+      DELETE FROM calendar_entries
+      WHERE id = $1 AND user_id = $2
+    `;
+    const res = await pool.query(q, [id, userId]);
+
+    // rowCount can be null in pg typings, so guard it
+    return (res.rowCount ?? 0) > 0;
   },
 };

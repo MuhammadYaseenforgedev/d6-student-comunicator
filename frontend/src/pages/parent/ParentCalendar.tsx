@@ -1,130 +1,172 @@
-// src/pages/parent/ParentCalendar.tsx
-// Parent tab: calendar view-only.
-// Parents can view campus events, but do NOT create notes here (students only).
-// This reuses the same calendar hook/store used by /app/calendar so everything stays consistent.
-
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../../components/PageHeader";
-import { useCalendar } from "../../hooks/useCalendar";
-import type { CalendarEvent } from "../../lib/types";
+import { useCalendarApi, type CalendarEntry } from "../../hooks/useCalendarApi";
+import { listMyChildren, type ParentChild } from "../../api/parent";
 
-// Small badge styling helper for event categories
-function badgeFor(cat?: CalendarEvent["category"]) {
-  if (cat === "EXAM") return "border-red-700/40 bg-red-950/30 text-red-200";
-  if (cat === "ASSESSMENT") return "border-yellow-700/40 bg-yellow-950/30 text-yellow-200";
-  if (cat === "HOLIDAY") return "border-green-700/40 bg-green-950/30 text-green-200";
-  return "border-slate-700 bg-slate-950/40 text-slate-200";
+type Grouped = Array<[string, CalendarEntry[]]>;
+
+function fmt(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function childName(c: ParentChild) {
+  return c.email;
 }
 
 export default function ParentCalendar() {
-  // ✅ Use the real calendar hook so Parent tab matches /app/calendar data
-  const { events, loading, error, reload } = useCalendar();
+  const [children, setChildren] = useState<ParentChild[]>([]);
+  const [childId, setChildId] = useState<string>("");
+  const [loadingChildren, setLoadingChildren] = useState(false);
+  const [childrenError, setChildrenError] = useState<string | null>(null);
 
-  // Group events by date for a clean UI (same idea as your Calendar page)
-  const grouped = useMemo(() => {
-    const map = new Map<string, CalendarEvent[]>();
+  // IMPORTANT: pass selected childId into the hook (so backend gets ?childId=)
+  const { loading, error, grouped, reload } = useCalendarApi(childId || undefined);
 
-    for (const e of events) {
-      if (!map.has(e.date)) map.set(e.date, []);
-      map.get(e.date)!.push(e);
+  useEffect(() => {
+    async function load() {
+      setLoadingChildren(true);
+      setChildrenError(null);
+      try {
+        const list = await listMyChildren();
+        setChildren(list);
+        if (!childId && list.length > 0) setChildId(list[0].id);
+      } catch (e) {
+        setChildrenError(e instanceof Error ? e.message : "Failed to load children");
+      } finally {
+        setLoadingChildren(false);
+      }
     }
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [events]);
+  // When child changes, refresh calendar list
+  useEffect(() => {
+    if (childId) void reload();
+  }, [childId, reload]);
+
+  const childLabel = useMemo(() => {
+    const c = children.find((x) => x.id === childId);
+    return c ? childName(c) : "";
+  }, [children, childId]);
+
+  const groupedTyped = grouped as Grouped;
 
   return (
     <div>
-      {/* Header for the parent tab */}
       <PageHeader
         title="Calendar"
-        subtitle="Parents can view the campus calendar. Students add personal notes in the main Calendar page."
+        subtitle={
+          childId
+            ? `Viewing ${childLabel}'s calendar (view-only).`
+            : "Select a child to view their calendar (view-only)."
+        }
         actions={
-          <button
-            type="button"
-            onClick={reload}
-            className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={reload}
+              className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50"
+              disabled={!childId}
+            >
+              Refresh
+            </button>
+          </div>
         }
       />
 
-      {/* Error (if something breaks in the store/hook) */}
+      {/* Child selector */}
+      <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/30 p-4">
+        <div className="text-sm font-semibold">Child</div>
+
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            value={childId}
+            onChange={(e) => setChildId(e.target.value)}
+            className="w-full rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50 sm:max-w-md"
+            disabled={loadingChildren}
+          >
+            {children.length === 0 ? (
+              <option value="">
+                {loadingChildren ? "Loading children..." : "No linked children found"}
+              </option>
+            ) : (
+              children.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {childName(c)} ({c.role})
+                </option>
+              ))
+            )}
+          </select>
+
+          {childrenError && (
+            <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-2 text-sm text-red-200">
+              {childrenError}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-2 text-xs text-slate-400">
+          Parents can view a child’s entries, but cannot create or delete.
+        </div>
+      </div>
+
+      {/* Errors */}
       {error && (
-        <div className="mt-5 rounded-xl border border-red-700/40 bg-red-950/30 p-3 text-sm text-red-200">
+        <div className="mt-3 rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">
           {error}
         </div>
       )}
 
-      {/* Calendar list */}
+      {/* List */}
       <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-        <div className="text-lg font-semibold text-white">Campus calendar</div>
-        <div className="mt-1 text-sm text-slate-400">
-          Read-only events uploaded by campus (admin/lecturer in this MVP).
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Upcoming</h2>
+          <span className="text-xs text-slate-400">{loading ? "Loading..." : ""}</span>
         </div>
 
-        <div className="mt-5 space-y-4">
-          {loading ? (
-            <div className="text-slate-400">Loading…</div>
-          ) : grouped.length === 0 ? (
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-6 text-slate-300">
-              No calendar events yet.
-            </div>
-          ) : (
-            grouped.map(([date, dayEvents]) => (
-              <div
-                key={date}
-                className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4"
-              >
-                {/* Date header */}
-                <div className="text-white font-semibold">{date}</div>
+        {!childId ? (
+          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+            Select a child to load their calendar.
+          </div>
+        ) : groupedTyped.length === 0 && !loading ? (
+          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+            No calendar entries yet.
+          </div>
+        ) : (
+          <div className="mt-4 space-y-4">
+            {groupedTyped.map(([day, entries]) => (
+              <div key={day}>
+                <div className="mb-2 text-xs font-semibold text-slate-300">{day}</div>
 
-                {/* Events for that date */}
-                <div className="mt-3 space-y-3">
-                  {dayEvents.map((ev) => (
-                    <div
-                      key={ev.id}
-                      className="rounded-xl border border-slate-800 bg-slate-950/30 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-white font-semibold">{ev.title}</div>
-
-                          {ev.description && (
-                            <div className="mt-1 text-sm text-slate-300">
-                              {ev.description}
-                            </div>
-                          )}
-
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <span
-                              className={[
-                                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
-                                badgeFor(ev.category),
-                              ].join(" ")}
-                            >
-                              {ev.category ?? "GENERAL"}
-                            </span>
-
-                            <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/40 px-2 py-0.5 text-xs text-slate-300">
-                              Posted by {ev.createdByRole}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* ✅ Parent: no note buttons here */}
+                <div className="space-y-2">
+                  {entries.map((it) => (
+                    <div key={it.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                      <div className="font-semibold">{it.title}</div>
+                      <div className="mt-1 text-xs text-slate-300">
+                        {fmt(it.startsAt)} → {fmt(it.endsAt)}
                       </div>
+                      {it.location && <div className="mt-1 text-xs text-slate-400">{it.location}</div>}
+                      {it.description && (
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-slate-200">
+                          {it.description}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
-
-      {/* Parent note UI intentionally removed (per your rule: student notes only).
-         If you later want parent notes too, we can add it safely without touching campus events. */}
     </div>
   );
 }

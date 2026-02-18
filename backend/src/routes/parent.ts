@@ -46,14 +46,17 @@ parentRouter.get("/children", async (req, res) => {
     const children = r.rows.map((x) => ({
       id: x.id,
       email: x.email,
+      role: "STUDENT" as const,
       publicStudentId: x.public_student_id,
     }));
 
-    return res.json({ children });
+    // ✅ Standard list shape (matches frontend unwrapList + your other endpoints)
+    return res.json({ value: children, count: children.length });
   } catch {
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });
+
 
 // POST /parent/children { studentPublicId }  (preferred)
 // POST /parent/children { studentEmail }     (legacy fallback)
@@ -120,7 +123,6 @@ parentRouter.post("/children", async (req, res) => {
     `;
     const linkRes = await pool.query<{ inserted: number }>(linkQ, [parentId, student.id]);
 
-    // FIX: rowCount can be null in typings, so coalesce to 0
     const created = (linkRes.rowCount ?? 0) > 0;
 
     return res.status(created ? 201 : 200).json({
@@ -128,6 +130,7 @@ parentRouter.post("/children", async (req, res) => {
       child: {
         id: student.id,
         email: student.email,
+        role: "STUDENT" as const,
         publicStudentId: student.public_student_id,
       },
     });
