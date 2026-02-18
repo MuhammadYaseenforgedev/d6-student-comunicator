@@ -28,10 +28,12 @@ type ParticipantRow = {
   email: string;
 };
 
+type UserRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+
 type UserRow = {
   id: string;
   email: string;
-  role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+  role: UserRole;
 };
 
 function parseLimit(raw: unknown, fallback = 50) {
@@ -48,9 +50,30 @@ function normalizeEmails(emails: unknown): string[] {
   return Array.from(new Set(cleaned));
 }
 
-function threadsMode(): "ANY" | "PARENT_STUDENT" {
+/**
+ * THREADS_MODE:
+ * - "ANY" (default): repo only enforces participant access + integrity
+ * - "D6": repo enforces that 1:1 threads obey D6 role matrix (no parent<->student, no self, no lecturer<->lecturer)
+ *
+ * Legacy compatibility:
+ * - "PARENT_STUDENT" is treated as "D6" (so old env won't keep enabling parent-student threads)
+ */
+function threadsMode(): "ANY" | "D6" {
   const v = String(process.env.THREADS_MODE ?? "").trim().toUpperCase();
-  return v === "PARENT_STUDENT" ? "PARENT_STUDENT" : "ANY";
+  if (v === "D6") return "D6";
+  if (v === "PARENT_STUDENT") return "D6";
+  return "ANY";
+}
+
+function canMessage(sender: UserRole, receiver: UserRole): boolean {
+  if (sender === "ADMIN") return true;
+  if (receiver === "ADMIN") return true;
+
+  if (sender === "STUDENT") return receiver === "LECTURER";
+  if (sender === "PARENT") return receiver === "LECTURER";
+  if (sender === "LECTURER") return receiver === "STUDENT" || receiver === "PARENT";
+
+  return false;
 }
 
 async function getUsersByEmails(emails: string[]): Promise<UserRow[]> {
@@ -90,11 +113,43 @@ async function findExistingOneToOneThread(userA: string, userB: string): Promise
   return res.rowCount ? res.rows[0].thread_id : null;
 }
 
+async function getThreadParticipantUserIds(threadId: string): Promise<string[]> {
+  const q = `
+    SELECT user_id
+    FROM thread_participants
+    WHERE thread_id = $1
+  `;
+  const res = await pool.query<{ user_id: string }>(q, [threadId]);
+  return res.rows.map((r) => r.user_id);
+}
+
+function assertD6ThreadRolesOrThrow(users: UserRow[]) {
+  // Repo only supports 1:1 DMs in D6 mode
+  if (users.length !== 2) {
+    throw Object.assign(new Error("Only 1:1 threads are supported"), { code: "FORBIDDEN" });
+  }
+
+  const a = users[0];
+  const b = users[1];
+
+  if (a.id === b.id) {
+    throw Object.assign(new Error("Cannot create a thread with only yourself"), { code: "VALIDATION" });
+  }
+
+  // Must be allowed in both directions (our allowed pairs are symmetric)
+  if (!canMessage(a.role, b.role) || !canMessage(b.role, a.role)) {
+    throw Object.assign(new Error("Direct messaging is not allowed between these roles"), { code: "FORBIDDEN" });
+  }
+}
+
 export const pgThreadRepo = {
   /**
    * List threads for a user with pagination.
    * - limit: max 100 (default 50)
    * - before: ISO timestamp cursor (older than this activity time)
+   *
+   * Soft-archive:
+   * - threads where thread_participants.archived_at IS NOT NULL are hidden for that user
    */
   async listForUser(userId: string, opts?: { limit?: number; before?: string }): Promise<{
     threads: Thread[];
@@ -114,6 +169,7 @@ export const pgThreadRepo = {
         JOIN thread_participants tp ON tp.thread_id = t.id
         LEFT JOIN thread_messages tm ON tm.thread_id = t.id
         WHERE tp.user_id = $1
+          AND tp.archived_at IS NULL
         GROUP BY t.id, t.created_at
       )
       SELECT id, created_at, last_message_at, activity_at
@@ -161,6 +217,10 @@ export const pgThreadRepo = {
   /**
    * Get one thread by id for the current user.
    * Only participants may access.
+   *
+   * Note: We do NOT block access just because archived.
+   * If you want "archived means inaccessible", we can enforce that too.
+   * Right now archived only hides from list, which is the safest behavior.
    */
   async getByIdForUser(threadId: string, userId: string): Promise<Thread> {
     const isP = await this.isParticipant(threadId, userId);
@@ -201,6 +261,37 @@ export const pgThreadRepo = {
   },
 
   /**
+   * Archive a thread for a user (soft delete).
+   * This hides it from /threads list for that user only.
+   */
+  async archiveForUser(threadId: string, userId: string): Promise<void> {
+    const isP = await this.isParticipant(threadId, userId);
+    if (!isP) throw Object.assign(new Error("Not a participant"), { code: "FORBIDDEN" });
+
+    const q = `
+      UPDATE thread_participants
+      SET archived_at = NOW(), archived_by = $2
+      WHERE thread_id = $1 AND user_id = $2
+    `;
+    await pool.query(q, [threadId, userId]);
+  },
+
+  /**
+   * Unarchive a thread for a user (restore).
+   */
+  async unarchiveForUser(threadId: string, userId: string): Promise<void> {
+    const isP = await this.isParticipant(threadId, userId);
+    if (!isP) throw Object.assign(new Error("Not a participant"), { code: "FORBIDDEN" });
+
+    const q = `
+      UPDATE thread_participants
+      SET archived_at = NULL, archived_by = NULL
+      WHERE thread_id = $1 AND user_id = $2
+    `;
+    await pool.query(q, [threadId, userId]);
+  },
+
+  /**
    * Create thread with validation + duplicate 1:1 prevention.
    * Returns { created, thread } where created=false if we reused an existing 1:1.
    */
@@ -214,13 +305,13 @@ export const pgThreadRepo = {
       throw Object.assign(new Error("participantEmails is required"), { code: "VALIDATION" });
     }
 
-    // Load users by email
-    const users = await getUsersByEmails(uniqueEmails);
-    if (users.length !== uniqueEmails.length) {
+    // Load users by email (these are the "other participants" supplied by caller)
+    const usersFromEmails = await getUsersByEmails(uniqueEmails);
+    if (usersFromEmails.length !== uniqueEmails.length) {
       throw Object.assign(new Error("One or more participant emails do not exist"), { code: "VALIDATION" });
     }
 
-    const participantUserIds = users.map((u) => u.id);
+    const participantUserIds = usersFromEmails.map((u) => u.id);
 
     // Always include creator
     const allUserIds = Array.from(new Set([createdBy, ...participantUserIds]));
@@ -230,53 +321,40 @@ export const pgThreadRepo = {
       throw Object.assign(new Error("Cannot create a thread with only yourself"), { code: "VALIDATION" });
     }
 
-    // Optional role restriction
-    if (threadsMode() === "PARENT_STUDENT") {
+    // Enforce 1:1 only at repo level too (keeps integrity)
+    if (allUserIds.length !== 2) {
+      throw Object.assign(new Error("Only 1:1 threads are supported"), { code: "VALIDATION" });
+    }
+
+    // D6 mode role enforcement (backstop, route already checks too)
+    if (threadsMode() === "D6") {
       const allUsers = await getUsersByIds(allUserIds);
-      const roles = allUsers.map((u) => u.role);
-
-      const isValidPair =
-        allUserIds.length === 2 &&
-        roles.includes("PARENT") &&
-        roles.includes("STUDENT") &&
-        !roles.includes("ADMIN") &&
-        !roles.includes("LECTURER");
-
-      if (!isValidPair) {
-        throw Object.assign(
-          new Error("Threads are restricted to 1:1 PARENT ↔ STUDENT in current configuration"),
-          { code: "FORBIDDEN" }
-        );
-      }
+      assertD6ThreadRolesOrThrow(allUsers);
     }
 
     // Prevent duplicate 1:1 thread
-    if (allUserIds.length === 2) {
-      const existingId = await findExistingOneToOneThread(allUserIds[0], allUserIds[1]);
-      if (existingId) {
-        // Build participants from the two users (creator might not be in emails list)
-        const allUsers = await getUsersByIds(allUserIds);
-        const participants = allUsers
-          .map((u) => ({ email: u.email }))
-          .sort((a, b) => a.email.localeCompare(b.email));
+    const existingId = await findExistingOneToOneThread(allUserIds[0], allUserIds[1]);
+    if (existingId) {
+      const allUsers = await getUsersByIds(allUserIds);
+      const participants = allUsers
+        .map((u) => ({ email: u.email }))
+        .sort((a, b) => a.email.localeCompare(b.email));
 
-        // Get lastMessageAt quickly
-        const lastQ = `
-          SELECT MAX(created_at) AS last_message_at
-          FROM thread_messages
-          WHERE thread_id = $1
-        `;
-        const lastRes = await pool.query<{ last_message_at: string | null }>(lastQ, [existingId]);
+      const lastQ = `
+        SELECT MAX(created_at) AS last_message_at
+        FROM thread_messages
+        WHERE thread_id = $1
+      `;
+      const lastRes = await pool.query<{ last_message_at: string | null }>(lastQ, [existingId]);
 
-        return {
-          created: false,
-          thread: {
-            id: existingId,
-            lastMessageAt: lastRes.rows[0]?.last_message_at ?? null,
-            participants,
-          },
-        };
-      }
+      return {
+        created: false,
+        thread: {
+          id: existingId,
+          lastMessageAt: lastRes.rows[0]?.last_message_at ?? null,
+          participants,
+        },
+      };
     }
 
     // Create thread transactionally
@@ -287,9 +365,9 @@ export const pgThreadRepo = {
       const tq = `
         INSERT INTO threads (created_by)
         VALUES ($1)
-        RETURNING id, created_at
+        RETURNING id
       `;
-      const tres = await client.query<{ id: string; created_at: string }>(tq, [createdBy]);
+      const tres = await client.query<{ id: string }>(tq, [createdBy]);
       const threadId = tres.rows[0].id;
 
       const insP = `
@@ -302,7 +380,6 @@ export const pgThreadRepo = {
 
       await client.query("COMMIT");
 
-      // Return thread shape
       const allUsers = await getUsersByIds(allUserIds);
       const participants = allUsers
         .map((u) => ({ email: u.email }))
@@ -349,6 +426,13 @@ export const pgThreadRepo = {
     const isP = await this.isParticipant(threadId, userId);
     if (!isP) throw Object.assign(new Error("Not a participant"), { code: "FORBIDDEN" });
 
+    // Backstop: block non-D6 legacy threads if env is D6
+    if (threadsMode() === "D6") {
+      const ids = await getThreadParticipantUserIds(threadId);
+      const users = await getUsersByIds(ids);
+      assertD6ThreadRolesOrThrow(users);
+    }
+
     const limit = parseLimit(opts?.limit, 50);
     const before = opts?.before ? String(opts.before) : null;
 
@@ -387,6 +471,13 @@ export const pgThreadRepo = {
   async createMessage(threadId: string, userId: string, body: unknown): Promise<ThreadMessage> {
     const isP = await this.isParticipant(threadId, userId);
     if (!isP) throw Object.assign(new Error("Not a participant"), { code: "FORBIDDEN" });
+
+    // Backstop: do not allow posting into legacy invalid threads when in D6 mode
+    if (threadsMode() === "D6") {
+      const ids = await getThreadParticipantUserIds(threadId);
+      const users = await getUsersByIds(ids);
+      assertD6ThreadRolesOrThrow(users);
+    }
 
     const text = String(body ?? "").trim();
     if (!text) throw Object.assign(new Error("body is required"), { code: "VALIDATION" });

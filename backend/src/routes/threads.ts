@@ -16,10 +16,31 @@ function normEmail(v: any) {
   return String(v ?? "").trim().toLowerCase();
 }
 
-function isParentStudentPair(a: string, b: string) {
-  const x = a?.toUpperCase?.() ?? "";
-  const y = b?.toUpperCase?.() ?? "";
-  return (x === "PARENT" && y === "STUDENT") || (x === "STUDENT" && y === "PARENT");
+type UserRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+
+function toRole(v: unknown): UserRole | null {
+  const r = String(v ?? "").trim().toUpperCase();
+  if (r === "ADMIN" || r === "LECTURER" || r === "STUDENT" || r === "PARENT") return r;
+  return null;
+}
+
+/**
+ * D6 messaging matrix:
+ * - STUDENT <-> LECTURER
+ * - PARENT  <-> LECTURER
+ * - ADMIN   <-> everyone
+ * - No parent<->student
+ * - No lecturer<->lecturer by default
+ */
+function canMessage(sender: UserRole, receiver: UserRole): boolean {
+  if (sender === "ADMIN") return true;
+  if (receiver === "ADMIN") return true;
+
+  if (sender === "STUDENT") return receiver === "LECTURER";
+  if (sender === "PARENT") return receiver === "LECTURER";
+  if (sender === "LECTURER") return receiver === "STUDENT" || receiver === "PARENT";
+
+  return false;
 }
 
 export const threadRouter = Router();
@@ -67,17 +88,15 @@ threadRouter.get("/:id", async (req, res) => {
 });
 
 // POST /threads { participantEmails: string[] }
-// Rule: only 1:1 threads, only PARENT <-> STUDENT
+// Rule: only 1:1 threads, D6 role matrix, no parent<->student, no self
 threadRouter.post("/", async (req, res) => {
   try {
     const user = req.user!;
     const userId = user.id;
-    const userRole = String((user as any).role ?? "").toUpperCase();
-    const userEmail = normEmail((user as any).email);
 
-    // Only these roles may use inbox threads
-    if (userRole !== "PARENT" && userRole !== "STUDENT") {
-      return err(res, 403, "FORBIDDEN", "Only PARENT and STUDENT may use threads");
+    const userRole = toRole((user as any).role);
+    if (!userRole) {
+      return err(res, 403, "FORBIDDEN", "Invalid role");
     }
 
     const raw = req.body?.participantEmails;
@@ -103,15 +122,10 @@ threadRouter.post("/", async (req, res) => {
 
     const otherEmail = cleaned[0];
 
-    // Prevent self-only threads (nice message at route layer)
-    if (userEmail && otherEmail === userEmail) {
-      return err(res, 400, "VALIDATION", "Cannot create a thread with only yourself");
-    }
-
-    // Load the other user's role so we can enforce PARENT<->STUDENT
-    const ures = await pool.query<{ role: string }>(
+    // Load the other user (id + role) so we can enforce D6 matrix and no-self by id
+    const ures = await pool.query<{ id: string; role: string; email: string }>(
       `
-        SELECT role
+        SELECT id, role, email
         FROM users
         WHERE lower(email) = lower($1)
         LIMIT 1
@@ -123,10 +137,21 @@ threadRouter.post("/", async (req, res) => {
       return err(res, 400, "VALIDATION", "Participant email does not exist");
     }
 
-    const otherRole = String(ures.rows[0].role ?? "").toUpperCase();
+    const otherUserId = ures.rows[0].id;
+    const otherRole = toRole(ures.rows[0].role);
 
-    if (!isParentStudentPair(userRole, otherRole)) {
-      return err(res, 403, "FORBIDDEN", "Threads are only allowed between PARENT and STUDENT");
+    if (!otherRole) {
+      return err(res, 403, "FORBIDDEN", "Participant has invalid role");
+    }
+
+    // Prevent self-thread (by id, strongest guarantee)
+    if (otherUserId === userId) {
+      return err(res, 400, "VALIDATION", "Cannot create a thread with only yourself");
+    }
+
+    // Enforce D6 role matrix
+    if (!canMessage(userRole, otherRole)) {
+      return err(res, 403, "FORBIDDEN", "Direct messaging is not allowed between these roles");
     }
 
     // Delegate the rest (duplicate prevention, etc.) to the repo
@@ -198,6 +223,38 @@ threadRouter.post("/:id/messages", async (req, res) => {
     if (code === "NOT_FOUND") {
       return err(res, 404, "NOT_FOUND", e.message ?? "Thread not found");
     }
+    return err(res, 500, "INTERNAL", "Unexpected error");
+  }
+});
+
+// POST /threads/:id/archive
+threadRouter.post("/:id/archive", async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const threadId = req.params.id;
+
+    await pgThreadRepo.archiveForUser(threadId, userId);
+    return res.json({ ok: true });
+  } catch (e: any) {
+    const code = e?.code;
+    if (code === "FORBIDDEN") return err(res, 403, "FORBIDDEN", e.message ?? "Forbidden");
+    if (code === "NOT_FOUND") return err(res, 404, "NOT_FOUND", e.message ?? "Thread not found");
+    return err(res, 500, "INTERNAL", "Unexpected error");
+  }
+});
+
+// POST /threads/:id/unarchive
+threadRouter.post("/:id/unarchive", async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const threadId = req.params.id;
+
+    await pgThreadRepo.unarchiveForUser(threadId, userId);
+    return res.json({ ok: true });
+  } catch (e: any) {
+    const code = e?.code;
+    if (code === "FORBIDDEN") return err(res, 403, "FORBIDDEN", e.message ?? "Forbidden");
+    if (code === "NOT_FOUND") return err(res, 404, "NOT_FOUND", e.message ?? "Thread not found");
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });
