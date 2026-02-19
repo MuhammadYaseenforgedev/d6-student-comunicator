@@ -1,8 +1,7 @@
 // frontend/src/lib/api.ts
 
 const RAW_API_URL = (import.meta.env.VITE_API_URL || "").trim();
-
-// If VITE_API_URL is not set, we default to "" and rely on Vite proxy for /api/* in dev.
+// If VITE_API_URL is not set, default to "" and rely on Vite proxy for /api/* in dev.
 const API_URL = RAW_API_URL.replace(/\/+$/, "");
 
 function getToken(): string | null {
@@ -19,13 +18,13 @@ function buildHeaders(extra?: HeadersInit): HeadersInit {
 
 function joinUrl(base: string, path: string) {
   // base: "" or "http://localhost:4000"
-  // path: "/api/uploads"
-  if (!base) return path; // keep path absolute-from-origin
-  if (!path.startsWith("/")) return `${base}/${path}`;
+  // path: "/api/parent/..."
+  if (!path.startsWith("/")) path = `/${path}`;
+  if (!base) return path;
   return `${base}${path}`;
 }
 
-async function parseJsonOrText(res: Response): Promise<unknown> {
+async function parseJson(res: Response): Promise<unknown> {
   const text = await res.text();
   if (!text) return null;
 
@@ -39,15 +38,48 @@ async function parseJsonOrText(res: Response): Promise<unknown> {
 function extractErrorMessage(data: unknown, status: number): string {
   if (data && typeof data === "object") {
     const obj = data as Record<string, unknown>;
-    const msg = obj.message ?? obj.error;
-    if (typeof msg === "string" && msg.trim()) return msg;
+
+    // Backend standard: { error: { code, message } }
+    const err = obj.error;
+    if (err && typeof err === "object") {
+      const nested = err as Record<string, unknown>;
+      const code = typeof nested.code === "string" ? nested.code : "";
+      const message = typeof nested.message === "string" ? nested.message : "";
+
+      if (code && message) return `${code}: ${message}`;
+      if (message) return message;
+      if (code) return `${code} (${status})`;
+    }
+
+    // common fallback shapes
+    if (typeof obj.message === "string" && obj.message.trim()) return obj.message;
+    if (typeof obj.error === "string" && obj.error.trim()) return obj.error;
   }
+
   if (typeof data === "string" && data.trim()) return data;
+
   return `Request failed (${status})`;
 }
 
+function parseDownloadFilename(contentDisposition: string | null): string | null {
+  if (!contentDisposition) return null;
+
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const asciiMatch = /filename="([^"]+)"|filename=([^;]+)/i.exec(contentDisposition);
+  const raw = asciiMatch?.[1] ?? asciiMatch?.[2];
+  return raw ? raw.trim() : null;
+}
+
 async function parseResponse<T>(res: Response): Promise<T> {
-  const data = await parseJsonOrText(res);
+  const data = await parseJson(res);
 
   if (!res.ok) {
     throw new Error(extractErrorMessage(data, res.status));
@@ -79,22 +111,6 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return parseResponse<T>(res);
 }
 
-export async function apiDelete<T>(path: string): Promise<T> {
-  const url = joinUrl(API_URL, path);
-
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: buildHeaders(),
-  });
-
-  if (res.status === 204) return undefined as T;
-  return parseResponse<T>(res);
-}
-
-/**
- * POST multipart/form-data (for file uploads).
- * Do NOT set Content-Type manually (browser sets boundary).
- */
 export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
   const url = joinUrl(API_URL, path);
 
@@ -107,13 +123,9 @@ export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
   return parseResponse<T>(res);
 }
 
-/**
- * Download endpoint that requires Authorization header.
- * Returns a Blob you can save as a file.
- */
 export async function apiDownload(
   path: string
-): Promise<{ blob: Blob; contentType: string | null }> {
+): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
   const url = joinUrl(API_URL, path);
 
   const res = await fetch(url, {
@@ -122,11 +134,26 @@ export async function apiDownload(
   });
 
   if (!res.ok) {
-    const data = await parseJsonOrText(res);
+    const data = await parseJson(res);
     throw new Error(extractErrorMessage(data, res.status));
   }
 
-  const contentType = res.headers.get("Content-Type");
   const blob = await res.blob();
-  return { blob, contentType };
+  const fileName = parseDownloadFilename(res.headers.get("content-disposition"));
+  const contentType = res.headers.get("content-type");
+
+  return { blob, fileName, contentType };
+}
+
+export async function apiDelete<T>(path: string): Promise<T> {
+  const url = joinUrl(API_URL, path);
+
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+
+  if (res.status === 204) return undefined as T;
+
+  return parseResponse<T>(res);
 }

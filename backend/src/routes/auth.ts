@@ -26,13 +26,34 @@ function normEmail(v: unknown) {
   return String(v ?? "").trim().toLowerCase();
 }
 
-function isValidPurpose(p: unknown): p is "LOGIN" | "REGISTER" {
-  const x = String(p ?? "").trim().toUpperCase();
-  return x === "LOGIN" || x === "REGISTER";
-}
-
 function isProduction() {
   return String(process.env.NODE_ENV ?? "").toLowerCase() === "production";
+}
+
+function boolEnv(name: string, defaultValue: boolean) {
+  const raw = String(process.env[name] ?? "").trim().toLowerCase();
+  if (!raw) return defaultValue;
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "y";
+}
+
+/**
+ * Auth policy flags:
+ * - In production: default require OTP.
+ * - In development: default allow password-only login to keep you moving fast.
+ *
+ * You can override with env:
+ * - AUTH_REQUIRE_OTP=true/false
+ * - AUTH_ALLOW_PASSWORD_LOGIN=true/false
+ * - AUTH_ALLOW_PASSWORD_REGISTER=true/false
+ */
+function authPolicy() {
+  const prod = isProduction();
+
+  const requireOtp = boolEnv("AUTH_REQUIRE_OTP", prod ? true : false);
+  const allowPasswordLogin = boolEnv("AUTH_ALLOW_PASSWORD_LOGIN", prod ? false : true);
+  const allowPasswordRegister = boolEnv("AUTH_ALLOW_PASSWORD_REGISTER", prod ? false : false);
+
+  return { requireOtp, allowPasswordLogin, allowPasswordRegister };
 }
 
 function shouldReturnDevCode() {
@@ -90,6 +111,12 @@ function getClientIp(req: any): string {
   return normalizeIp(String(req.ip ?? req.connection?.remoteAddress ?? "unknown"));
 }
 
+function parsePurpose(p: unknown): "LOGIN" | "REGISTER" | null {
+  const x = String(p ?? "").trim().toUpperCase();
+  if (x === "LOGIN" || x === "REGISTER") return x;
+  return null;
+}
+
 /**
  * DB-backed rate limit per EMAIL (request-otp)
  */
@@ -138,12 +165,10 @@ async function checkIpOtpRateLimit(ip: string) {
 
 /* ===============================
    OTP CREATION (HARDENED)
-   - Invalidate previous active OTPs for same email+purpose
 =================================*/
 async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp: string) {
   const { ttlMinutes } = otpConfig();
 
-  // Invalidate previous active OTPs (same email + purpose)
   await pool.query(
     `
       UPDATE email_otps
@@ -176,7 +201,6 @@ async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp
 
 /* ===============================
    OTP VERIFY + CONSUME (HARDENED)
-   - Returns explicit status + code so routes can respond cleanly
 =================================*/
 async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER", code: string) {
   const { maxAttempts } = otpConfig();
@@ -218,7 +242,6 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
       return { ok: false as const, status: 400, code: "VALIDATION", message: "OTP expired" as const };
     }
 
-    // Locked
     if (row.attempts >= maxAttempts) {
       await client.query("COMMIT");
       return { ok: false as const, status: 429, code: "RATE_LIMIT", message: "Too many OTP attempts" as const };
@@ -250,9 +273,9 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
 =================================*/
 authRouter.post("/request-otp", async (req, res) => {
   const email = normEmail(req.body?.email);
-  const purposeRaw = req.body?.purpose;
+  const purpose = parsePurpose(req.body?.purpose);
 
-  if (!email || !isValidPurpose(purposeRaw)) {
+  if (!email || !purpose) {
     return res.status(400).json({
       error: { code: "VALIDATION", message: "email and purpose are required" },
     });
@@ -260,7 +283,6 @@ authRouter.post("/request-otp", async (req, res) => {
 
   const ip = getClientIp(req);
 
-  // IP rate limit
   const ipCheck = await checkIpOtpRateLimit(ip);
   if (!ipCheck.ok) {
     res.setHeader("Retry-After", String(ipCheck.retryAfterSeconds));
@@ -269,7 +291,6 @@ authRouter.post("/request-otp", async (req, res) => {
     });
   }
 
-  // Email rate limit
   const emailCheck = await checkEmailOtpRateLimit(email);
   if (!emailCheck.ok) {
     res.setHeader("Retry-After", String(emailCheck.retryAfterSeconds));
@@ -279,14 +300,14 @@ authRouter.post("/request-otp", async (req, res) => {
   }
 
   // Neutral response to avoid email enumeration on LOGIN
-  if (purposeRaw === "LOGIN") {
+  if (purpose === "LOGIN") {
     const r = await pool.query(`SELECT 1 FROM users WHERE lower(email)=lower($1) LIMIT 1`, [email]);
     if ((r.rowCount ?? 0) === 0) {
       return res.json({ ok: true });
     }
   }
 
-  const out = await createOtp(email, purposeRaw, ip);
+  const out = await createOtp(email, purpose, ip);
 
   return res.json({
     ok: true,
@@ -296,16 +317,21 @@ authRouter.post("/request-otp", async (req, res) => {
 });
 
 /* ===============================
-   REGISTER (requires OTP)
+   REGISTER
    POST /register
+   Supports:
+   - OTP register: { email, password, role, otp }
+   - Optional dev register (if enabled): { email, password, role } when AUTH_ALLOW_PASSWORD_REGISTER=true
 =================================*/
 authRouter.post("/register", async (req, res) => {
+  const { requireOtp, allowPasswordRegister } = authPolicy();
+
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   const role = String(req.body?.role ?? "").toUpperCase();
   const otp = String(req.body?.otp ?? "").trim();
 
-  if (!email || !password || !role || !otp) {
+  if (!email || !password || !role) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
   }
 
@@ -313,13 +339,26 @@ authRouter.post("/register", async (req, res) => {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
   }
 
-  const otpRes = await verifyAndConsumeOtp(email, "REGISTER", otp);
-  if (!otpRes.ok) {
-    // If locked, bubble up 429
-    if (otpRes.status === 429) {
-      res.setHeader("Retry-After", String(otpConfig().ttlMinutes * 60));
+  // Enforce OTP unless explicitly allowed not to
+  if (requireOtp && !otp) {
+    return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
+  }
+
+  if (otp) {
+    const otpRes = await verifyAndConsumeOtp(email, "REGISTER", otp);
+    if (!otpRes.ok) {
+      if (otpRes.status === 429) {
+        res.setHeader("Retry-After", String(otpConfig().ttlMinutes * 60));
+      }
+      return res.status(otpRes.status).json({ error: { code: otpRes.code, message: otpRes.message } });
     }
-    return res.status(otpRes.status).json({ error: { code: otpRes.code, message: otpRes.message } });
+  } else {
+    // No OTP supplied
+    if (!allowPasswordRegister) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "OTP required for registration" },
+      });
+    }
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -343,16 +382,28 @@ authRouter.post("/register", async (req, res) => {
 });
 
 /* ===============================
-   LOGIN (requires OTP)
+   LOGIN
    POST /login
+   Supports:
+   - OTP login: { email, password, otp }
+   - Password-only login: { email, password } when allowed (dev speed)
 =================================*/
 authRouter.post("/login", async (req, res) => {
+  const { requireOtp, allowPasswordLogin } = authPolicy();
+
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   const otp = String(req.body?.otp ?? "").trim();
 
-  if (!email || !password || !otp) {
+  if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
+  }
+
+  // If OTP is required and none provided, block unless password-login is allowed
+  if (requireOtp && !otp && !allowPasswordLogin) {
+    return res.status(400).json({
+      error: { code: "VALIDATION", message: "Missing fields" },
+    });
   }
 
   const result = await pool.query(`SELECT * FROM users WHERE lower(email)=lower($1) LIMIT 1`, [email]);
@@ -362,13 +413,22 @@ authRouter.post("/login", async (req, res) => {
   const match = await bcrypt.compare(password, userRow.password_hash);
   if (!match) return res.status(401).json({ error: { code: "AUTH", message: "Invalid credentials" } });
 
-  const otpRes = await verifyAndConsumeOtp(email, "LOGIN", otp);
-  if (!otpRes.ok) {
-    // locked => 429, invalid/expired => 400
-    if (otpRes.status === 429) {
-      res.setHeader("Retry-After", String(otpConfig().ttlMinutes * 60));
+  // If OTP is provided, verify it
+  if (otp) {
+    const otpRes = await verifyAndConsumeOtp(email, "LOGIN", otp);
+    if (!otpRes.ok) {
+      if (otpRes.status === 429) {
+        res.setHeader("Retry-After", String(otpConfig().ttlMinutes * 60));
+      }
+      return res.status(otpRes.status).json({ error: { code: otpRes.code, message: otpRes.message } });
     }
-    return res.status(otpRes.status).json({ error: { code: otpRes.code, message: otpRes.message } });
+  } else {
+    // No OTP supplied
+    if (requireOtp && !allowPasswordLogin) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "OTP required for login" },
+      });
+    }
   }
 
   const user: JwtUser = { id: userRow.id, email: userRow.email, role: userRow.role };
