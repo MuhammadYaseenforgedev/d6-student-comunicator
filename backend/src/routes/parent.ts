@@ -1,4 +1,3 @@
-// src/routes/parent.ts
 import { Router } from "express";
 import { pool } from "../config/db";
 import { requireRole } from "../middleware/rbac";
@@ -10,6 +9,10 @@ parentRouter.use(requireRole("PARENT"));
 
 function err(res: any, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
+}
+
+function isUuid(v: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
 async function parentCanLinkChildren(parentId: string): Promise<boolean> {
@@ -38,10 +41,7 @@ parentRouter.get("/children", async (req, res) => {
       WHERE pl.parent_user_id = $1
       ORDER BY lower(u.email) ASC
     `;
-    const r = await pool.query<{ id: string; email: string; public_student_id: string | null }>(
-      q,
-      [parentId]
-    );
+    const r = await pool.query<{ id: string; email: string; public_student_id: string | null }>(q, [parentId]);
 
     const children = r.rows.map((x) => ({
       id: x.id,
@@ -50,13 +50,12 @@ parentRouter.get("/children", async (req, res) => {
       publicStudentId: x.public_student_id,
     }));
 
-    // ✅ Standard list shape (matches frontend unwrapList + your other endpoints)
     return res.json({ value: children, count: children.length });
-  } catch {
+  } catch (e: any) {
+    console.error("[parent] GET /parent/children error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });
-
 
 // POST /parent/children { studentPublicId }  (preferred)
 // POST /parent/children { studentEmail }     (legacy fallback)
@@ -66,24 +65,14 @@ parentRouter.post("/children", async (req, res) => {
 
     const allowed = await parentCanLinkChildren(parentId);
     if (!allowed) {
-      return err(
-        res,
-        403,
-        "FORBIDDEN",
-        "Parent is not allowed to link children yet (await admin approval)"
-      );
+      return err(res, 403, "FORBIDDEN", "Parent is not allowed to link children yet (await admin approval)");
     }
 
     const studentPublicId = String(req.body?.studentPublicId ?? "").trim();
     const studentEmail = String(req.body?.studentEmail ?? "").trim().toLowerCase();
 
     if (!studentPublicId && !studentEmail) {
-      return err(
-        res,
-        400,
-        "VALIDATION",
-        "Provide studentPublicId (preferred) or studentEmail (legacy)"
-      );
+      return err(res, 400, "VALIDATION", "Provide studentPublicId (preferred) or studentEmail (legacy)");
     }
 
     const findQ = studentPublicId
@@ -103,6 +92,7 @@ parentRouter.post("/children", async (req, res) => {
       `;
 
     const findArg = studentPublicId ? studentPublicId : studentEmail;
+
     const studentRes = await pool.query<{
       id: string;
       email: string;
@@ -134,7 +124,8 @@ parentRouter.post("/children", async (req, res) => {
         publicStudentId: student.public_student_id,
       },
     });
-  } catch {
+  } catch (e: any) {
+    console.error("[parent] POST /parent/children error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });
@@ -143,7 +134,11 @@ parentRouter.post("/children", async (req, res) => {
 parentRouter.delete("/children/:studentId", async (req, res) => {
   try {
     const parentId = req.user!.id;
-    const studentId = req.params.studentId;
+    const studentId = String(req.params.studentId ?? "").trim();
+
+    if (!studentId || !isUuid(studentId)) {
+      return err(res, 400, "VALIDATION", "studentId must be a UUID");
+    }
 
     const q = `
       DELETE FROM parent_links
@@ -157,7 +152,8 @@ parentRouter.delete("/children/:studentId", async (req, res) => {
     }
 
     return res.status(204).send();
-  } catch {
+  } catch (e: any) {
+    console.error("[parent] DELETE /parent/children/:studentId error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });

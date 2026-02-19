@@ -31,6 +31,19 @@ function isValidPurpose(p: unknown): p is "LOGIN" | "REGISTER" {
   return x === "LOGIN" || x === "REGISTER";
 }
 
+function isProduction() {
+  return String(process.env.NODE_ENV ?? "").toLowerCase() === "production";
+}
+
+function shouldReturnDevCode() {
+  return !isProduction() && String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
+}
+
+function generateOtpCode(): string {
+  const n = crypto.randomInt(0, 1_000_000);
+  return String(n).padStart(6, "0");
+}
+
 function otpConfig() {
   const ttlMinutes = Number(process.env.OTP_TTL_MINUTES ?? "10");
   const maxAttempts = Number(process.env.OTP_MAX_ATTEMPTS ?? "5");
@@ -60,19 +73,6 @@ function otpConfig() {
   };
 }
 
-function isProduction() {
-  return String(process.env.NODE_ENV ?? "").toLowerCase() === "production";
-}
-
-function shouldReturnDevCode() {
-  return !isProduction() && String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
-}
-
-function generateOtpCode(): string {
-  const n = crypto.randomInt(0, 1_000_000);
-  return String(n).padStart(6, "0");
-}
-
 function normalizeIp(ip: string): string {
   const s = String(ip ?? "").trim();
   if (!s) return "unknown";
@@ -91,7 +91,7 @@ function getClientIp(req: any): string {
 }
 
 /**
- * DB-backed rate limit per EMAIL
+ * DB-backed rate limit per EMAIL (request-otp)
  */
 async function checkEmailOtpRateLimit(email: string) {
   const { emailWindowMinutes, emailMaxPerWindow } = otpConfig();
@@ -114,7 +114,7 @@ async function checkEmailOtpRateLimit(email: string) {
 }
 
 /**
- * DB-backed rate limit per IP
+ * DB-backed rate limit per IP (request-otp)
  */
 async function checkIpOtpRateLimit(ip: string) {
   const { ipWindowMinutes, ipMaxPerWindow } = otpConfig();
@@ -136,8 +136,25 @@ async function checkIpOtpRateLimit(ip: string) {
   return { ok: true as const, retryAfterSeconds: 0 };
 }
 
+/* ===============================
+   OTP CREATION (HARDENED)
+   - Invalidate previous active OTPs for same email+purpose
+=================================*/
 async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp: string) {
   const { ttlMinutes } = otpConfig();
+
+  // Invalidate previous active OTPs (same email + purpose)
+  await pool.query(
+    `
+      UPDATE email_otps
+      SET consumed_at = now()
+      WHERE lower(email) = lower($1)
+        AND purpose = $2
+        AND consumed_at IS NULL
+    `,
+    [email, purpose]
+  );
+
   const code = generateOtpCode();
   const codeHash = await bcrypt.hash(code, 10);
   const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
@@ -157,6 +174,10 @@ async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp
   return { expiresAt, devCode: shouldReturnDevCode() ? code : undefined };
 }
 
+/* ===============================
+   OTP VERIFY + CONSUME (HARDENED)
+   - Returns explicit status + code so routes can respond cleanly
+=================================*/
 async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER", code: string) {
   const { maxAttempts } = otpConfig();
   const client = await pool.connect();
@@ -186,19 +207,21 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
 
     if (res.rowCount === 0) {
       await client.query("COMMIT");
-      return { ok: false, status: 400, code: "VALIDATION", message: "OTP not found" as const };
+      return { ok: false as const, status: 400, code: "VALIDATION", message: "OTP not found" as const };
     }
 
     const row = res.rows[0];
+
     const exp = new Date(row.expires_at).getTime();
     if (!Number.isFinite(exp) || exp <= Date.now()) {
       await client.query("COMMIT");
-      return { ok: false, status: 400, code: "VALIDATION", message: "OTP expired" as const };
+      return { ok: false as const, status: 400, code: "VALIDATION", message: "OTP expired" as const };
     }
 
+    // Locked
     if (row.attempts >= maxAttempts) {
       await client.query("COMMIT");
-      return { ok: false, status: 429, code: "RATE_LIMIT", message: "Too many OTP attempts" as const };
+      return { ok: false as const, status: 429, code: "RATE_LIMIT", message: "Too many OTP attempts" as const };
     }
 
     const match = await bcrypt.compare(code, row.code_hash);
@@ -206,7 +229,7 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
     if (!match) {
       await client.query(`UPDATE email_otps SET attempts = attempts + 1 WHERE id = $1`, [row.id]);
       await client.query("COMMIT");
-      return { ok: false, status: 400, code: "VALIDATION", message: "Invalid OTP" as const };
+      return { ok: false as const, status: 400, code: "VALIDATION", message: "Invalid OTP" as const };
     }
 
     await client.query(`UPDATE email_otps SET consumed_at = now() WHERE id = $1`, [row.id]);
@@ -220,12 +243,11 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
   }
 }
 
-/* =========
-   OTP: REQUEST
-   =========
+/* ===============================
+   REQUEST OTP
    POST /request-otp
    Body: { email, purpose: "LOGIN" | "REGISTER" }
-*/
+=================================*/
 authRouter.post("/request-otp", async (req, res) => {
   const email = normEmail(req.body?.email);
   const purposeRaw = req.body?.purpose;
@@ -238,6 +260,7 @@ authRouter.post("/request-otp", async (req, res) => {
 
   const ip = getClientIp(req);
 
+  // IP rate limit
   const ipCheck = await checkIpOtpRateLimit(ip);
   if (!ipCheck.ok) {
     res.setHeader("Retry-After", String(ipCheck.retryAfterSeconds));
@@ -246,12 +269,21 @@ authRouter.post("/request-otp", async (req, res) => {
     });
   }
 
+  // Email rate limit
   const emailCheck = await checkEmailOtpRateLimit(email);
   if (!emailCheck.ok) {
     res.setHeader("Retry-After", String(emailCheck.retryAfterSeconds));
     return res.status(429).json({
       error: { code: "RATE_LIMIT", message: "Too many OTP requests for this email" },
     });
+  }
+
+  // Neutral response to avoid email enumeration on LOGIN
+  if (purposeRaw === "LOGIN") {
+    const r = await pool.query(`SELECT 1 FROM users WHERE lower(email)=lower($1) LIMIT 1`, [email]);
+    if ((r.rowCount ?? 0) === 0) {
+      return res.json({ ok: true });
+    }
   }
 
   const out = await createOtp(email, purposeRaw, ip);
@@ -263,11 +295,10 @@ authRouter.post("/request-otp", async (req, res) => {
   });
 });
 
-/* =========
+/* ===============================
    REGISTER (requires OTP)
-   =========
    POST /register
-*/
+=================================*/
 authRouter.post("/register", async (req, res) => {
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
@@ -284,6 +315,10 @@ authRouter.post("/register", async (req, res) => {
 
   const otpRes = await verifyAndConsumeOtp(email, "REGISTER", otp);
   if (!otpRes.ok) {
+    // If locked, bubble up 429
+    if (otpRes.status === 429) {
+      res.setHeader("Retry-After", String(otpConfig().ttlMinutes * 60));
+    }
     return res.status(otpRes.status).json({ error: { code: otpRes.code, message: otpRes.message } });
   }
 
@@ -301,18 +336,16 @@ authRouter.post("/register", async (req, res) => {
 
     const user = result.rows[0] as JwtUser;
     const token = signToken(user);
-
     return res.status(201).json({ token, user });
   } catch {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Email already exists" } });
   }
 });
 
-/* =========
+/* ===============================
    LOGIN (requires OTP)
-   =========
    POST /login
-*/
+=================================*/
 authRouter.post("/login", async (req, res) => {
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
@@ -331,6 +364,10 @@ authRouter.post("/login", async (req, res) => {
 
   const otpRes = await verifyAndConsumeOtp(email, "LOGIN", otp);
   if (!otpRes.ok) {
+    // locked => 429, invalid/expired => 400
+    if (otpRes.status === 429) {
+      res.setHeader("Retry-After", String(otpConfig().ttlMinutes * 60));
+    }
     return res.status(otpRes.status).json({ error: { code: otpRes.code, message: otpRes.message } });
   }
 
@@ -340,9 +377,9 @@ authRouter.post("/login", async (req, res) => {
   return res.json({ token, user });
 });
 
-/* =========
+/* ===============================
    ME (protected)
-   ========= */
+=================================*/
 authRouter.get("/me", requireAuth, (req, res) => {
   return res.json({ user: req.user });
 });

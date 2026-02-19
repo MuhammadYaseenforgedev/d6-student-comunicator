@@ -8,6 +8,10 @@ import type { UploadKind } from "../persistence/types";
 
 export const uploadRouter = Router();
 
+function err(res: any, status: number, code: string, message: string) {
+  return res.status(status).json({ error: { code, message } });
+}
+
 /**
  * Store uploads in backend/uploads (relative to backend working directory).
  * Your DB stores storagePath, and we resolve it from process.cwd().
@@ -30,11 +34,52 @@ const upload = multer({
 });
 
 // Matches your pgUploadRepo list rules
-function canAccessUpload(user: { id: string; role: string }, u: { kind: UploadKind; uploadedBy: string }) {
+function canAccessUpload(
+  user: { id: string; role: string },
+  u: { kind: UploadKind; uploadedBy: string }
+) {
   if (user.role === "ADMIN" || user.role === "LECTURER") return true;
   if (user.role === "PARENT") return u.kind === "LECTURER_MATERIAL";
   // STUDENT
   return u.kind === "LECTURER_MATERIAL" || (u.kind === "STUDENT_SUBMISSION" && u.uploadedBy === user.id);
+}
+
+/**
+ * Multer errors happen before your async handler runs, so catch them explicitly.
+ */
+function uploadSingle(field: string) {
+  return (req: any, res: any, next: any) => {
+    upload.single(field)(req, res, (e: any) => {
+      if (!e) return next();
+      if (e instanceof multer.MulterError) {
+        if (e.code === "LIMIT_FILE_SIZE") {
+          return err(res, 413, "FILE_TOO_LARGE", "File too large (max 20MB)");
+        }
+        return err(res, 400, "UPLOAD_ERROR", e.message || "Upload error");
+      }
+      return err(res, 400, "UPLOAD_ERROR", e?.message ?? "Upload error");
+    });
+  };
+}
+
+/**
+ * Ensure download path stays inside UPLOAD_DIR even if DB storagePath is tampered.
+ */
+function resolveUploadPath(storagePath: string): string | null {
+  const normalized = String(storagePath ?? "").replaceAll("\\", "/").trim();
+  if (!normalized) return null;
+
+  // Require uploads/ prefix (your DB schema style)
+  if (!normalized.startsWith("uploads/")) return null;
+
+  // Resolve from project root
+  const absPath = path.resolve(process.cwd(), normalized);
+
+  // Ensure absPath is within UPLOAD_DIR
+  const rel = path.relative(UPLOAD_DIR, absPath);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return null;
+
+  return absPath;
 }
 
 /**
@@ -47,26 +92,26 @@ function canAccessUpload(user: { id: string; role: string }, u: { kind: UploadKi
 uploadRouter.post(
   "/",
   requireRole("ADMIN", "LECTURER", "STUDENT"),
-  upload.single("file"),
+  uploadSingle("file"),
   async (req, res) => {
     try {
       const user = req.user!;
       const kind = String(req.body?.kind ?? "") as UploadKind;
 
       if (kind !== "LECTURER_MATERIAL" && kind !== "STUDENT_SUBMISSION") {
-        return res.status(400).json({ error: "Invalid kind. Use LECTURER_MATERIAL or STUDENT_SUBMISSION." });
+        return err(res, 400, "VALIDATION", "Invalid kind. Use LECTURER_MATERIAL or STUDENT_SUBMISSION.");
       }
 
-      // RBAC for kind (tell it like it is)
+      // RBAC for kind
       if (kind === "LECTURER_MATERIAL" && !(user.role === "ADMIN" || user.role === "LECTURER")) {
-        return res.status(403).json({ error: "Only ADMIN or LECTURER can upload lecturer material." });
+        return err(res, 403, "FORBIDDEN", "Only ADMIN or LECTURER can upload lecturer material.");
       }
       if (kind === "STUDENT_SUBMISSION" && user.role !== "STUDENT") {
-        return res.status(403).json({ error: "Only STUDENT can upload student submissions." });
+        return err(res, 403, "FORBIDDEN", "Only STUDENT can upload student submissions.");
       }
 
       if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded. Field name must be 'file'." });
+        return err(res, 400, "VALIDATION", "No file uploaded. Field name must be 'file'.");
       }
 
       // Store as a relative path in DB (matches your existing schema style)
@@ -82,9 +127,9 @@ uploadRouter.post(
       });
 
       return res.status(201).json(created);
-    } catch (err) {
-      console.error("[uploads] POST / error", err);
-      return res.status(500).json({ error: "Upload failed" });
+    } catch (e: any) {
+      console.error("[uploads] POST / error", e);
+      return err(res, 500, "INTERNAL", "Upload failed");
     }
   }
 );
@@ -97,9 +142,9 @@ uploadRouter.get("/", async (req, res) => {
     const user = req.user!;
     const items = await repos.uploads.listForUser({ id: user.id, role: user.role });
     return res.json(items);
-  } catch (err) {
-    console.error("[uploads] GET / error", err);
-    return res.status(500).json({ error: "Failed to list uploads" });
+  } catch (e: any) {
+    console.error("[uploads] GET / error", e);
+    return err(res, 500, "INTERNAL", "Failed to list uploads");
   }
 });
 
@@ -111,27 +156,30 @@ uploadRouter.get("/:id/download", async (req, res) => {
     const user = req.user!;
     const id = String(req.params.id || "").trim();
 
-    if (!id) return res.status(400).json({ error: "Invalid upload id" });
+    if (!id) return err(res, 400, "VALIDATION", "Invalid upload id");
 
     const u = await repos.uploads.getById(id);
-    if (!u) return res.status(404).json({ error: "Not found" });
+    if (!u) return err(res, 404, "NOT_FOUND", "Not found");
 
     if (!canAccessUpload(user, u)) {
-      return res.status(403).json({ error: "You do not have permission to download this file." });
+      return err(res, 403, "FORBIDDEN", "You do not have permission to download this file.");
     }
 
-    const absPath = path.resolve(process.cwd(), u.storagePath);
+    const absPath = resolveUploadPath(u.storagePath);
+    if (!absPath) {
+      return err(res, 400, "VALIDATION", "Invalid storage path");
+    }
 
     if (!fs.existsSync(absPath)) {
-      return res.status(404).json({ error: "File missing on disk" });
+      return err(res, 404, "NOT_FOUND", "File missing on disk");
     }
 
     res.setHeader("Content-Type", u.mimeType || "application/octet-stream");
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(u.originalName)}"`);
 
     return fs.createReadStream(absPath).pipe(res);
-  } catch (err) {
-    console.error("[uploads] GET /:id/download error", err);
-    return res.status(500).json({ error: "Download failed" });
+  } catch (e: any) {
+    console.error("[uploads] GET /:id/download error", e);
+    return err(res, 500, "INTERNAL", "Download failed");
   }
 });

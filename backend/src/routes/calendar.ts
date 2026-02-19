@@ -6,6 +6,16 @@ function err(res: any, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
 }
 
+function isUuid(v: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function parseLimit(raw: unknown, fallback = 50) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.floor(n), 100);
+}
+
 export const calendarRouter = Router();
 
 // requireAuth is already applied globally in app.ts
@@ -25,29 +35,29 @@ async function parentHasChild(parentId: string, childId: string): Promise<boolea
 calendarRouter.get("/calendar", async (req, res) => {
   try {
     const user = req.user!;
-    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    const limit = parseLimit(req.query.limit, 50);
 
     let targetUserId = user.id;
 
     // Parents can view a linked child calendar by providing childId
     if (user.role === "PARENT") {
       const childId = String(req.query.childId ?? "").trim();
-      if (!childId) {
-        return err(res, 400, "VALIDATION", "childId is required for parent calendar view");
-      }
+      if (!childId) return err(res, 400, "VALIDATION", "childId is required for parent calendar view");
+      if (!isUuid(childId)) return err(res, 400, "VALIDATION", "childId must be a UUID");
 
       const ok = await parentHasChild(user.id, childId);
       if (!ok) return err(res, 403, "FORBIDDEN", "Parent is not linked to this child");
 
       targetUserId = childId;
     } else {
-      // Non-parents: ignore childId if someone tries to pass it
-      // They can only see their own calendar.
+      // Non-parents can only see their own calendar.
+      targetUserId = user.id;
     }
 
     const entries = await pgCalendarRepo.listForUser(targetUserId, { limit });
     return res.json({ value: entries, count: entries.length });
-  } catch {
+  } catch (e: any) {
+    console.error("[calendar] GET /calendar error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });
@@ -56,8 +66,10 @@ calendarRouter.get("/calendar", async (req, res) => {
 calendarRouter.post("/calendar", async (req, res) => {
   try {
     const user = req.user!;
-    if (user.role === "PARENT") {
-      return err(res, 403, "FORBIDDEN", "Parents cannot create calendar entries");
+
+    // Spec: student create/delete, parent view-only. Admin allowed as superuser.
+    if (!(user.role === "STUDENT" || user.role === "ADMIN")) {
+      return err(res, 403, "FORBIDDEN", "Only STUDENT (or ADMIN) can create calendar entries");
     }
 
     const created = await pgCalendarRepo.createForUser(user.id, {
@@ -73,6 +85,7 @@ calendarRouter.post("/calendar", async (req, res) => {
     if (e?.code === "VALIDATION") {
       return err(res, 400, "VALIDATION", e.message ?? "Invalid request");
     }
+    console.error("[calendar] POST /calendar error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });
@@ -81,11 +94,14 @@ calendarRouter.post("/calendar", async (req, res) => {
 calendarRouter.delete("/calendar/:id", async (req, res) => {
   try {
     const user = req.user!;
-    if (user.role === "PARENT") {
-      return err(res, 403, "FORBIDDEN", "Parents cannot delete calendar entries");
+
+    // Spec: student create/delete, parent view-only. Admin allowed as superuser.
+    if (!(user.role === "STUDENT" || user.role === "ADMIN")) {
+      return err(res, 403, "FORBIDDEN", "Only STUDENT (or ADMIN) can delete calendar entries");
     }
 
-    const id = req.params.id;
+    const id = String(req.params.id ?? "").trim();
+    if (!id) return err(res, 400, "VALIDATION", "Invalid calendar entry id");
 
     const ok = await pgCalendarRepo.deleteForUser(user.id, id);
     if (!ok) return err(res, 404, "NOT_FOUND", "Calendar entry not found");
@@ -95,6 +111,7 @@ calendarRouter.delete("/calendar/:id", async (req, res) => {
     if (e?.code === "VALIDATION") {
       return err(res, 400, "VALIDATION", e.message ?? "Invalid request");
     }
+    console.error("[calendar] DELETE /calendar/:id error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });
