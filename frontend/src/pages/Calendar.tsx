@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { useCalendarApi } from "../hooks/useCalendarApi";
 
@@ -33,6 +34,8 @@ export default function Calendar() {
     setDescription("");
     setLocation("");
   }
+
+  if (role === "PARENT") return <Navigate to="/app/parent/calendar" replace />;
 
   return (
     <div>

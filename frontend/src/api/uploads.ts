@@ -1,6 +1,6 @@
 // frontend/src/api/uploads.ts
 
-import { apiDownload, apiGet, apiPostForm } from "../lib/api";
+import { apiDelete, apiDownload, apiGet, apiPostForm } from "../lib/api";
 import type { UploadKind, UploadRecord } from "../lib/types";
 import { getUser } from "../lib/auth";
 
@@ -82,4 +82,9 @@ export async function downloadUpload(input: { uploadId: string; fileName: string
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/** DELETE /api/uploads/:id */
+export async function deleteUpload(input: { uploadId: string }): Promise<void> {
+  await apiDelete<{ ok: boolean }>(`/api/uploads/${input.uploadId}`);
 }

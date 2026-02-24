@@ -17,7 +17,8 @@
 
     "test": "jest --runInBand",
     "test:watch": "jest --watch --runInBand",
-    "test:rbac": "jest rbac --runInBand"
+    "test:rbac": "jest rbac --runInBand",
+    "test:walkthrough": "jest --runInBand src/test/auth.register.roles.test.ts src/test/rbac.matrix.test.ts src/test/announcements.uploads.permissions.test.ts src/test/thread.permissions.test.ts"
   },
   "keywords": [],
   "author": "",

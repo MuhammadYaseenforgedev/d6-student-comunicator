@@ -25,10 +25,15 @@ export default function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = getUser();
+  const isParent = user?.role === "PARENT";
+  const calendarTo = user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
+  const homeTo = isParent ? "/app/parent" : "/app";
 
   const title =
     location.pathname.includes("/calendar")
       ? "Calendar"
+      : location.pathname.includes("/manage-results")
+      ? "Manage Results"
       : location.pathname.includes("/uploads")
       ? "Uploads"
       : location.pathname.includes("/modules")
@@ -77,23 +82,35 @@ export default function AppShell() {
               </Link>
 
               <div className="mt-5 space-y-1">
-                <Item to="/app" label="Home" />
-                <Item to="/app/modules" label="Modules" />
-                <Item to="/app/faculty" label="Faculty" />
-                <Item to="/app/clubs" label="Clubs" />
-                <Item to="/app/emergency" label="Emergency" />
+                <Item to={homeTo} label="Home" />
 
-                <div className="my-3 h-px bg-white/10" />
-
-                <Item to="/app/uploads" label="Uploads" />
-                <Item to="/app/messages" label="Messages" />
-                <Item to="/app/calendar" label="Calendar" />
-
-                {/* Parent-only: show ONLY Parent Portal (no duplicate finance/results links here) */}
-                {user?.role === "PARENT" && (
+                {isParent ? (
                   <>
                     <div className="my-3 h-px bg-white/10" />
-                    <Item to="/app/parent" label="Parent Portal" />
+                    <Item to="/app/parent" label="Overview" />
+                    <Item to="/app/parent/results" label="Results" />
+                    <Item to="/app/parent/finance" label="Finance" />
+                    <Item to={calendarTo} label="Calendar" />
+                    <Item to="/app/parent/children" label="Links" />
+                    <Item to="/app/uploads" label="Uploads" />
+                    <Item to="/app/messages" label="Messages" />
+                  </>
+                ) : (
+                  <>
+                    <Item to="/app/modules" label="Modules" />
+                    <Item to="/app/faculty" label="Faculty" />
+                    <Item to="/app/clubs" label="Clubs" />
+                    <Item to="/app/emergency" label="Emergency" />
+
+                    <div className="my-3 h-px bg-white/10" />
+
+                    <Item to="/app/uploads" label="Uploads" />
+                    <Item to="/app/messages" label="Messages" />
+                    <Item to={calendarTo} label="Calendar" />
+
+                    {(user?.role === "ADMIN" || user?.role === "LECTURER") && (
+                      <Item to="/app/manage-results" label="Manage Results" />
+                    )}
                   </>
                 )}
               </div>

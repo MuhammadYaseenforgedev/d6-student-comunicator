@@ -18,6 +18,7 @@ export type Upload = {
   storagePath: string;
   uploadedBy: string;
   uploadedByEmail?: string | null;
+  uploadedByRole?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
   createdAt: string;
 };
 
@@ -120,6 +121,14 @@ export type CreateAnnouncementInput = {
   createdBy: string;
 };
 
+export type UpdateAnnouncementInput = {
+  id: string;
+  channelId: string;
+  title?: string;
+  body?: string;
+  pinned?: boolean;
+};
+
 export type CreateMessageInput = {
   channelId: string;
   body: string;
@@ -167,6 +176,8 @@ export type ChannelRepo = {
 export type AnnouncementRepo = {
   listByChannel(channelId: string): Promise<Announcement[]>;
   create(input: CreateAnnouncementInput): Promise<Announcement>;
+  update(input: UpdateAnnouncementInput): Promise<Announcement | null>;
+  delete(id: string, channelId: string): Promise<boolean>;
 };
 
 export type MessageRepo = {
@@ -189,6 +200,7 @@ export type UploadRepo = {
   }): Promise<Upload[]>;
   create(input: CreateUploadInput): Promise<Upload>;
   getById(id: string): Promise<Upload | null>;
+  delete(id: string): Promise<boolean>;
 };
 
 export type ParentLinksRepo = {

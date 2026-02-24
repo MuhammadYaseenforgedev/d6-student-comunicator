@@ -28,6 +28,14 @@ export type ThreadMessage = {
   createdAt: string; // ISO timestamp
 };
 
+export type DirectoryUserRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+
+export type DirectoryUser = {
+  id: string;
+  email: string;
+  role: DirectoryUserRole;
+};
+
 // Shared paging envelope used by backend for lists
 export type Paged<T> = {
   value: T[];
@@ -144,6 +152,19 @@ export const threadsApi = {
       method: "POST",
       body: JSON.stringify({ participantEmails: [participantEmail] }),
     });
+  },
+
+  // GET /api/users?role=LECTURER&role=ADMIN
+  async listUsers(params?: { roles?: DirectoryUserRole[]; q?: string; limit?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.roles?.length) {
+      for (const role of params.roles) qs.append("role", role);
+    }
+    if (params?.q?.trim()) qs.set("q", params.q.trim());
+    if (params?.limit) qs.set("limit", String(params.limit));
+
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api<Paged<DirectoryUser>>(`/users${suffix}`);
   },
 
   // POST /api/threads/:id/messages

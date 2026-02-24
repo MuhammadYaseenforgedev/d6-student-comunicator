@@ -111,6 +111,18 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return parseResponse<T>(res);
 }
 
+export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  const url = joinUrl(API_URL, path);
+
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+
+  return parseResponse<T>(res);
+}
+
 export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
   const url = joinUrl(API_URL, path);
 

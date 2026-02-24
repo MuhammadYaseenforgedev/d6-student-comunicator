@@ -1,10 +1,9 @@
-// frontend/src/pages/Uploads1.tsx
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
-import type { UploadKind, UploadRecord } from "../lib/types";
-import { downloadUpload, listUploads, uploadFile } from "../api/uploads";
+import type { UploadKind } from "../lib/types";
+import type { UploadRecord } from "../lib/types";
+import { deleteUpload, downloadUpload, listUploads, uploadFile } from "../api/uploads";
 
 function prettySize(bytes: number) {
   const kb = bytes / 1024;
@@ -16,76 +15,58 @@ export default function Uploads1() {
   const user = getUser();
   const role = user?.role ?? "STUDENT";
   const email = (user?.email ?? "dev@local").trim().toLowerCase();
+  const canUpload = role === "STUDENT" || role === "LECTURER" || role === "ADMIN";
+  const canDelete = role === "LECTURER" || role === "ADMIN";
+  const uploadKind: UploadKind = role === "STUDENT" ? "STUDENT_SUBMISSION" : "LECTURER_MATERIAL";
 
   const [items, setItems] = useState<UploadRecord[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const [file, setFile] = useState<File | null>(null);
-  const [kind, setKind] = useState<UploadKind>(
-    role === "LECTURER" || role === "ADMIN" ? "LECTURER_MATERIAL" : "STUDENT_SUBMISSION"
-  );
-
   const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const canUploadLecturerMaterial = role === "LECTURER" || role === "ADMIN";
-
-  // Keep "Type" sensible when role changes (login as different role)
-  useEffect(() => {
-    setKind(role === "LECTURER" || role === "ADMIN" ? "LECTURER_MATERIAL" : "STUDENT_SUBMISSION");
-  }, [role]);
+  const [file, setFile] = useState<File | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const rows = await listUploads();
-      setItems(rows);
+      setItems(Array.isArray(rows) ? rows : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load uploads");
+      setItems([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const subtitle = useMemo(() => {
-    if (role === "LECTURER" || role === "ADMIN")
-      return "Upload materials, and view student submissions.";
-    if (role === "PARENT") return "View lecturer materials shared with learners.";
-    return "View lecturer materials, and submit your work.";
-  }, [role]);
+    if (canDelete) return "Upload and share lecturer materials.";
+    if (canUpload) return "Upload your submission and view shared lecturer materials.";
+    return "View and download shared lecturer materials.";
+  }, [canDelete, canUpload]);
 
   async function onUpload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+
+    if (!canUpload) {
+      setError("Only students, lecturers, or admin can upload.");
+      return;
+    }
 
     if (!file) {
       setError("Please choose a file first.");
       return;
     }
 
-    if (role === "PARENT") {
-      setError("Parents cannot upload.");
-      return;
-    }
-
-    if (kind === "LECTURER_MATERIAL" && !canUploadLecturerMaterial) {
-      setError("Only lecturers (or admin) can upload lecturer materials.");
-      return;
-    }
-
-    if (kind === "STUDENT_SUBMISSION" && role !== "STUDENT") {
-      setError("Only students can upload student submissions.");
-      return;
-    }
-
     setBusy(true);
     try {
-      await uploadFile({ file, kind });
+      await uploadFile({ file, kind: uploadKind });
       setFile(null);
       await load();
     } catch (err) {
@@ -95,100 +76,102 @@ export default function Uploads1() {
     }
   }
 
+  async function onDelete(uploadId: string) {
+    if (!canDelete) return;
+    setError(null);
+    setDeletingId(uploadId);
+    try {
+      await deleteUpload({ uploadId });
+      setItems((prev) => prev.filter((u) => u.id !== uploadId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete upload");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div>
       <PageHeader title="Uploads" subtitle={subtitle} />
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[420px_1fr]">
-        {/* Upload panel */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-          <div className="text-lg font-semibold text-white">Upload a file</div>
-          <div className="mt-1 text-sm text-slate-400">
-            Saved to backend (disk) + metadata in PostgreSQL.
-          </div>
-
-          <form onSubmit={onUpload} className="mt-4 space-y-3">
-            <div>
-              <label className="block text-sm text-slate-300">Type</label>
-              <select
-                value={kind}
-                onChange={(e) => setKind(e.target.value as UploadKind)}
-                className="mt-2 w-full rounded-lg bg-slate-950 border border-slate-800 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600"
-                disabled={busy || role === "PARENT"}
-              >
-                {canUploadLecturerMaterial && (
-                  <option value="LECTURER_MATERIAL">Lecturer material</option>
-                )}
-                {role !== "PARENT" && (
-                  <option value="STUDENT_SUBMISSION">Student submission</option>
-                )}
-              </select>
-
-              {kind === "STUDENT_SUBMISSION" && role === "STUDENT" && (
-                <p className="mt-2 text-xs text-slate-500">
-                  Only lecturers/admin can see student submissions. You can still see your own submissions.
-                </p>
-              )}
-
-              {kind === "LECTURER_MATERIAL" && (
-                <p className="mt-2 text-xs text-slate-500">
-                  Lecturer materials are visible to students, parents, lecturers, and admin.
-                </p>
-              )}
+      <div className={`mt-6 grid grid-cols-1 gap-6 ${canUpload ? "lg:grid-cols-[420px_1fr]" : ""}`}>
+        {canUpload && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
+            <div className="text-lg font-semibold text-white">Upload a file</div>
+            <div className="mt-1 text-sm text-slate-400">
+              {uploadKind === "STUDENT_SUBMISSION"
+                ? "Student submissions are visible to staff and to you."
+                : "Saved to backend (disk) + metadata in PostgreSQL."}
             </div>
 
-            <div>
-              <label className="block text-sm text-slate-300">File</label>
-              <input
-                type="file"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="mt-2 block w-full text-sm text-slate-300 file:mr-4 file:rounded-lg file:border file:border-slate-700 file:bg-slate-900/60 file:px-4 file:py-2 file:text-slate-200 hover:file:bg-slate-900"
-                disabled={busy || role === "PARENT"}
-              />
-            </div>
-
-            {error && (
-              <div className="rounded-xl border border-red-700/40 bg-red-950/30 p-3 text-sm text-red-200">
-                {error}
+            <form onSubmit={onUpload} className="mt-4 space-y-3">
+              <div>
+                <label className="block text-sm text-slate-300">Type</label>
+                <input
+                  value={uploadKind === "STUDENT_SUBMISSION" ? "Student submission" : "Lecturer material"}
+                  readOnly
+                  className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 text-slate-300"
+                />
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={busy || role === "PARENT"}
-              className="w-full rounded-lg bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-60"
-            >
-              {role === "PARENT" ? "Parents cannot upload" : busy ? "Uploading..." : "Upload"}
-            </button>
-          </form>
-        </div>
+              <div>
+                <label className="block text-sm text-slate-300">File</label>
+                <input
+                  type="file"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  className="mt-2 block w-full text-sm text-slate-300 file:mr-4 file:rounded-lg file:border file:border-slate-700 file:bg-slate-900/60 file:px-4 file:py-2 file:text-slate-200 hover:file:bg-slate-900"
+                  disabled={busy}
+                />
+              </div>
 
-        {/* List panel */}
+              {error && (
+                <div className="rounded-xl border border-red-700/40 bg-red-950/30 p-3 text-sm text-red-200">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full rounded-lg bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-60"
+              >
+                {busy ? "Uploading..." : "Upload"}
+              </button>
+            </form>
+          </div>
+        )}
+
         <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-lg font-semibold text-white">Files</div>
               <div className="mt-1 text-sm text-slate-400">
-                {role === "LECTURER" || role === "ADMIN"
+                {canDelete
                   ? "You can see all uploads."
-                  : role === "PARENT"
-                  ? "You can see lecturer materials only."
-                  : "You can see lecturer materials + your own submissions."}
+                  : canUpload
+                    ? "You can view staff uploads and your own submissions."
+                    : "You can view materials your role is allowed to access."}
               </div>
             </div>
 
             <button
               type="button"
-              onClick={load}
+              onClick={() => void load()}
               className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50"
             >
               Refresh
             </button>
           </div>
 
+          {!canUpload && error && (
+            <div className="mt-4 rounded-xl border border-red-700/40 bg-red-950/30 p-3 text-sm text-red-200">
+              {error}
+            </div>
+          )}
+
           <div className="mt-5 space-y-3">
             {loading ? (
-              <div className="text-slate-400">Loading…</div>
+              <div className="text-slate-400">Loading...</div>
             ) : items.length === 0 ? (
               <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-6 text-slate-300">
                 No files yet.
@@ -201,8 +184,8 @@ export default function Uploads1() {
                       <div className="text-white font-semibold">{u.fileName}</div>
 
                       <div className="mt-1 text-xs text-slate-400">
-                        {u.kind === "LECTURER_MATERIAL" ? "Lecturer material" : "Student submission"} •{" "}
-                        {prettySize(u.size)} • {new Date(u.uploadedAt).toLocaleString()}
+                        {u.kind === "LECTURER_MATERIAL" ? "Lecturer material" : "Student submission"} -{" "}
+                        {prettySize(u.size)} - {new Date(u.uploadedAt).toLocaleString()}
                       </div>
 
                       <div className="mt-1 text-xs text-slate-500">
@@ -213,11 +196,21 @@ export default function Uploads1() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => downloadUpload({ uploadId: u.id, fileName: u.fileName })}
+                        onClick={() => void downloadUpload({ uploadId: u.id, fileName: u.fileName })}
                         className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
                       >
                         Download
                       </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => void onDelete(u.id)}
+                          disabled={deletingId === u.id}
+                          className="rounded-lg border border-red-700/40 bg-red-950/30 px-3 py-2 text-xs font-semibold text-red-200 hover:bg-red-950/50 disabled:opacity-60"
+                        >
+                          {deletingId === u.id ? "Deleting..." : "Delete"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

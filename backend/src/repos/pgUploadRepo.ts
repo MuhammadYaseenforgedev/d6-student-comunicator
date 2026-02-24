@@ -10,6 +10,7 @@ type UploadRow = {
   storage_path: string;
   uploaded_by: string;
   uploaded_by_email: string | null;
+  uploaded_by_role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
   created_at: string;
 };
 
@@ -23,6 +24,7 @@ function mapRow(row: UploadRow): Upload {
     storagePath: row.storage_path,
     uploadedBy: row.uploaded_by,
     uploadedByEmail: row.uploaded_by_email,
+    uploadedByRole: row.uploaded_by_role,
     createdAt: row.created_at,
   };
 }
@@ -39,7 +41,8 @@ export const pgUploadRepo: UploadRepo = {
       )
       SELECT
         ins.*,
-        u.email AS uploaded_by_email
+        u.email AS uploaded_by_email,
+        u.role AS uploaded_by_role
       FROM ins
       LEFT JOIN users u ON u.id = ins.uploaded_by
       `,
@@ -62,7 +65,8 @@ export const pgUploadRepo: UploadRepo = {
         `
         SELECT
           up.*,
-          u.email AS uploaded_by_email
+          u.email AS uploaded_by_email,
+          u.role AS uploaded_by_role
         FROM uploads up
         LEFT JOIN users u ON u.id = up.uploaded_by
         ORDER BY up.created_at DESC
@@ -76,10 +80,12 @@ export const pgUploadRepo: UploadRepo = {
         `
         SELECT
           up.*,
-          u.email AS uploaded_by_email
+          u.email AS uploaded_by_email,
+          u.role AS uploaded_by_role
         FROM uploads up
-        LEFT JOIN users u ON u.id = up.uploaded_by
+        JOIN users u ON u.id = up.uploaded_by
         WHERE up.kind = 'LECTURER_MATERIAL'
+          AND u.role IN ('ADMIN', 'LECTURER')
         ORDER BY up.created_at DESC
         `
       );
@@ -90,10 +96,11 @@ export const pgUploadRepo: UploadRepo = {
       `
       SELECT
         up.*,
-        u.email AS uploaded_by_email
+        u.email AS uploaded_by_email,
+        u.role AS uploaded_by_role
       FROM uploads up
       LEFT JOIN users u ON u.id = up.uploaded_by
-      WHERE up.kind = 'LECTURER_MATERIAL'
+      WHERE (up.kind = 'LECTURER_MATERIAL' AND u.role IN ('ADMIN', 'LECTURER'))
          OR (up.kind = 'STUDENT_SUBMISSION' AND up.uploaded_by = $1)
       ORDER BY up.created_at DESC
       `,
@@ -108,7 +115,8 @@ export const pgUploadRepo: UploadRepo = {
       `
       SELECT
         up.*,
-        u.email AS uploaded_by_email
+        u.email AS uploaded_by_email,
+        u.role AS uploaded_by_role
       FROM uploads up
       LEFT JOIN users u ON u.id = up.uploaded_by
       WHERE up.id = $1
@@ -117,5 +125,16 @@ export const pgUploadRepo: UploadRepo = {
     );
     if (result.rowCount === 0) return null;
     return mapRow(result.rows[0]);
+  },
+
+  async delete(id: string): Promise<boolean> {
+    const result = await pool.query(
+      `
+      DELETE FROM uploads
+      WHERE id = $1
+      `,
+      [id]
+    );
+    return (result.rowCount ?? 0) > 0;
   },
 };

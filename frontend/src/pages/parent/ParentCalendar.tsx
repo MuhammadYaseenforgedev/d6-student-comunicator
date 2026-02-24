@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../../components/PageHeader";
 import { useCalendarApi, type CalendarEntry } from "../../hooks/useCalendarApi";
 import { listMyChildren, type ParentChild } from "../../api/parent";
+import { toInlineError } from "./errorText";
 
 type Grouped = Array<[string, CalendarEntry[]]>;
 
@@ -16,8 +17,8 @@ function fmt(iso: string) {
   });
 }
 
-function childName(c: ParentChild) {
-  return c.email;
+function childLabel(c: ParentChild) {
+  return c.publicStudentId ? `${c.publicStudentId} (${c.email})` : c.email;
 }
 
 export default function ParentCalendar() {
@@ -25,39 +26,46 @@ export default function ParentCalendar() {
   const [childId, setChildId] = useState<string>("");
   const [loadingChildren, setLoadingChildren] = useState(false);
   const [childrenError, setChildrenError] = useState<string | null>(null);
+  const hasChildren = children.length > 0;
 
-  // IMPORTANT: pass selected childId into the hook (so backend gets ?childId=)
-  const { loading, error, grouped, reload } = useCalendarApi(childId || undefined);
+  // Parent must pass student UUID to the calendar endpoint.
+  const { loading, error, grouped, reload, refresh } = useCalendarApi(childId || undefined);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       setLoadingChildren(true);
       setChildrenError(null);
       try {
         const list = await listMyChildren();
-        setChildren(list);
-        if (!childId && list.length > 0) setChildId(list[0].id);
+        if (cancelled) return;
+        setChildren(Array.isArray(list) ? list : []);
+        setChildId((prev) => prev || (list[0]?.id ?? ""));
       } catch (e) {
-        setChildrenError(e instanceof Error ? e.message : "Failed to load children");
+        if (!cancelled) {
+          setChildrenError(toInlineError(e, "Failed to load children"));
+          setChildren([]);
+          setChildId("");
+        }
       } finally {
-        setLoadingChildren(false);
+        if (!cancelled) setLoadingChildren(false);
       }
     }
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // When child changes, refresh calendar list
-  useEffect(() => {
-    if (childId) void reload();
-  }, [childId, reload]);
-
-  const childLabel = useMemo(() => {
+  const selectedChildLabel = useMemo(() => {
     const c = children.find((x) => x.id === childId);
-    return c ? childName(c) : "";
+    return c ? childLabel(c) : "";
   }, [children, childId]);
 
-  const groupedTyped = grouped as Grouped;
+  const groupedTyped = (Array.isArray(grouped) ? grouped : []) as Grouped;
+  const calendarError = error ? toInlineError(error, "Failed to load calendar") : null;
 
   return (
     <div>
@@ -65,14 +73,17 @@ export default function ParentCalendar() {
         title="Calendar"
         subtitle={
           childId
-            ? `Viewing ${childLabel}'s calendar (view-only).`
+            ? `Viewing ${selectedChildLabel}'s calendar (view-only).`
             : "Select a child to view their calendar (view-only)."
         }
         actions={
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={reload}
+              onClick={() => {
+                const runRefresh = refresh ?? reload;
+                if (runRefresh) void runRefresh();
+              }}
               className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50"
               disabled={!childId}
             >
@@ -91,7 +102,7 @@ export default function ParentCalendar() {
             value={childId}
             onChange={(e) => setChildId(e.target.value)}
             className="w-full rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50 sm:max-w-md"
-            disabled={loadingChildren}
+            disabled={loadingChildren || !hasChildren}
           >
             {children.length === 0 ? (
               <option value="">
@@ -100,7 +111,7 @@ export default function ParentCalendar() {
             ) : (
               children.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {childName(c)} ({c.role})
+                  {childLabel(c)} ({c.role})
                 </option>
               ))
             )}
@@ -114,14 +125,14 @@ export default function ParentCalendar() {
         </div>
 
         <div className="mt-2 text-xs text-slate-400">
-          Parents can view a child’s entries, but cannot create or delete.
+          Parents can view a child's entries, but cannot create or delete.
         </div>
       </div>
 
       {/* Errors */}
-      {error && (
+      {calendarError && (
         <div className="mt-3 rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">
-          {error}
+          {calendarError}
         </div>
       )}
 
@@ -134,11 +145,13 @@ export default function ParentCalendar() {
 
         {!childId ? (
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-            Select a child to load their calendar.
+            {hasChildren
+              ? "Select a child to load their calendar."
+              : "No linked children found. Link a child first to view calendar."}
           </div>
         ) : groupedTyped.length === 0 && !loading ? (
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-            No calendar entries yet.
+            No events found
           </div>
         ) : (
           <div className="mt-4 space-y-4">
@@ -151,7 +164,7 @@ export default function ParentCalendar() {
                     <div key={it.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                       <div className="font-semibold">{it.title}</div>
                       <div className="mt-1 text-xs text-slate-300">
-                        {fmt(it.startsAt)} → {fmt(it.endsAt)}
+                        {fmt(it.startsAt)} - {fmt(it.endsAt)}
                       </div>
                       {it.location && <div className="mt-1 text-xs text-slate-400">{it.location}</div>}
                       {it.description && (

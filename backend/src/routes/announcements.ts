@@ -43,6 +43,12 @@ function canViewChannel(role: string, access: ChannelAccess): boolean {
   return !access.isPrivate || access.isMember;
 }
 
+function cleanOptionalText(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const trimmed = v.trim();
+  return trimmed.length > 0 ? trimmed : "";
+}
+
 // List announcements for a channel (all logged-in roles, including PARENT)
 announcementRouter.get(
   "/channels/:channelId/announcements",
@@ -100,6 +106,77 @@ announcementRouter.post(
     } catch (e: any) {
       console.error("[announcements] POST error", e);
       return err(res, 500, "INTERNAL", "Failed to create announcement");
+    }
+  }
+);
+
+// Update announcement (ADMIN, LECTURER)
+announcementRouter.patch(
+  "/channels/:channelId/announcements/:announcementId",
+  requireRole("ADMIN", "LECTURER"),
+  async (req, res) => {
+    try {
+      const { channelId, announcementId } = req.params as {
+        channelId: string;
+        announcementId: string;
+      };
+
+      const titleRaw = cleanOptionalText(req.body?.title);
+      const bodyRaw = cleanOptionalText(req.body?.body);
+      const pinnedRaw = req.body?.pinned;
+
+      const hasTitle = typeof titleRaw === "string";
+      const hasBody = typeof bodyRaw === "string";
+      const hasPinned = typeof pinnedRaw === "boolean";
+
+      if (!hasTitle && !hasBody && !hasPinned) {
+        return err(
+          res,
+          400,
+          "VALIDATION",
+          "Provide at least one of: title, body, pinned"
+        );
+      }
+
+      if (titleRaw === "") return err(res, 400, "VALIDATION", "title cannot be empty");
+      if (bodyRaw === "") return err(res, 400, "VALIDATION", "body cannot be empty");
+
+      const updated = await repos.announcements.update({
+        id: announcementId,
+        channelId,
+        title: hasTitle ? titleRaw : undefined,
+        body: hasBody ? bodyRaw : undefined,
+        pinned: hasPinned ? Boolean(pinnedRaw) : undefined,
+      });
+
+      if (!updated) return err(res, 404, "NOT_FOUND", "Announcement not found");
+
+      return res.json(updated);
+    } catch (e: any) {
+      console.error("[announcements] PATCH error", e);
+      return err(res, 500, "INTERNAL", "Failed to update announcement");
+    }
+  }
+);
+
+// Delete announcement (ADMIN, LECTURER)
+announcementRouter.delete(
+  "/channels/:channelId/announcements/:announcementId",
+  requireRole("ADMIN", "LECTURER"),
+  async (req, res) => {
+    try {
+      const { channelId, announcementId } = req.params as {
+        channelId: string;
+        announcementId: string;
+      };
+
+      const ok = await repos.announcements.delete(announcementId, channelId);
+      if (!ok) return err(res, 404, "NOT_FOUND", "Announcement not found");
+
+      return res.json({ ok: true });
+    } catch (e: any) {
+      console.error("[announcements] DELETE error", e);
+      return err(res, 500, "INTERNAL", "Failed to delete announcement");
     }
   }
 );

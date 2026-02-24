@@ -1,30 +1,12 @@
-// frontend/src/hooks/useAnnouncements.ts
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Announcement, AnnouncementCreate, ChannelKey } from "../lib/types";
 import {
-  addAnnouncement as addLocal,
-  ensureDemoSeeded,
-  getAnnouncements,
-  resetAnnouncementsDemo,
-} from "../lib/announcementStore";
-import { createAnnouncement, fetchAnnouncements } from "../api/announcements";
-
-function getDataMode(): "mock" | "api" {
-  // Vite exposes import.meta.env, but typing can be strict depending on your setup.
-  // This approach avoids `any` and stays safe.
-  const env = import.meta.env as unknown;
-
-  if (typeof env === "object" && env !== null) {
-    const rec = env as Record<string, unknown>;
-    const v = rec["VITE_DATA_MODE"];
-    if (v === "api") return "api";
-  }
-
-  return "mock";
-}
-
-const MODE: "mock" | "api" = getDataMode();
+  createAnnouncement,
+  deleteAnnouncement,
+  fetchAnnouncements,
+  updateAnnouncement,
+} from "../api/announcements";
+import { getUser } from "../lib/auth";
 
 function safeTime(s?: string) {
   const t = s ? new Date(s).getTime() : NaN;
@@ -38,7 +20,17 @@ function sortAnnouncements(items: Announcement[]) {
   });
 }
 
+type UpdatePayload = {
+  id: string;
+  title?: string;
+  body?: string;
+  pinned?: boolean;
+};
+
 export function useAnnouncements(channel?: ChannelKey) {
+  const role = String(getUser()?.role ?? "").toUpperCase();
+  const canManage = role === "ADMIN" || role === "LECTURER";
+
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,17 +46,9 @@ export function useAnnouncements(channel?: ChannelKey) {
   async function load() {
     setError(null);
     setLoading(true);
-
     try {
-      if (MODE === "mock") {
-        ensureDemoSeeded();
-        if (mountedRef.current) setItems(sortAnnouncements(getAnnouncements()));
-        return;
-      }
-
       const key: ChannelKey = channel ?? "general";
       const rows = await fetchAnnouncements(key);
-
       if (mountedRef.current) setItems(sortAnnouncements(rows));
     } catch (e: unknown) {
       if (!mountedRef.current) return;
@@ -76,46 +60,51 @@ export function useAnnouncements(channel?: ChannelKey) {
 
   async function create(payload: AnnouncementCreate) {
     setError(null);
-
-    if (MODE === "mock") {
-      try {
-        addLocal(payload);
-        await load();
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Failed to create announcement");
-      }
-      return;
-    }
-
-    const optimistic: Announcement = {
-      id: `temp-${Date.now()}`,
-      channel: payload.channel,
-      title: payload.title,
-      body: payload.body,
-      pinned: payload.pinned,
-      author: payload.author ?? "You",
-      createdAt: new Date().toISOString(),
-    };
-
-    setItems((prev) => sortAnnouncements([optimistic, ...prev]));
-
     try {
       const saved = await createAnnouncement(payload);
-
-      setItems((prev) => {
-        const withoutTemp = prev.filter((a) => a.id !== optimistic.id);
-        return sortAnnouncements([saved, ...withoutTemp]);
-      });
+      if (!mountedRef.current) return;
+      setItems((prev) => sortAnnouncements([saved, ...prev]));
     } catch (e: unknown) {
-      setItems((prev) => prev.filter((a) => a.id !== optimistic.id));
+      if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : "Failed to create announcement");
+      throw e;
     }
   }
 
-  function resetDemo() {
-    if (MODE !== "mock") return;
-    resetAnnouncementsDemo();
-    setItems(sortAnnouncements(getAnnouncements()));
+  async function update(payload: UpdatePayload) {
+    setError(null);
+    if (!channel) return;
+    try {
+      const saved = await updateAnnouncement({
+        channel,
+        id: payload.id,
+        title: payload.title,
+        body: payload.body,
+        pinned: payload.pinned,
+      });
+      if (!mountedRef.current) return;
+      setItems((prev) =>
+        sortAnnouncements(prev.map((a) => (a.id === saved.id ? saved : a)))
+      );
+    } catch (e: unknown) {
+      if (!mountedRef.current) return;
+      setError(e instanceof Error ? e.message : "Failed to update announcement");
+      throw e;
+    }
+  }
+
+  async function remove(id: string) {
+    setError(null);
+    if (!channel) return;
+    try {
+      await deleteAnnouncement({ channel, id });
+      if (!mountedRef.current) return;
+      setItems((prev) => prev.filter((a) => a.id !== id));
+    } catch (e: unknown) {
+      if (!mountedRef.current) return;
+      setError(e instanceof Error ? e.message : "Failed to delete announcement");
+      throw e;
+    }
   }
 
   function clearError() {
@@ -123,7 +112,7 @@ export function useAnnouncements(channel?: ChannelKey) {
   }
 
   useEffect(() => {
-    load();
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel]);
 
@@ -140,7 +129,8 @@ export function useAnnouncements(channel?: ChannelKey) {
     clearError,
     reload: load,
     create,
-    resetDemo,
-    mode: MODE,
+    update,
+    remove,
+    canManage,
   };
 }

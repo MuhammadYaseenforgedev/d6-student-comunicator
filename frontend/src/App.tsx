@@ -21,7 +21,8 @@ import ChannelPage from "./pages/ChannelPage";
 import Inbox from "./pages/Inbox";
 import ThreadPage from "./pages/ThreadPage";
 import Uploads from "./pages/Uploads1";
-import Calendar from "./pages/Calendar"; // ✅ was Calendar1
+import Calendar from "./pages/Calendar";
+import ManageResults from "./pages/ManageResults";
 
 import ParentPortalLayout from "./pages/parent/ParentPortalLayout";
 import ParentOverview from "./pages/parent/ParentOverview";
@@ -29,10 +30,17 @@ import ParentFinance from "./pages/parent/ParentFinance";
 import ParentResults from "./pages/parent/ParentResults";
 import ParentCalendar from "./pages/parent/ParentCalendar";
 import ParentLinks from "./pages/parent/ParentLinks";
+import { getUser } from "./lib/auth";
 
 // Images (ensure these exist in src/assets)
 import forgeFooter from "./assets/forge-footer.jpg";
 import forgeBg from "./assets/forge-bg.png";
+
+function AppIndex() {
+  const user = getUser();
+  if (user?.role === "PARENT") return <Navigate to="/app/parent" replace />;
+  return <AppHome />;
+}
 
 export default function App() {
   return (
@@ -40,11 +48,7 @@ export default function App() {
       <div className="min-h-screen flex flex-col text-white relative">
         {/* Global background image */}
         <div className="pointer-events-none absolute inset-0">
-          <img
-            src={forgeBg}
-            alt="Forge background"
-            className="h-full w-full object-cover"
-          />
+          <img src={forgeBg} alt="Forge background" className="h-full w-full object-cover" />
           {/* Darken and tint so content stays readable */}
           <div className="absolute inset-0 bg-slate-950/75" />
           <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-purple-500/10 to-slate-950/40" />
@@ -58,18 +62,27 @@ export default function App() {
 
             <Route element={<RequireAuth />}>
               <Route path="/app" element={<AppShell />}>
-                <Route index element={<AppHome />} />
-                <Route path="modules" element={<Modules />} />
-                <Route path="faculty" element={<Faculty />} />
-                <Route path="clubs" element={<Clubs />} />
-                <Route path="emergency" element={<Emergency />} />
-                <Route path="c/:id" element={<ChannelPage />} />
+                <Route index element={<AppIndex />} />
 
-                <Route path="messages" element={<Inbox />} />
-                <Route path="messages/:id" element={<ThreadPage />} />
+                <Route element={<RequireRole roles={["STUDENT", "LECTURER", "ADMIN"]} />}>
+                  <Route path="modules" element={<Modules />} />
+                  <Route path="faculty" element={<Faculty />} />
+                  <Route path="clubs" element={<Clubs />} />
+                  <Route path="emergency" element={<Emergency />} />
+                  <Route path="c/:id" element={<ChannelPage />} />
+                </Route>
+
+                <Route element={<RequireRole roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]} />}>
+                  <Route path="messages" element={<Inbox />} />
+                  <Route path="messages/:id" element={<ThreadPage />} />
+                </Route>
 
                 <Route path="uploads" element={<Uploads />} />
                 <Route path="calendar" element={<Calendar />} />
+
+                <Route element={<RequireRole roles={["ADMIN", "LECTURER"]} />}>
+                  <Route path="manage-results" element={<ManageResults />} />
+                </Route>
 
                 <Route element={<RequireRole roles={["PARENT"]} />}>
                   <Route path="parent" element={<ParentPortalLayout />}>
@@ -105,7 +118,7 @@ export default function App() {
             </div>
 
             <div className="mt-3 text-center text-xs text-white/60">
-              © {new Date().getFullYear()} Forge Academy. All rights reserved.
+              (c) {new Date().getFullYear()} Forge Academy. All rights reserved.
             </div>
           </div>
         </footer>

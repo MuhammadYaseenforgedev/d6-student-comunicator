@@ -1,4 +1,5 @@
 import { pool } from "../config/db";
+import { canMessage } from "../lib/messagingRbac";
 
 export type ThreadParticipant = { email: string };
 
@@ -28,12 +29,10 @@ type ParticipantRow = {
   email: string;
 };
 
-type UserRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
-
 type UserRow = {
   id: string;
   email: string;
-  role: UserRole;
+  role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
 };
 
 function parseLimit(raw: unknown, fallback = 50) {
@@ -63,17 +62,6 @@ function threadsMode(): "ANY" | "D6" {
   if (v === "D6") return "D6";
   if (v === "PARENT_STUDENT") return "D6";
   return "ANY";
-}
-
-function canMessage(sender: UserRole, receiver: UserRole): boolean {
-  if (sender === "ADMIN") return true;
-  if (receiver === "ADMIN") return true;
-
-  if (sender === "STUDENT") return receiver === "LECTURER";
-  if (sender === "PARENT") return receiver === "LECTURER";
-  if (sender === "LECTURER") return receiver === "STUDENT" || receiver === "PARENT";
-
-  return false;
 }
 
 async function getUsersByEmails(emails: string[]): Promise<UserRow[]> {
@@ -326,16 +314,13 @@ export const pgThreadRepo = {
       throw Object.assign(new Error("Only 1:1 threads are supported"), { code: "VALIDATION" });
     }
 
-    // D6 mode role enforcement (backstop, route already checks too)
-    if (threadsMode() === "D6") {
-      const allUsers = await getUsersByIds(allUserIds);
-      assertD6ThreadRolesOrThrow(allUsers);
-    }
+    // Repo-level RBAC backstop (route checks too).
+    const allUsers = await getUsersByIds(allUserIds);
+    assertD6ThreadRolesOrThrow(allUsers);
 
     // Prevent duplicate 1:1 thread
     const existingId = await findExistingOneToOneThread(allUserIds[0], allUserIds[1]);
     if (existingId) {
-      const allUsers = await getUsersByIds(allUserIds);
       const participants = allUsers
         .map((u) => ({ email: u.email }))
         .sort((a, b) => a.email.localeCompare(b.email));
@@ -380,7 +365,6 @@ export const pgThreadRepo = {
 
       await client.query("COMMIT");
 
-      const allUsers = await getUsersByIds(allUserIds);
       const participants = allUsers
         .map((u) => ({ email: u.email }))
         .sort((a, b) => a.email.localeCompare(b.email));
@@ -472,12 +456,9 @@ export const pgThreadRepo = {
     const isP = await this.isParticipant(threadId, userId);
     if (!isP) throw Object.assign(new Error("Not a participant"), { code: "FORBIDDEN" });
 
-    // Backstop: do not allow posting into legacy invalid threads when in D6 mode
-    if (threadsMode() === "D6") {
-      const ids = await getThreadParticipantUserIds(threadId);
-      const users = await getUsersByIds(ids);
-      assertD6ThreadRolesOrThrow(users);
-    }
+    const ids = await getThreadParticipantUserIds(threadId);
+    const users = await getUsersByIds(ids);
+    assertD6ThreadRolesOrThrow(users);
 
     const text = String(body ?? "").trim();
     if (!text) throw Object.assign(new Error("body is required"), { code: "VALIDATION" });

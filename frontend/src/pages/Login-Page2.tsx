@@ -100,6 +100,7 @@ export default function LoginPage2() {
 
   // backend expects role on register
   const [role, setRole] = useState<UserRole>("STUDENT");
+  const [staffRegisterPassword, setStaffRegisterPassword] = useState("");
 
   // OTP is REQUIRED by backend for both login and register
   const [otp, setOtp] = useState("");
@@ -111,6 +112,7 @@ export default function LoginPage2() {
   const [busy, setBusy] = useState(false);
 
   const title = useMemo(() => (mode === "login" ? "Sign in" : "Create your account"), [mode]);
+  const roleNeedsStaffPassword = mode === "register" && (role === "ADMIN" || role === "LECTURER");
 
   async function fetchMe(token: string) {
     const me = await tryPath<{ user: AuthUserDTO }>(
@@ -171,11 +173,34 @@ export default function LoginPage2() {
     navigate(dest, { replace: true });
   }
 
-  async function doRegister(eNorm: string, pw: string, otpCode: string) {
+  async function doRegister(
+    eNorm: string,
+    pw: string,
+    otpCode: string,
+    selectedRole: UserRole,
+    staffPassword: string
+  ) {
+    const payload: {
+      email: string;
+      password: string;
+      role: UserRole;
+      otp: string;
+      staffRegisterPassword?: string;
+    } = {
+      email: eNorm,
+      password: pw,
+      role: selectedRole,
+      otp: otpCode,
+    };
+
+    if (selectedRole === "ADMIN" || selectedRole === "LECTURER") {
+      payload.staffRegisterPassword = staffPassword;
+    }
+
     const init: RequestInit = {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ email: eNorm, password: pw, role, otp: otpCode }),
+      body: JSON.stringify(payload),
     };
 
     const data = await tryPath<RegisterResponse>(
@@ -212,6 +237,10 @@ export default function LoginPage2() {
       return setError("Passwords do not match.");
     }
 
+    if (roleNeedsStaffPassword && !staffRegisterPassword.trim()) {
+      return setError("Staff registration password is required for Admin/Lecturer roles.");
+    }
+
     if (!otp.trim()) {
       return setError("OTP is required. Click 'Request OTP' first, then enter the code.");
     }
@@ -221,7 +250,7 @@ export default function LoginPage2() {
       if (mode === "login") {
         await doLogin(eNorm, password, otp.trim());
       } else {
-        await doRegister(eNorm, password, otp.trim());
+        await doRegister(eNorm, password, otp.trim(), role, staffRegisterPassword.trim());
       }
     } catch (err) {
       const e2 = err as HttpError;
@@ -232,7 +261,7 @@ export default function LoginPage2() {
   }
 
   const canRequestOtp = !!email.trim() && !busy;
-  const canSubmit = !!otp.trim() && !busy;
+  const canSubmit = !!otp.trim() && !busy && (!roleNeedsStaffPassword || !!staffRegisterPassword.trim());
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-10">
@@ -256,6 +285,7 @@ export default function LoginPage2() {
                 setError(null);
                 setInfo(null);
                 setOtp("");
+                setStaffRegisterPassword("");
               }}
               className={[
                 "rounded-lg py-2 text-sm font-semibold transition",
@@ -274,6 +304,7 @@ export default function LoginPage2() {
                 setError(null);
                 setInfo(null);
                 setOtp("");
+                setStaffRegisterPassword("");
               }}
               className={[
                 "rounded-lg py-2 text-sm font-semibold transition",
@@ -348,7 +379,13 @@ export default function LoginPage2() {
                   name="role"
                   className="mt-2 w-full rounded-lg bg-black/25 border border-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/50"
                   value={role}
-                  onChange={(e) => setRole(e.target.value as UserRole)}
+                  onChange={(e) => {
+                    const nextRole = e.target.value as UserRole;
+                    setRole(nextRole);
+                    if (nextRole !== "ADMIN" && nextRole !== "LECTURER") {
+                      setStaffRegisterPassword("");
+                    }
+                  }}
                   disabled={busy}
                 >
                   <option value="STUDENT">Student</option>
@@ -357,8 +394,27 @@ export default function LoginPage2() {
                   <option value="ADMIN">Admin</option>
                 </select>
                 <p className="mt-2 text-xs text-white/55">
-                  Backend validates role against: ADMIN, LECTURER, STUDENT, PARENT.
+                  Student and Parent can self-register. Admin/Lecturer require a staff registration password.
                 </p>
+              </div>
+            )}
+
+            {mode === "register" && roleNeedsStaffPassword && (
+              <div>
+                <label htmlFor="staffRegisterPassword" className="block text-sm text-white/80">
+                  Staff Registration Password
+                </label>
+                <input
+                  id="staffRegisterPassword"
+                  name="staffRegisterPassword"
+                  type="password"
+                  className="mt-2 w-full rounded-lg bg-black/25 border border-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/50"
+                  placeholder="Enter staff password"
+                  value={staffRegisterPassword}
+                  onChange={(e) => setStaffRegisterPassword(e.target.value)}
+                  autoComplete="off"
+                  disabled={busy}
+                />
               </div>
             )}
 

@@ -9,11 +9,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
-import { threadsApi, type Thread } from "../lib/threadsApi";
+import { threadsApi, type DirectoryUser, type Thread } from "../lib/threadsApi";
 
 export default function Inbox() {
   const navigate = useNavigate();
   const user = getUser();
+
+  const role = String(user?.role ?? "").toUpperCase();
+  const isParent = role === "PARENT";
 
   // Your identity for "other participant" logic
   const myEmail = (user?.email ?? "").trim().toLowerCase();
@@ -21,6 +24,8 @@ export default function Inbox() {
   // Data state
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(false);
+  const [recipients, setRecipients] = useState<DirectoryUser[]>([]);
+  const [loadingRecipients, setLoadingRecipients] = useState(false);
 
   // New thread UI state
   const [newEmail, setNewEmail] = useState("");
@@ -35,7 +40,7 @@ export default function Inbox() {
     setLoading(true);
     try {
       const res = await threadsApi.listThreads({ limit: 50 });
-      setThreads(res.value);
+      setThreads(Array.isArray(res.value) ? res.value : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load threads");
     } finally {
@@ -47,7 +52,35 @@ export default function Inbox() {
     void loadThreads();
   }, [loadThreads]);
 
-  // Helper: get the “other participant” email
+  const loadRecipients = useCallback(async () => {
+    if (!isParent) return;
+
+    setLoadingRecipients(true);
+    setError(null);
+    try {
+      const res = await threadsApi.listUsers({ roles: ["ADMIN", "LECTURER"], limit: 100 });
+      const list = Array.isArray(res.value) ? res.value : [];
+      const allowed = list.filter((u) => {
+        const r = String(u.role ?? "").toUpperCase();
+        const email = String(u.email ?? "").trim().toLowerCase();
+        return (r === "ADMIN" || r === "LECTURER") && email !== myEmail;
+      });
+      setRecipients(allowed);
+      setNewEmail((prev) => prev || (allowed[0]?.email ?? ""));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load recipients");
+      setRecipients([]);
+      setNewEmail("");
+    } finally {
+      setLoadingRecipients(false);
+    }
+  }, [isParent, myEmail]);
+
+  useEffect(() => {
+    void loadRecipients();
+  }, [loadRecipients]);
+
+  // Helper: get the "other participant" email
   const threadTitle = useCallback(
     (t: Thread) => {
       const other = t.participants.find((p) => p.email.trim().toLowerCase() !== myEmail);
@@ -65,7 +98,20 @@ export default function Inbox() {
 
     const email = newEmail.trim().toLowerCase();
     if (!email) {
-      setError("Enter a participant email first.");
+      setError(isParent ? "Select a recipient first." : "Enter a participant email first.");
+      return;
+    }
+
+    if (isParent) {
+      const allowed = recipients.some((r) => r.email.trim().toLowerCase() === email);
+      if (!allowed) {
+        setError("Parents can only message lecturers or admins.");
+        return;
+      }
+    }
+
+    if (loadingRecipients) {
+      setError("Loading recipients. Please try again.");
       return;
     }
 
@@ -113,24 +159,47 @@ export default function Inbox() {
         <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
           <div className="text-lg font-semibold text-white">New Message</div>
           <div className="mt-1 text-sm text-slate-400">
-            Start a new conversation by entering the other participant’s email.
+            {isParent
+              ? "Start a new conversation with a lecturer or admin."
+              : "Start a new conversation by entering the other participant's email."}
           </div>
 
           <div className="mt-4 space-y-3">
             <div>
               <label className="block text-sm text-slate-300">Participant email</label>
-              <input
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="student1@forge.local"
-                className="mt-2 w-full rounded-lg bg-slate-950 border border-slate-800 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600"
-              />
+              {isParent ? (
+                <select
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  disabled={loadingRecipients || recipients.length === 0}
+                  className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
+                >
+                  {recipients.length === 0 ? (
+                    <option value="">
+                      {loadingRecipients ? "Loading recipients..." : "No lecturer/admin recipients found"}
+                    </option>
+                  ) : (
+                    recipients.map((r) => (
+                      <option key={r.id} value={r.email}>
+                        {r.email} ({r.role})
+                      </option>
+                    ))
+                  )}
+                </select>
+              ) : (
+                <input
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="student1@forge.local"
+                  className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600"
+                />
+              )}
             </div>
 
             <button
               type="button"
               onClick={startNewConversation}
-              disabled={busy}
+              disabled={busy || (isParent && (loadingRecipients || recipients.length === 0))}
               className="w-full rounded-lg bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-60"
             >
               {busy ? "Creating..." : "Start"}
@@ -141,13 +210,11 @@ export default function Inbox() {
         {/* Thread list */}
         <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
           <div className="text-lg font-semibold text-white">Conversations</div>
-          <div className="mt-1 text-sm text-slate-400">
-            {loading ? "Loading..." : `${threads.length} thread(s)`}
-          </div>
+          <div className="mt-1 text-sm text-slate-400">{loading ? "Loading..." : `${threads.length} thread(s)`}</div>
 
           <div className="mt-4 space-y-2">
             {loading ? (
-              <div className="text-slate-400">Loading…</div>
+              <div className="text-slate-400">Loading...</div>
             ) : threads.length === 0 ? (
               <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-6 text-slate-300">
                 No conversations yet.
@@ -158,9 +225,9 @@ export default function Inbox() {
                   key={t.id}
                   type="button"
                   onClick={() => navigate(`/app/messages/${t.id}`)}
-                  className="w-full text-left rounded-2xl border border-slate-800 bg-slate-950/40 p-4 hover:bg-slate-900/40 transition"
+                  className="w-full rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-left transition hover:bg-slate-900/40"
                 >
-                  <div className="text-white font-semibold">{threadTitle(t)}</div>
+                  <div className="font-semibold text-white">{threadTitle(t)}</div>
                   <div className="mt-1 text-xs text-slate-400">
                     {t.lastMessageAt ? `Last message: ${new Date(t.lastMessageAt).toLocaleString()}` : "No messages yet"}
                   </div>

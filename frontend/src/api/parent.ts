@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "../lib/api";
+import { apiDelete, apiDownload, apiGet, apiPost } from "../lib/api";
 
 export type ParentChild = {
   id: string;
@@ -35,6 +35,21 @@ export type Result = {
   score: number;
   outOf: number;
   date: string;
+};
+
+export type StaffResultInput = {
+  childId: string;
+  subject: string;
+  score: number;
+  outOf?: number;
+  date?: string;
+};
+
+export type StaffResultUpdateInput = {
+  subject?: string;
+  score?: number;
+  outOf?: number;
+  date?: string;
 };
 
 export type FinanceNotification = {
@@ -86,8 +101,19 @@ function toNumberValue(v: unknown, fallback = 0): number {
 
 function unwrapList<T>(data: unknown): T[] {
   if (Array.isArray(data)) return data as T[];
-  if (isObject(data) && Array.isArray(data.value)) return data.value as T[];
+  if (isObject(data)) {
+    if (Array.isArray(data.value)) return data.value as T[];
+    if (Array.isArray(data.data)) return data.data as T[];
+    if (Array.isArray(data.items)) return data.items as T[];
+  }
   return [];
+}
+
+function unwrapObject(data: unknown): Record<string, unknown> | null {
+  if (!isObject(data)) return null;
+  if (isObject(data.value)) return data.value;
+  if (isObject(data.data)) return data.data;
+  return data;
 }
 
 function normalizeChild(row: unknown): ParentChild | null {
@@ -101,7 +127,7 @@ function normalizeChild(row: unknown): ParentChild | null {
   const role: "STUDENT" = roleRaw === "STUDENT" ? "STUDENT" : "STUDENT";
 
   let publicStudentId: string | null | undefined = undefined;
-  const ps = row.publicStudentId;
+  const ps = row.publicStudentId ?? row.public_student_id;
   if (typeof ps === "string") publicStudentId = ps.trim() || null;
   if (ps === null) publicStudentId = null;
 
@@ -136,8 +162,8 @@ function normalizeResult(row: unknown, index: number): Result {
   const id = toStringValue(row.id) || `result-${index}`;
   const subject = toStringValue(row.subject, "Unknown");
   const score = toNumberValue(row.score, 0);
-  const outOf = toNumberValue(row.outOf, 100);
-  const date = toStringValue(row.date, "");
+  const outOf = toNumberValue(row.outOf ?? row.out_of, 100);
+  const date = toStringValue(row.date ?? row.assessedAt ?? row.assessed_at, "");
 
   return { id, subject, score, outOf, date };
 }
@@ -168,16 +194,17 @@ function normalizeFinanceDocument(row: unknown, index: number): FinanceDocument 
 }
 
 function normalizeFinanceSummary(data: unknown): FinanceSummary {
-  if (!isObject(data)) return { ...DEFAULT_FINANCE };
+  const source = unwrapObject(data);
+  if (!source) return { ...DEFAULT_FINANCE };
 
-  const notificationsRaw = Array.isArray(data.notifications) ? data.notifications : [];
-  const documentsRaw = Array.isArray(data.documents) ? data.documents : [];
+  const notificationsRaw = Array.isArray(source.notifications) ? source.notifications : [];
+  const documentsRaw = Array.isArray(source.documents) ? source.documents : [];
 
   return {
-    balance: toNumberValue(data.balance, DEFAULT_FINANCE.balance),
-    statements: toNumberValue(data.statements, DEFAULT_FINANCE.statements),
-    lastPayment: typeof data.lastPayment === "string" ? data.lastPayment : null,
-    status: toStringValue(data.status, DEFAULT_FINANCE.status),
+    balance: toNumberValue(source.balance, DEFAULT_FINANCE.balance),
+    statements: toNumberValue(source.statements, DEFAULT_FINANCE.statements),
+    lastPayment: typeof source.lastPayment === "string" ? source.lastPayment : null,
+    status: toStringValue(source.status, DEFAULT_FINANCE.status),
     notifications: notificationsRaw
       .map((n, i) => normalizeFinanceNotification(n, i))
       .filter((n): n is FinanceNotification => n !== null),
@@ -189,14 +216,15 @@ function normalizeFinanceSummary(data: unknown): FinanceSummary {
 
 export async function parentPortalCheck(): Promise<ParentPortalInfo> {
   const data = await apiGet<unknown>("/api/parent/parent");
-  if (!isObject(data)) {
+  const source = unwrapObject(data);
+  if (!source) {
     return { ok: false, role: "PARENT", message: "Parent portal unavailable" };
   }
 
   return {
-    ok: Boolean(data.ok),
-    role: toStringValue(data.role, "PARENT"),
-    message: toStringValue(data.message, ""),
+    ok: Boolean(source.ok),
+    role: toStringValue(source.role, "PARENT"),
+    message: toStringValue(source.message, ""),
   };
 }
 
@@ -216,8 +244,9 @@ export async function listLinkRequests(): Promise<LinkRequest[]> {
 
 export async function createLinkRequest(childId: string): Promise<LinkRequestCreateResult> {
   const data = await apiPost<unknown>("/api/parent/parent/link-requests", { childId });
+  const source = unwrapObject(data);
 
-  if (!isObject(data)) {
+  if (!source) {
     return {
       id: "unknown",
       childId,
@@ -227,10 +256,10 @@ export async function createLinkRequest(childId: string): Promise<LinkRequestCre
   }
 
   return {
-    id: toStringValue(data.id, "unknown"),
-    childId: toStringValue(data.childId, childId),
-    status: toStringValue(data.status, "PENDING").toUpperCase(),
-    requestedAt: toStringValue(data.requestedAt, new Date().toISOString()),
+    id: toStringValue(source.id, "unknown"),
+    childId: toStringValue(source.childId, childId),
+    status: toStringValue(source.status, "PENDING").toUpperCase(),
+    requestedAt: toStringValue(source.requestedAt, new Date().toISOString()),
   };
 }
 
@@ -239,7 +268,44 @@ export async function getResults(childId: string): Promise<Result[]> {
   return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
 }
 
+export async function downloadResults(
+  childId: string
+): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
+  return apiDownload(`/api/parent/parent/results/download?childId=${encodeURIComponent(childId)}`);
+}
+
+export async function listResultsForStaff(childId: string): Promise<Result[]> {
+  const data = await apiGet<unknown>(`/api/parent/admin/results?childId=${encodeURIComponent(childId)}`);
+  return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
+}
+
+export async function downloadResultsForStaff(
+  childId: string
+): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
+  return apiDownload(`/api/parent/admin/results/download?childId=${encodeURIComponent(childId)}`);
+}
+
+export async function createResultForStaff(input: StaffResultInput): Promise<Result> {
+  const data = await apiPost<unknown>("/api/parent/admin/results", input);
+  return normalizeResult(data, 0);
+}
+
+export async function updateResultForStaff(id: string, input: StaffResultUpdateInput): Promise<Result> {
+  const data = await apiPost<unknown>(`/api/parent/admin/results/${encodeURIComponent(id)}/update`, input);
+  return normalizeResult(data, 0);
+}
+
+export async function deleteResultForStaff(id: string): Promise<void> {
+  await apiDelete<void>(`/api/parent/admin/results/${encodeURIComponent(id)}`);
+}
+
 export async function getFinance(childId: string): Promise<FinanceSummary> {
   const data = await apiGet<unknown>(`/api/parent/parent/finance?childId=${encodeURIComponent(childId)}`);
   return normalizeFinanceSummary(data);
+}
+
+export async function downloadFinanceStatement(
+  childId: string
+): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
+  return apiDownload(`/api/parent/parent/finance/statement?childId=${encodeURIComponent(childId)}`);
 }

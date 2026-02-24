@@ -17,6 +17,7 @@ import { parentRouter } from "./routes/parent";
 import { threadRouter } from "./routes/threads";
 import { calendarRouter } from "./routes/calendar";
 import { financeRouter } from "./routes/finance";
+import { userRouter } from "./routes/users";
 
 function buildCorsOrigins(): string[] {
   const raw = String(process.env.CORS_ORIGIN ?? "").trim();
@@ -91,6 +92,7 @@ export function createApp() {
   app.use("/api", eventRouter);
 
   app.use("/api/uploads", uploadRouter);
+  app.use("/api/users", userRouter);
 
   app.use("/api/parent", parentRouter);
   app.use("/api/threads", threadRouter);

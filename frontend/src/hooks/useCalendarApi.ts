@@ -57,7 +57,7 @@ export function useCalendarApi(childId?: string) {
         childId: role === "PARENT" ? childId : undefined,
       });
 
-      setItems(list);
+      setItems(Array.isArray(list) ? list : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load calendar");
     } finally {
@@ -72,7 +72,9 @@ export function useCalendarApi(childId?: string) {
   const grouped = useMemo(() => {
     const map = new Map<string, CalendarEntry[]>();
     for (const it of items) {
-      const day = new Date(it.startsAt).toISOString().slice(0, 10);
+      const ts = Date.parse(it.startsAt);
+      if (!Number.isFinite(ts)) continue; // skip malformed rows without crashing
+      const day = new Date(ts).toISOString().slice(0, 10);
       if (!map.has(day)) map.set(day, []);
       map.get(day)!.push(it);
     }
@@ -152,6 +154,7 @@ export function useCalendarApi(childId?: string) {
     grouped,
     items,
     reload,
+    refresh: reload,
     create,
     remove,
     toLocalInputValue,

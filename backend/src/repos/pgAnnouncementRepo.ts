@@ -2,6 +2,7 @@ import { pool } from "../config/db";
 import type {
   AnnouncementRepo,
   CreateAnnouncementInput,
+  UpdateAnnouncementInput,
 } from "../persistence/types";
 import type { Announcement } from "../models/announcement";
 
@@ -47,5 +48,47 @@ export const pgAnnouncementRepo: AnnouncementRepo = {
     );
 
     return result.rows;
+  },
+
+  async update(input: UpdateAnnouncementInput): Promise<Announcement | null> {
+    const title = input.title ?? null;
+    const body = input.body ?? null;
+    const pinned = typeof input.pinned === "boolean" ? input.pinned : null;
+
+    const result = await pool.query<Announcement>(
+      `
+      UPDATE announcements
+      SET
+        title = COALESCE($3, title),
+        body = COALESCE($4, body),
+        pinned = COALESCE($5, pinned)
+      WHERE id = $1
+        AND channel_id = $2
+      RETURNING
+        id,
+        channel_id as "channelId",
+        title,
+        body,
+        pinned,
+        created_by as "createdBy",
+        created_at as "createdAt"
+      `,
+      [input.id, input.channelId, title, body, pinned]
+    );
+
+    if ((result.rowCount ?? 0) === 0) return null;
+    return result.rows[0];
+  },
+
+  async delete(id: string, channelId: string): Promise<boolean> {
+    const result = await pool.query(
+      `
+      DELETE FROM announcements
+      WHERE id = $1
+        AND channel_id = $2
+      `,
+      [id, channelId]
+    );
+    return (result.rowCount ?? 0) > 0;
   },
 };

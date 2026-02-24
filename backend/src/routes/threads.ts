@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "../config/db";
 import { pgThreadRepo } from "../repos/pgThreadRepo";
+import { canMessage, toMessagingRole } from "../lib/messagingRbac";
 
 function err(res: any, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
@@ -14,33 +15,6 @@ function parseLimit(raw: any, fallback = 50) {
 
 function normEmail(v: any) {
   return String(v ?? "").trim().toLowerCase();
-}
-
-type UserRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
-
-function toRole(v: unknown): UserRole | null {
-  const r = String(v ?? "").trim().toUpperCase();
-  if (r === "ADMIN" || r === "LECTURER" || r === "STUDENT" || r === "PARENT") return r;
-  return null;
-}
-
-/**
- * D6 messaging matrix:
- * - STUDENT <-> LECTURER
- * - PARENT  <-> LECTURER
- * - ADMIN   <-> everyone
- * - No parent<->student
- * - No lecturer<->lecturer by default
- */
-function canMessage(sender: UserRole, receiver: UserRole): boolean {
-  if (sender === "ADMIN") return true;
-  if (receiver === "ADMIN") return true;
-
-  if (sender === "STUDENT") return receiver === "LECTURER";
-  if (sender === "PARENT") return receiver === "LECTURER";
-  if (sender === "LECTURER") return receiver === "STUDENT" || receiver === "PARENT";
-
-  return false;
 }
 
 export const threadRouter = Router();
@@ -94,7 +68,7 @@ threadRouter.post("/", async (req, res) => {
     const user = req.user!;
     const userId = user.id;
 
-    const userRole = toRole((user as any).role);
+    const userRole = toMessagingRole((user as { role?: unknown }).role);
     if (!userRole) {
       return err(res, 403, "FORBIDDEN", "Invalid role");
     }
@@ -138,7 +112,7 @@ threadRouter.post("/", async (req, res) => {
     }
 
     const otherUserId = ures.rows[0].id;
-    const otherRole = toRole(ures.rows[0].role);
+    const otherRole = toMessagingRole(ures.rows[0].role);
 
     if (!otherRole) {
       return err(res, 403, "FORBIDDEN", "Participant has invalid role");
@@ -150,7 +124,7 @@ threadRouter.post("/", async (req, res) => {
     }
 
     // Enforce D6 role matrix
-    if (!canMessage(userRole, otherRole)) {
+    if (!canMessage(userRole, otherRole) || !canMessage(otherRole, userRole)) {
       return err(res, 403, "FORBIDDEN", "Direct messaging is not allowed between these roles");
     }
 

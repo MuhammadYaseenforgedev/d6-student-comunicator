@@ -1,7 +1,7 @@
 // frontend/src/api/announcements.ts
 
 import type { Announcement, AnnouncementCreate, ChannelKey } from "../lib/types";
-import { apiGet, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "../lib/api";
 import { getUser } from "../lib/auth";
 
 // The backend mounts apiListWrapper under /api, which wraps any array JSON body as:
@@ -137,6 +137,37 @@ export async function createAnnouncement(payload: AnnouncementCreate): Promise<A
   );
 
   return toUiAnnouncement(created, payload.channel);
+}
+
+type AnnouncementUpdateInput = {
+  channel: ChannelKey;
+  id: string;
+  title?: string;
+  body?: string;
+  pinned?: boolean;
+};
+
+export async function updateAnnouncement(input: AnnouncementUpdateInput): Promise<Announcement> {
+  const channelId = await resolveChannelId(input.channel);
+  const updated = await apiPatch<BackendAnnouncement>(
+    `/api/channels/${channelId}/announcements/${input.id}`,
+    {
+      ...(typeof input.title === "string" ? { title: input.title } : {}),
+      ...(typeof input.body === "string" ? { body: input.body } : {}),
+      ...(typeof input.pinned === "boolean" ? { pinned: input.pinned } : {}),
+    }
+  );
+  return toUiAnnouncement(updated, input.channel);
+}
+
+export async function deleteAnnouncement(input: {
+  channel: ChannelKey;
+  id: string;
+}): Promise<void> {
+  const channelId = await resolveChannelId(input.channel);
+  await apiDelete<{ ok: boolean }>(
+    `/api/channels/${channelId}/announcements/${input.id}`
+  );
 }
 
 export function invalidateChannelCache() {

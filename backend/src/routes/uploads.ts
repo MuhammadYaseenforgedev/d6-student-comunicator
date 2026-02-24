@@ -36,12 +36,15 @@ const upload = multer({
 // Matches your pgUploadRepo list rules
 function canAccessUpload(
   user: { id: string; role: string },
-  u: { kind: UploadKind; uploadedBy: string }
+  u: { kind: UploadKind; uploadedBy: string; uploadedByRole?: string | null }
 ) {
+  const uploaderRole = String(u.uploadedByRole ?? "").toUpperCase();
+  const isStaffMaterial = u.kind === "LECTURER_MATERIAL" && (uploaderRole === "ADMIN" || uploaderRole === "LECTURER");
+
   if (user.role === "ADMIN" || user.role === "LECTURER") return true;
-  if (user.role === "PARENT") return u.kind === "LECTURER_MATERIAL";
+  if (user.role === "PARENT") return isStaffMaterial;
   // STUDENT
-  return u.kind === "LECTURER_MATERIAL" || (u.kind === "STUDENT_SUBMISSION" && u.uploadedBy === user.id);
+  return isStaffMaterial || (u.kind === "STUDENT_SUBMISSION" && u.uploadedBy === user.id);
 }
 
 /**
@@ -87,7 +90,7 @@ function resolveUploadPath(storagePath: string): string | null {
  * multipart/form-data
  * fields:
  * - file: File
- * - kind: "LECTURER_MATERIAL" | "STUDENT_SUBMISSION"
+ * - kind: "LECTURER_MATERIAL" (ADMIN/LECTURER) or "STUDENT_SUBMISSION" (STUDENT)
  */
 uploadRouter.post(
   "/",
@@ -98,16 +101,16 @@ uploadRouter.post(
       const user = req.user!;
       const kind = String(req.body?.kind ?? "") as UploadKind;
 
-      if (kind !== "LECTURER_MATERIAL" && kind !== "STUDENT_SUBMISSION") {
-        return err(res, 400, "VALIDATION", "Invalid kind. Use LECTURER_MATERIAL or STUDENT_SUBMISSION.");
-      }
-
-      // RBAC for kind
-      if (kind === "LECTURER_MATERIAL" && !(user.role === "ADMIN" || user.role === "LECTURER")) {
-        return err(res, 403, "FORBIDDEN", "Only ADMIN or LECTURER can upload lecturer material.");
-      }
-      if (kind === "STUDENT_SUBMISSION" && user.role !== "STUDENT") {
-        return err(res, 403, "FORBIDDEN", "Only STUDENT can upload student submissions.");
+      if (user.role === "ADMIN" || user.role === "LECTURER") {
+        if (kind !== "LECTURER_MATERIAL") {
+          return err(res, 400, "VALIDATION", "Invalid kind. ADMIN/LECTURER must use LECTURER_MATERIAL.");
+        }
+      } else if (user.role === "STUDENT") {
+        if (kind !== "STUDENT_SUBMISSION") {
+          return err(res, 400, "VALIDATION", "Invalid kind. STUDENT must use STUDENT_SUBMISSION.");
+        }
+      } else {
+        return err(res, 403, "FORBIDDEN", "Only ADMIN, LECTURER, or STUDENT can upload files.");
       }
 
       if (!req.file) {
@@ -137,7 +140,7 @@ uploadRouter.post(
 /**
  * GET /api/uploads
  */
-uploadRouter.get("/", async (req, res) => {
+uploadRouter.get("/", requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"), async (req, res) => {
   try {
     const user = req.user!;
     const items = await repos.uploads.listForUser({ id: user.id, role: user.role });
@@ -151,35 +154,70 @@ uploadRouter.get("/", async (req, res) => {
 /**
  * GET /api/uploads/:id/download
  */
-uploadRouter.get("/:id/download", async (req, res) => {
-  try {
-    const user = req.user!;
-    const id = String(req.params.id || "").trim();
+uploadRouter.get(
+  "/:id/download",
+  requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"),
+  async (req, res) => {
+    try {
+      const user = req.user!;
+      const id = String(req.params.id || "").trim();
 
+      if (!id) return err(res, 400, "VALIDATION", "Invalid upload id");
+
+      const u = await repos.uploads.getById(id);
+      if (!u) return err(res, 404, "NOT_FOUND", "Not found");
+
+      if (!canAccessUpload(user, u)) {
+        return err(res, 403, "FORBIDDEN", "You do not have permission to download this file.");
+      }
+
+      const absPath = resolveUploadPath(u.storagePath);
+      if (!absPath) {
+        return err(res, 400, "VALIDATION", "Invalid storage path");
+      }
+
+      if (!fs.existsSync(absPath)) {
+        return err(res, 404, "NOT_FOUND", "File missing on disk");
+      }
+
+      res.setHeader("Content-Type", u.mimeType || "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(u.originalName)}"`);
+
+      return fs.createReadStream(absPath).pipe(res);
+    } catch (e: any) {
+      console.error("[uploads] GET /:id/download error", e);
+      return err(res, 500, "INTERNAL", "Download failed");
+    }
+  }
+);
+
+/**
+ * DELETE /api/uploads/:id
+ * ADMIN/LECTURER can delete any upload metadata and best-effort remove file from disk.
+ */
+uploadRouter.delete("/:id", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
     if (!id) return err(res, 400, "VALIDATION", "Invalid upload id");
 
-    const u = await repos.uploads.getById(id);
-    if (!u) return err(res, 404, "NOT_FOUND", "Not found");
+    const existing = await repos.uploads.getById(id);
+    if (!existing) return err(res, 404, "NOT_FOUND", "Not found");
 
-    if (!canAccessUpload(user, u)) {
-      return err(res, 403, "FORBIDDEN", "You do not have permission to download this file.");
+    const deleted = await repos.uploads.delete(id);
+    if (!deleted) return err(res, 404, "NOT_FOUND", "Not found");
+
+    const absPath = resolveUploadPath(existing.storagePath);
+    if (absPath && fs.existsSync(absPath)) {
+      try {
+        fs.unlinkSync(absPath);
+      } catch (e: any) {
+        console.error("[uploads] DELETE /:id unlink warning", e);
+      }
     }
 
-    const absPath = resolveUploadPath(u.storagePath);
-    if (!absPath) {
-      return err(res, 400, "VALIDATION", "Invalid storage path");
-    }
-
-    if (!fs.existsSync(absPath)) {
-      return err(res, 404, "NOT_FOUND", "File missing on disk");
-    }
-
-    res.setHeader("Content-Type", u.mimeType || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(u.originalName)}"`);
-
-    return fs.createReadStream(absPath).pipe(res);
+    return res.json({ ok: true });
   } catch (e: any) {
-    console.error("[uploads] GET /:id/download error", e);
-    return err(res, 500, "INTERNAL", "Download failed");
+    console.error("[uploads] DELETE /:id error", e);
+    return err(res, 500, "INTERNAL", "Delete failed");
   }
 });

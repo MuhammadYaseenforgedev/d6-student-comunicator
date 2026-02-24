@@ -159,6 +159,15 @@ export async function cleanupTestUsers() {
 
   await pool.query(
     `
+      DELETE FROM uploads up
+      USING users u
+      WHERE up.uploaded_by::text = u.id::text
+        AND u.email LIKE 'test_%@co.za'
+    `
+  );
+
+  await pool.query(
+    `
       DELETE FROM channel_members cm
       USING users u
       WHERE cm.user_id::text = u.id::text

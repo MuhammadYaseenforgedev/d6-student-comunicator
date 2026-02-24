@@ -42,37 +42,26 @@ export default function ChannelPage(props: ChannelPageProps) {
     return `Showing announcements for ${resolvedChannel}.`;
   }, [props.subtitle, resolvedChannel]);
 
-  const { items, loading, error, clearError, create, resetDemo, mode } =
+  const { items, loading, error, clearError, create, update, remove, canManage } =
     useAnnouncements(resolvedChannel);
 
   const [open, setOpen] = useState(false);
 
-  const actions = (
-    <>
-      {mode === "mock" && (
-        <button
-          onClick={resetDemo}
-          className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50"
-          type="button"
-        >
-          Reset demo
-        </button>
-      )}
-      <button
-        onClick={() => setOpen(true)}
-        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-700"
-        type="button"
-      >
-        New announcement
-      </button>
-    </>
-  );
+  const actions = canManage ? (
+    <button
+      onClick={() => setOpen(true)}
+      className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-700"
+      type="button"
+    >
+      New announcement
+    </button>
+  ) : null;
 
   return (
     <div>
       <PageHeader
         title={resolvedTitle}
-        subtitle={`${resolvedSubtitle} (${mode})`}
+        subtitle={resolvedSubtitle}
         actions={actions}
       />
 
@@ -88,8 +77,12 @@ export default function ChannelPage(props: ChannelPageProps) {
         ) : items.length === 0 ? (
           <EmptyState
             title="No announcements yet"
-            subtitle="Create the first announcement for this channel."
-            action={
+            subtitle={
+              canManage
+                ? "Create the first announcement for this channel."
+                : "No announcements available right now."
+            }
+            action={canManage ? (
               <button
                 type="button"
                 onClick={() => setOpen(true)}
@@ -97,10 +90,18 @@ export default function ChannelPage(props: ChannelPageProps) {
               >
                 Create announcement
               </button>
-            }
+            ) : undefined}
           />
         ) : (
-          items.map((a) => <AnnouncementCard key={a.id} a={a} />)
+          items.map((a) => (
+            <AnnouncementCard
+              key={a.id}
+              a={a}
+              canManage={canManage}
+              onUpdate={(id, patch) => update({ id, ...patch })}
+              onDelete={remove}
+            />
+          ))
         )}
       </div>
 

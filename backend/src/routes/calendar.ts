@@ -67,9 +67,14 @@ calendarRouter.post("/calendar", async (req, res) => {
   try {
     const user = req.user!;
 
-    // Spec: student create/delete, parent view-only. Admin allowed as superuser.
-    if (!(user.role === "STUDENT" || user.role === "ADMIN")) {
-      return err(res, 403, "FORBIDDEN", "Only STUDENT (or ADMIN) can create calendar entries");
+    // Parent is view-only; STUDENT/LECTURER/ADMIN can create their own entries.
+    if (!(user.role === "STUDENT" || user.role === "LECTURER" || user.role === "ADMIN")) {
+      return err(
+        res,
+        403,
+        "FORBIDDEN",
+        "Only STUDENT, LECTURER, or ADMIN can create calendar entries"
+      );
     }
 
     const created = await pgCalendarRepo.createForUser(user.id, {
@@ -95,9 +100,14 @@ calendarRouter.delete("/calendar/:id", async (req, res) => {
   try {
     const user = req.user!;
 
-    // Spec: student create/delete, parent view-only. Admin allowed as superuser.
-    if (!(user.role === "STUDENT" || user.role === "ADMIN")) {
-      return err(res, 403, "FORBIDDEN", "Only STUDENT (or ADMIN) can delete calendar entries");
+    // Parent is view-only; STUDENT/LECTURER/ADMIN can delete their own entries.
+    if (!(user.role === "STUDENT" || user.role === "LECTURER" || user.role === "ADMIN")) {
+      return err(
+        res,
+        403,
+        "FORBIDDEN",
+        "Only STUDENT, LECTURER, or ADMIN can delete calendar entries"
+      );
     }
 
     const id = String(req.params.id ?? "").trim();

@@ -27,9 +27,10 @@ export default function RequireRole({ roles }: Props) {
   // If logged in but wrong role, kick back to app home.
   // (You can later swap this to a real "403 Forbidden" page.)
   if (!roles.includes(user.role)) {
+    const fallbackTo = user.role === "PARENT" ? "/app/parent" : "/app";
     return (
       <Navigate
-        to="/app"
+        to={fallbackTo}
         replace
         state={{ from: location.pathname + location.search, forbidden: true }}
       />

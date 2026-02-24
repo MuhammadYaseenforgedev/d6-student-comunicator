@@ -4,11 +4,15 @@ import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import crypto from "crypto";
 import { pool } from "../config/db";
 import { requireAuth } from "../middleware/auth";
+import { requireRole } from "../middleware/rbac";
 
 export const authRouter = Router();
 
 const VALID_ROLES = ["ADMIN", "LECTURER", "STUDENT", "PARENT"] as const;
 type Role = (typeof VALID_ROLES)[number];
+const PUBLIC_SELF_REGISTER_ROLES = ["STUDENT", "PARENT"] as const;
+const STAFF_SELF_REGISTER_ROLES = ["ADMIN", "LECTURER"] as const;
+type StaffSelfRegisterRole = (typeof STAFF_SELF_REGISTER_ROLES)[number];
 
 type JwtUser = {
   id: string;
@@ -45,6 +49,7 @@ function boolEnv(name: string, defaultValue: boolean) {
  * - AUTH_REQUIRE_OTP=true/false
  * - AUTH_ALLOW_PASSWORD_LOGIN=true/false
  * - AUTH_ALLOW_PASSWORD_REGISTER=true/false
+ * - AUTH_STAFF_REGISTER_PASSWORD=... (required for ADMIN/LECTURER self-registration)
  */
 function authPolicy() {
   const prod = isProduction();
@@ -115,6 +120,22 @@ function parsePurpose(p: unknown): "LOGIN" | "REGISTER" | null {
   const x = String(p ?? "").trim().toUpperCase();
   if (x === "LOGIN" || x === "REGISTER") return x;
   return null;
+}
+
+function parseRole(v: unknown): Role | null {
+  const role = String(v ?? "").trim().toUpperCase();
+  return VALID_ROLES.includes(role as Role) ? (role as Role) : null;
+}
+
+function isStaffSelfRegisterRole(role: Role): role is StaffSelfRegisterRole {
+  return STAFF_SELF_REGISTER_ROLES.includes(role as StaffSelfRegisterRole);
+}
+
+function timingSafeEquals(a: string, b: string): boolean {
+  const aa = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (aa.length !== bb.length) return false;
+  return crypto.timingSafeEqual(aa, bb);
 }
 
 /**
@@ -320,23 +341,41 @@ authRouter.post("/request-otp", async (req, res) => {
    REGISTER
    POST /register
    Supports:
-   - OTP register: { email, password, role, otp }
-   - Optional dev register (if enabled): { email, password, role } when AUTH_ALLOW_PASSWORD_REGISTER=true
+   - OTP register: { email, password, role, otp, staffRegisterPassword? }
+   - Optional dev register (if enabled): { email, password } when AUTH_ALLOW_PASSWORD_REGISTER=true
 =================================*/
 authRouter.post("/register", async (req, res) => {
   const { requireOtp, allowPasswordRegister } = authPolicy();
 
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
-  const role = String(req.body?.role ?? "").toUpperCase();
+  const roleRaw = String(req.body?.role ?? "").trim();
+  const role = roleRaw ? parseRole(roleRaw) : ("STUDENT" as Role);
+  const staffRegisterPassword = String(req.body?.staffRegisterPassword ?? "").trim();
   const otp = String(req.body?.otp ?? "").trim();
 
-  if (!email || !password || !role) {
+  if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
   }
 
-  if (!VALID_ROLES.includes(role as Role)) {
+  if (!role) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
+  }
+
+  if (!(PUBLIC_SELF_REGISTER_ROLES as readonly Role[]).includes(role) && !isStaffSelfRegisterRole(role)) {
+    return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
+  }
+
+  if (isStaffSelfRegisterRole(role)) {
+    const expected = String(process.env.AUTH_STAFF_REGISTER_PASSWORD ?? "").trim();
+    if (!expected || !staffRegisterPassword || !timingSafeEquals(staffRegisterPassword, expected)) {
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "Staff registration password is required for admin/lecturer registration",
+        },
+      });
+    }
   }
 
   // Enforce OTP unless explicitly allowed not to
@@ -364,6 +403,46 @@ authRouter.post("/register", async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
 
   try {
+      const result = await pool.query(
+        `
+        INSERT INTO users (email, password_hash, role)
+        VALUES ($1, $2, $3)
+        RETURNING id, email, role
+      `,
+        [email, passwordHash, role]
+      );
+
+    const user = result.rows[0] as JwtUser;
+    const token = signToken(user);
+    return res.status(201).json({ token, user });
+  } catch {
+    return res.status(400).json({ error: { code: "VALIDATION", message: "Email already exists" } });
+  }
+});
+
+/* ===============================
+   ADMIN CREATE USER (protected)
+   POST /admin-create
+   Body: { email, password, role }
+   Only authenticated ADMIN may create privileged roles.
+=================================*/
+authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
+  const email = normEmail(req.body?.email);
+  const password = String(req.body?.password ?? "");
+  const roleRaw = String(req.body?.role ?? "").trim().toUpperCase();
+
+  if (!email || !password || !roleRaw) {
+    return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
+  }
+
+  if (!VALID_ROLES.includes(roleRaw as Role)) {
+    return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
+  }
+
+  const role = roleRaw as Role;
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  try {
     const result = await pool.query(
       `
         INSERT INTO users (email, password_hash, role)
@@ -373,9 +452,7 @@ authRouter.post("/register", async (req, res) => {
       [email, passwordHash, role]
     );
 
-    const user = result.rows[0] as JwtUser;
-    const token = signToken(user);
-    return res.status(201).json({ token, user });
+    return res.status(201).json({ user: result.rows[0] });
   } catch {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Email already exists" } });
   }

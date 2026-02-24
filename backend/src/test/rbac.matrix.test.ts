@@ -68,7 +68,7 @@ describe("RBAC matrix (automated)", () => {
         request(app)
           .post("/api/channels")
           .set(auth(ctx.parentToken))
-          .send({ name: `parent-channel-${Date.now()}` }),
+          .send({ name: `parent-channel-${Date.now()}`, type: "GENERAL" }),
       expect: [401, 403],
     },
 
@@ -78,7 +78,7 @@ describe("RBAC matrix (automated)", () => {
         request(app)
           .post("/api/channels")
           .set(auth(ctx.lecturerToken))
-          .send({ name: `lecturer-channel-${Date.now()}` }),
+          .send({ name: `lecturer-channel-${Date.now()}`, type: "GENERAL" }),
       expect: [200, 201],
     },
 
@@ -191,13 +191,13 @@ describe("RBAC matrix (automated)", () => {
 
     {
       name: "Only PARENT can access parent portal endpoint",
-      run: () => request(app).get("/api/parent").set(auth(ctx.parentToken)),
+      run: () => request(app).get("/api/parent/parent").set(auth(ctx.parentToken)),
       expect: [200],
     },
 
     {
       name: "STUDENT cannot access parent portal endpoint",
-      run: () => request(app).get("/api/parent").set(auth(ctx.studentToken)),
+      run: () => request(app).get("/api/parent/parent").set(auth(ctx.studentToken)),
       expect: [401, 403],
     },
 
@@ -211,8 +211,8 @@ describe("RBAC matrix (automated)", () => {
     {
       name: "PARENT cannot access /calendar without childId",
       run: () => request(app).get("/api/calendar").set(auth(ctx.parentToken)),
-      // Your backend returns auth/forbidden here (not 400).
-      expect: [401, 403],
+      // Parent requests require childId.
+      expect: [400],
     },
   ];
 
