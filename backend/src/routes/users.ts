@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response } from "express";
 import { pool } from "../config/db";
 
 type Role = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
@@ -12,7 +13,7 @@ type UserDirectoryRow = {
 const VALID_ROLES: Role[] = ["ADMIN", "LECTURER", "STUDENT", "PARENT"];
 const PARENT_ALLOWED_TARGETS: Role[] = ["ADMIN", "LECTURER"];
 
-function err(res: any, status: number, code: string, message: string) {
+function err(res: Response, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
 }
 
@@ -58,7 +59,7 @@ function parseRoleFilters(rawRole: unknown, rawRoles: unknown): Role[] {
 export const userRouter = Router();
 
 // requireAuth is applied globally in app.ts
-userRouter.get("/", async (req, res) => {
+userRouter.get("/", async (req: Request, res: Response) => {
   try {
     const requesterRole = toRole(req.user?.role);
     if (!requesterRole) return err(res, 403, "FORBIDDEN", "Invalid role");
@@ -102,7 +103,7 @@ userRouter.get("/", async (req, res) => {
 
     const rows = await pool.query<UserDirectoryRow>(sql, params);
     return res.json({ value: rows.rows, count: rows.rows.length });
-  } catch (e) {
+  } catch (e: unknown) {
     console.error("[users] GET /users error", e);
     return err(res, 500, "INTERNAL", "Failed to list users");
   }

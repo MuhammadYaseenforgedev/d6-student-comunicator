@@ -25,7 +25,8 @@ function shutdown(signal: string) {
     process.exit(0);
   });
 
-  setTimeout(() => process.exit(1), 10_000).unref();
+  const forceExitTimer: NodeJS.Timeout = setTimeout(() => process.exit(1), 10_000);
+  forceExitTimer.unref();
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));

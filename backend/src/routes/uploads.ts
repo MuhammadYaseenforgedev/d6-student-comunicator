@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { NextFunction, Request, Response } from "express";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
@@ -8,7 +9,7 @@ import type { UploadKind } from "../persistence/types";
 
 export const uploadRouter = Router();
 
-function err(res: any, status: number, code: string, message: string) {
+function err(res: Response, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
 }
 
@@ -21,8 +22,16 @@ const UPLOAD_DIR = path.resolve(PROJECT_ROOT, String(process.env.UPLOAD_DIR ?? "
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => {
+  destination: (
+    _req: Request,
+    _file: Express.Multer.File,
+    cb: (error: Error | null, destination: string) => void
+  ) => cb(null, UPLOAD_DIR),
+  filename: (
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null, filename: string) => void
+  ) => {
     const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
     const unique = `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`;
     cb(null, unique);
@@ -52,8 +61,8 @@ function canAccessUpload(
  * Multer errors happen before your async handler runs, so catch them explicitly.
  */
 function uploadSingle(field: string) {
-  return (req: any, res: any, next: any) => {
-    upload.single(field)(req, res, (e: any) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    upload.single(field)(req, res, (e: unknown) => {
       if (!e) return next();
       if (e instanceof multer.MulterError) {
         if (e.code === "LIMIT_FILE_SIZE") {
@@ -61,7 +70,8 @@ function uploadSingle(field: string) {
         }
         return err(res, 400, "UPLOAD_ERROR", e.message || "Upload error");
       }
-      return err(res, 400, "UPLOAD_ERROR", e?.message ?? "Upload error");
+      const message = e instanceof Error && e.message ? e.message : "Upload error";
+      return err(res, 400, "UPLOAD_ERROR", message);
     });
   };
 }
@@ -99,7 +109,7 @@ uploadRouter.post(
   "/",
   requireRole("ADMIN", "LECTURER", "STUDENT"),
   uploadSingle("file"),
-  async (req, res) => {
+  async (req: Request, res: Response) => {
     try {
       const user = req.user!;
       const kind = String(req.body?.kind ?? "") as UploadKind;
@@ -133,7 +143,7 @@ uploadRouter.post(
       });
 
       return res.status(201).json(created);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("[uploads] POST / error", e);
       return err(res, 500, "INTERNAL", "Upload failed");
     }
@@ -143,12 +153,12 @@ uploadRouter.post(
 /**
  * GET /api/uploads
  */
-uploadRouter.get("/", requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"), async (req, res) => {
+uploadRouter.get("/", requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"), async (req: Request, res: Response) => {
   try {
     const user = req.user!;
     const items = await repos.uploads.listForUser({ id: user.id, role: user.role });
     return res.json(items);
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("[uploads] GET / error", e);
     return err(res, 500, "INTERNAL", "Failed to list uploads");
   }
@@ -160,7 +170,7 @@ uploadRouter.get("/", requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"), asy
 uploadRouter.get(
   "/:id/download",
   requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"),
-  async (req, res) => {
+  async (req: Request, res: Response) => {
     try {
       const user = req.user!;
       const id = String(req.params.id || "").trim();
@@ -187,7 +197,7 @@ uploadRouter.get(
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(u.originalName)}"`);
 
       return fs.createReadStream(absPath).pipe(res);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("[uploads] GET /:id/download error", e);
       return err(res, 500, "INTERNAL", "Download failed");
     }
@@ -198,7 +208,7 @@ uploadRouter.get(
  * DELETE /api/uploads/:id
  * ADMIN/LECTURER can delete any upload metadata and best-effort remove file from disk.
  */
-uploadRouter.delete("/:id", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+uploadRouter.delete("/:id", requireRole("ADMIN", "LECTURER"), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return err(res, 400, "VALIDATION", "Invalid upload id");
@@ -213,13 +223,13 @@ uploadRouter.delete("/:id", requireRole("ADMIN", "LECTURER"), async (req, res) =
     if (absPath && fs.existsSync(absPath)) {
       try {
         fs.unlinkSync(absPath);
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error("[uploads] DELETE /:id unlink warning", e);
       }
     }
 
     return res.json({ ok: true });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("[uploads] DELETE /:id error", e);
     return err(res, 500, "INTERNAL", "Delete failed");
   }
