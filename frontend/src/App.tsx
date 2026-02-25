@@ -23,6 +23,7 @@ import ThreadPage from "./pages/ThreadPage";
 import Uploads from "./pages/Uploads1";
 import Calendar from "./pages/Calendar";
 import ManageResults from "./pages/ManageResults";
+import AdminParentLinks from "./pages/AdminParentLinks";
 
 import ParentPortalLayout from "./pages/parent/ParentPortalLayout";
 import ParentOverview from "./pages/parent/ParentOverview";
@@ -82,6 +83,10 @@ export default function App() {
 
                 <Route element={<RequireRole roles={["ADMIN", "LECTURER"]} />}>
                   <Route path="manage-results" element={<ManageResults />} />
+                </Route>
+
+                <Route element={<RequireRole roles={["ADMIN"]} />}>
+                  <Route path="admin/parent-links" element={<AdminParentLinks />} />
                 </Route>
 
                 <Route element={<RequireRole roles={["PARENT"]} />}>

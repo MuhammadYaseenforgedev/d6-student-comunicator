@@ -1,8 +1,13 @@
-const DEFAULT_BASE = "http://localhost:3000/api";
+const env = (import.meta as { env?: { VITE_API_BASE_URL?: string; VITE_API_URL?: string } }).env;
+const baseFromApi = (env?.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
+if (import.meta.env.PROD && !baseFromApi) {
+  throw new Error("VITE_API_URL is required for production builds.");
+}
 
-export const API_BASE =
-  (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ??
-  DEFAULT_BASE;
+const baseFromDirect = (env?.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+const apiOrigin = import.meta.env.PROD ? baseFromApi : baseFromApi || baseFromDirect;
+
+export const API_BASE = apiOrigin ? `${apiOrigin}/api` : "/api";
 
 function isJsonResponse(res: Response) {
   const contentType = res.headers.get("content-type") ?? "";

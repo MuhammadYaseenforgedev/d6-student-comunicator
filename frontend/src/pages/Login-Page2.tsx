@@ -3,7 +3,9 @@
 // Flow:
 // 1) Request OTP: POST /auth/request-otp (fallback /api/auth/request-otp)
 // 2) Register: POST /auth/register (fallback /api/auth/register) with otp
+//    - STUDENT requires southAfricanId + studentNumber
 // 3) Login: POST /auth/login (fallback /api/auth/login) with otp
+//    - STUDENT requires studentNumber
 //
 // Stores token + user in localStorage via setAuth so RequireAuth routing works.
 
@@ -23,7 +25,10 @@ type LoginResponse = { token: string; user?: AuthUserDTO };
 type RegisterResponse = { token?: string; user?: AuthUserDTO; message?: string };
 type OtpResponse = { ok: boolean; expiresAt?: string; devCode?: string };
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
+if (import.meta.env.PROD && !API_BASE) {
+  throw new Error("VITE_API_URL is required for production builds.");
+}
 
 type HttpError = Error & { status?: number; raw?: unknown };
 
@@ -54,6 +59,14 @@ function extractMessage(raw: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function normalizeStudentNumber(v: string): string {
+  return v.trim().toUpperCase();
+}
+
+function normalizeSouthAfricanId(v: string): string {
+  return v.replace(/\D+/g, "");
 }
 
 async function jsonFetch<T>(url: string, init: RequestInit): Promise<T> {
@@ -97,6 +110,8 @@ export default function LoginPage2() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [studentNumber, setStudentNumber] = useState("");
+  const [southAfricanId, setSouthAfricanId] = useState("");
 
   // backend expects role on register
   const [role, setRole] = useState<UserRole>("STUDENT");
@@ -113,6 +128,7 @@ export default function LoginPage2() {
 
   const title = useMemo(() => (mode === "login" ? "Sign in" : "Create your account"), [mode]);
   const roleNeedsStaffPassword = mode === "register" && (role === "ADMIN" || role === "LECTURER");
+  const roleNeedsStudentIdentity = mode === "register" && role === "STUDENT";
 
   async function fetchMe(token: string) {
     const me = await tryPath<{ user: AuthUserDTO }>(
@@ -151,11 +167,16 @@ export default function LoginPage2() {
     }
   }
 
-  async function doLogin(eNorm: string, pw: string, otpCode: string) {
+  async function doLogin(eNorm: string, pw: string, otpCode: string, studentNumberInput: string) {
     const init: RequestInit = {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ email: eNorm, password: pw, otp: otpCode }),
+      body: JSON.stringify({
+        email: eNorm,
+        password: pw,
+        otp: otpCode,
+        studentNumber: normalizeStudentNumber(studentNumberInput),
+      }),
     };
 
     const data = await tryPath<LoginResponse>(
@@ -178,7 +199,9 @@ export default function LoginPage2() {
     pw: string,
     otpCode: string,
     selectedRole: UserRole,
-    staffPassword: string
+    staffPassword: string,
+    studentNumberInput: string,
+    southAfricanIdInput: string
   ) {
     const payload: {
       email: string;
@@ -186,6 +209,8 @@ export default function LoginPage2() {
       role: UserRole;
       otp: string;
       staffRegisterPassword?: string;
+      studentNumber?: string;
+      southAfricanId?: string;
     } = {
       email: eNorm,
       password: pw,
@@ -195,6 +220,10 @@ export default function LoginPage2() {
 
     if (selectedRole === "ADMIN" || selectedRole === "LECTURER") {
       payload.staffRegisterPassword = staffPassword;
+    }
+    if (selectedRole === "STUDENT") {
+      payload.studentNumber = normalizeStudentNumber(studentNumberInput);
+      payload.southAfricanId = normalizeSouthAfricanId(southAfricanIdInput);
     }
 
     const init: RequestInit = {
@@ -229,6 +258,8 @@ export default function LoginPage2() {
     setInfo(null);
 
     const eNorm = email.trim().toLowerCase();
+    const studentNumberNorm = normalizeStudentNumber(studentNumber);
+    const southAfricanIdNorm = normalizeSouthAfricanId(southAfricanId);
     if (!eNorm) return setError("Please enter an email.");
 
     if (!password || password.length < 6) return setError("Password must be at least 6 characters.");
@@ -241,6 +272,18 @@ export default function LoginPage2() {
       return setError("Staff registration password is required for Admin/Lecturer roles.");
     }
 
+    if (roleNeedsStudentIdentity) {
+      if (!studentNumberNorm) {
+        return setError("Student number is required for student registration.");
+      }
+      if (!southAfricanIdNorm) {
+        return setError("South African ID is required for student registration.");
+      }
+      if (!/^\d{13}$/.test(southAfricanIdNorm)) {
+        return setError("South African ID must be exactly 13 digits.");
+      }
+    }
+
     if (!otp.trim()) {
       return setError("OTP is required. Click 'Request OTP' first, then enter the code.");
     }
@@ -248,9 +291,17 @@ export default function LoginPage2() {
     try {
       setBusy(true);
       if (mode === "login") {
-        await doLogin(eNorm, password, otp.trim());
+        await doLogin(eNorm, password, otp.trim(), studentNumberNorm);
       } else {
-        await doRegister(eNorm, password, otp.trim(), role, staffRegisterPassword.trim());
+        await doRegister(
+          eNorm,
+          password,
+          otp.trim(),
+          role,
+          staffRegisterPassword.trim(),
+          studentNumberNorm,
+          southAfricanIdNorm
+        );
       }
     } catch (err) {
       const e2 = err as HttpError;
@@ -261,7 +312,12 @@ export default function LoginPage2() {
   }
 
   const canRequestOtp = !!email.trim() && !busy;
-  const canSubmit = !!otp.trim() && !busy && (!roleNeedsStaffPassword || !!staffRegisterPassword.trim());
+  const canSubmit =
+    !!otp.trim() &&
+    !busy &&
+    (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
+    (!roleNeedsStudentIdentity ||
+      (!!normalizeStudentNumber(studentNumber) && /^\d{13}$/.test(normalizeSouthAfricanId(southAfricanId))));
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-10">
@@ -286,6 +342,7 @@ export default function LoginPage2() {
                 setInfo(null);
                 setOtp("");
                 setStaffRegisterPassword("");
+                setSouthAfricanId("");
               }}
               className={[
                 "rounded-lg py-2 text-sm font-semibold transition",
@@ -305,6 +362,7 @@ export default function LoginPage2() {
                 setInfo(null);
                 setOtp("");
                 setStaffRegisterPassword("");
+                setSouthAfricanId("");
               }}
               className={[
                 "rounded-lg py-2 text-sm font-semibold transition",
@@ -369,6 +427,52 @@ export default function LoginPage2() {
               />
             </div>
 
+            {(mode === "login" || roleNeedsStudentIdentity) && (
+              <div>
+                <label htmlFor="studentNumber" className="block text-sm text-white/80">
+                  Student Number
+                </label>
+                <input
+                  id="studentNumber"
+                  name="studentNumber"
+                  type="text"
+                  className="mt-2 w-full rounded-lg bg-black/25 border border-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/50"
+                  placeholder="e.g. STU-1001"
+                  value={studentNumber}
+                  onChange={(e) => setStudentNumber(e.target.value)}
+                  autoComplete="off"
+                  required={roleNeedsStudentIdentity}
+                  disabled={busy}
+                />
+                {mode === "login" && (
+                  <p className="mt-2 text-xs text-white/55">
+                    Required for student accounts. Other roles can leave this blank.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {roleNeedsStudentIdentity && (
+              <div>
+                <label htmlFor="southAfricanId" className="block text-sm text-white/80">
+                  South African ID
+                </label>
+                <input
+                  id="southAfricanId"
+                  name="southAfricanId"
+                  type="text"
+                  inputMode="numeric"
+                  className="mt-2 w-full rounded-lg bg-black/25 border border-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/50"
+                  placeholder="13-digit ID number"
+                  value={southAfricanId}
+                  onChange={(e) => setSouthAfricanId(e.target.value)}
+                  autoComplete="off"
+                  required
+                  disabled={busy}
+                />
+              </div>
+            )}
+
             {mode === "register" && (
               <div>
                 <label htmlFor="role" className="block text-sm text-white/80">
@@ -384,6 +488,9 @@ export default function LoginPage2() {
                     setRole(nextRole);
                     if (nextRole !== "ADMIN" && nextRole !== "LECTURER") {
                       setStaffRegisterPassword("");
+                    }
+                    if (nextRole !== "STUDENT") {
+                      setSouthAfricanId("");
                     }
                   }}
                   disabled={busy}

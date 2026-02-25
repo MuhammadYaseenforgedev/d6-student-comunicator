@@ -9,11 +9,22 @@ const STAFF_PASSWORD = "staff-secret-123";
 const ORIGINAL_ENV = {
   AUTH_REQUIRE_OTP: process.env.AUTH_REQUIRE_OTP,
   AUTH_ALLOW_PASSWORD_REGISTER: process.env.AUTH_ALLOW_PASSWORD_REGISTER,
+  AUTH_ALLOW_PASSWORD_LOGIN: process.env.AUTH_ALLOW_PASSWORD_LOGIN,
   AUTH_STAFF_REGISTER_PASSWORD: process.env.AUTH_STAFF_REGISTER_PASSWORD,
 };
 
 function uniqueEmail(tag: string) {
   return `${TEST_EMAIL_PREFIX}${tag}_${Date.now()}_${Math.floor(Math.random() * 10000)}@co.za`;
+}
+
+function uniqueStudentNumber(tag: string) {
+  return `${tag.toUpperCase()}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+}
+
+function uniqueSouthAfricanId() {
+  const ts = Date.now().toString();
+  const rand = Math.floor(Math.random() * 1_000_000).toString().padStart(6, "0");
+  return `${ts}${rand}`.slice(-13);
 }
 
 function restoreEnvVar(name: keyof typeof ORIGINAL_ENV) {
@@ -26,6 +37,7 @@ describe("Auth register role policy", () => {
   beforeAll(() => {
     process.env.AUTH_REQUIRE_OTP = "false";
     process.env.AUTH_ALLOW_PASSWORD_REGISTER = "true";
+    process.env.AUTH_ALLOW_PASSWORD_LOGIN = "true";
   });
 
   afterEach(() => {
@@ -36,19 +48,33 @@ describe("Auth register role policy", () => {
     await pool.query(`DELETE FROM users WHERE email LIKE $1`, [`${TEST_EMAIL_PREFIX}%@co.za`]);
     restoreEnvVar("AUTH_REQUIRE_OTP");
     restoreEnvVar("AUTH_ALLOW_PASSWORD_REGISTER");
+    restoreEnvVar("AUTH_ALLOW_PASSWORD_LOGIN");
     restoreEnvVar("AUTH_STAFF_REGISTER_PASSWORD");
   });
 
-  test("allows STUDENT self-registration", async () => {
+  test("allows STUDENT self-registration with SA ID and student number", async () => {
     const res = await request(app).post("/api/auth/register").send({
       email: uniqueEmail("student"),
       password: "Passw0rd!",
       role: "STUDENT",
+      southAfricanId: uniqueSouthAfricanId(),
+      studentNumber: uniqueStudentNumber("STU"),
     });
 
     expect(res.status).toBe(201);
     expect(res.body?.user?.role).toBe("STUDENT");
     expect(typeof res.body?.token).toBe("string");
+  });
+
+  test("blocks STUDENT self-registration when SA ID and student number are missing", async () => {
+    const res = await request(app).post("/api/auth/register").send({
+      email: uniqueEmail("student_missing_identity"),
+      password: "Passw0rd!",
+      role: "STUDENT",
+    });
+
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
   });
 
   test("allows PARENT self-registration", async () => {
@@ -115,5 +141,44 @@ describe("Auth register role policy", () => {
 
     expect(res.status).toBe(201);
     expect(res.body?.user?.role).toBe("ADMIN");
+  });
+
+  test("requires student number during STUDENT login", async () => {
+    const email = uniqueEmail("student_login");
+    const password = "Passw0rd!";
+    const studentNumber = uniqueStudentNumber("LOGIN");
+
+    const registerRes = await request(app).post("/api/auth/register").send({
+      email,
+      password,
+      role: "STUDENT",
+      southAfricanId: uniqueSouthAfricanId(),
+      studentNumber,
+    });
+    expect(registerRes.status).toBe(201);
+
+    const missingStudentNumber = await request(app).post("/api/auth/login").send({
+      email,
+      password,
+    });
+    expect(missingStudentNumber.status).toBe(400);
+    expect(String(missingStudentNumber.body?.error?.code ?? "")).toBe("VALIDATION");
+
+    const wrongStudentNumber = await request(app).post("/api/auth/login").send({
+      email,
+      password,
+      studentNumber: "WRONG-123",
+    });
+    expect(wrongStudentNumber.status).toBe(401);
+    expect(String(wrongStudentNumber.body?.error?.code ?? "")).toBe("AUTH");
+
+    const loginRes = await request(app).post("/api/auth/login").send({
+      email,
+      password,
+      studentNumber,
+    });
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body?.user?.role).toBe("STUDENT");
+    expect(typeof loginRes.body?.token).toBe("string");
   });
 });

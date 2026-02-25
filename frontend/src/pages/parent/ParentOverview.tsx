@@ -31,7 +31,7 @@ export default function ParentOverview() {
   const [children, setChildren] = useState<ParentChild[]>([]);
   const [linkRequests, setLinkRequests] = useState<LinkRequest[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string>("");
-  const [linkChildId, setLinkChildId] = useState("");
+  const [linkSouthAfricanId, setLinkSouthAfricanId] = useState("");
   const [results, setResults] = useState<Result[]>([]);
   const [finance, setFinance] = useState<FinanceSummary | null>(null);
   const [loadingChildren, setLoadingChildren] = useState(true);
@@ -136,9 +136,14 @@ export default function ParentOverview() {
   }, [selectedChildId]);
 
   async function submitLinkRequest() {
-    const childId = linkChildId.trim();
-    if (!childId) {
-      setLinkError("Enter a child email or student ID.");
+    const southAfricanId = linkSouthAfricanId.replace(/\D+/g, "");
+    if (!southAfricanId) {
+      setLinkError("Enter a student South African ID.");
+      setRequestStatus(null);
+      return;
+    }
+    if (!/^\d{13}$/.test(southAfricanId)) {
+      setLinkError("South African ID must be exactly 13 digits.");
       setRequestStatus(null);
       return;
     }
@@ -148,9 +153,9 @@ export default function ParentOverview() {
       setLinkError(null);
       setRequestStatus(null);
 
-      const created = await createLinkRequest(childId);
-      setRequestStatus(`Request ${created.status} for ${created.childId}`);
-      setLinkChildId("");
+      const created = await createLinkRequest(southAfricanId);
+      setRequestStatus(`Request ${created.status} for SA ID ${created.childId}`);
+      setLinkSouthAfricanId("");
 
       await refreshChildrenAndRequests(created.childId);
     } catch (e) {
@@ -183,7 +188,7 @@ export default function ParentOverview() {
         />
         <Card
           title="Children"
-          desc="Link children using ID (admin approval required)."
+          desc="Link children using South African ID (admin approval required)."
           to="/app/parent/children"
         />
 
@@ -199,14 +204,14 @@ export default function ParentOverview() {
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
         <div className="text-lg font-semibold text-white">Link a child</div>
         <div className="mt-2 text-sm text-slate-400">
-          Enter a student public ID or child email, then submit for admin approval.
+          Enter a student's South African ID (13 digits), then submit for admin approval.
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
           <input
-            value={linkChildId}
-            onChange={(e) => setLinkChildId(e.target.value)}
-            placeholder="e.g. STU-1001 or student@email.com"
+            value={linkSouthAfricanId}
+            onChange={(e) => setLinkSouthAfricanId(e.target.value)}
+            placeholder="e.g. 0012311234088"
             className="w-full rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
           />
 

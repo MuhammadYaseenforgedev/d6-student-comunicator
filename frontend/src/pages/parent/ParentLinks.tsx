@@ -1,5 +1,5 @@
 // src/pages/parent/ParentLinks.tsx
-// Parent -> request to link a child using child ID.
+// Parent -> request to link a child using South African ID.
 // Admin must approve before the child appears as "linked".
 
 import { useEffect, useMemo, useState } from "react";
@@ -21,7 +21,7 @@ export default function ParentLinks() {
   const user = getUser();
   const parentEmail = user?.email?.trim().toLowerCase() || "not available";
 
-  const [childId, setChildId] = useState("");
+  const [southAfricanId, setSouthAfricanId] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,17 +55,21 @@ export default function ParentLinks() {
     setError(null);
     setSuccess(null);
 
-    const idTrim = childId.trim();
+    const idTrim = southAfricanId.replace(/\D+/g, "");
     if (!idTrim) {
-      setError("Enter the child ID you want to link.");
+      setError("Enter the student's South African ID.");
+      return;
+    }
+    if (!/^\d{13}$/.test(idTrim)) {
+      setError("South African ID must be exactly 13 digits.");
       return;
     }
 
     setBusy(true);
     try {
       const created = await createLinkRequest(idTrim);
-      setChildId("");
-      setSuccess(`Request ${created.status} for ${created.childId}`);
+      setSouthAfricanId("");
+      setSuccess(`Request ${created.status} for SA ID ${created.childId}`);
       await loadRequests();
     } catch (e) {
       setError(toInlineError(e, "Failed to submit link request"));
@@ -78,7 +82,7 @@ export default function ParentLinks() {
     <div className="space-y-6">
       <PageHeader
         title="Link a Child"
-        subtitle="Request linking using the child's ID. Admin approval is required."
+        subtitle="Request linking using the student's South African ID. Admin approval is required."
       />
 
       {/* Request form */}
@@ -90,9 +94,9 @@ export default function ParentLinks() {
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
           <input
-            value={childId}
-            onChange={(e) => setChildId(e.target.value)}
-            placeholder="Enter child ID (e.g. STU-1001)"
+            value={southAfricanId}
+            onChange={(e) => setSouthAfricanId(e.target.value)}
+            placeholder="Enter student SA ID (13 digits)"
             className="w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600"
           />
 
@@ -144,7 +148,7 @@ export default function ParentLinks() {
               <div key={r.id} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="text-white font-semibold">Child ID: {r.childId}</div>
+                    <div className="text-white font-semibold">Student SA ID: {r.childId}</div>
                     <div className="mt-1 text-xs text-slate-400">
                       Requested: {new Date(r.requestedAt).toLocaleString()}
                     </div>

@@ -42,9 +42,15 @@ export const pgMessageRepo: MessageRepo = {
     return result.rows;
   },
 
-  // We'll implement proper delete later if your API needs it.
-  // For now we return false to keep the contract stable.
-  async delete(_messageId: string): Promise<boolean> {
-    return false;
+  async delete(messageId: string): Promise<boolean> {
+    const result = await pool.query(
+      `
+      DELETE FROM messages
+      WHERE id = $1
+      `,
+      [messageId]
+    );
+
+    return (result.rowCount ?? 0) > 0;
   },
 };

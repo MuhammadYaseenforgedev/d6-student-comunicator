@@ -132,12 +132,12 @@ function buildResultsCsv(childId: string, rows: AssessmentResultRow[]): string {
 
 /**
  * Resolves a student by either:
- * - public_student_id (preferred, matches frontend placeholder like STU-1001)
- * - email (fallback)
+ * - student number/public student ID
+ * - email (legacy fallback)
  *
  * Returns the student's user id or null.
  */
-async function resolveStudentUserId(childIdOrEmail: string): Promise<string | null> {
+async function resolveStudentUserId(childId: string): Promise<string | null> {
   const q = `
     SELECT id
     FROM users
@@ -145,7 +145,31 @@ async function resolveStudentUserId(childIdOrEmail: string): Promise<string | nu
       AND (public_student_id = $1 OR lower(email) = lower($1))
     LIMIT 1
   `;
-  const r = await pool.query<{ id: string }>(q, [childIdOrEmail]);
+  const r = await pool.query<{ id: string }>(q, [childId]);
+  return r.rows[0]?.id ?? null;
+}
+
+function normalizeSouthAfricanId(v: unknown): string {
+  return String(v ?? "").replace(/\D+/g, "");
+}
+
+function isValidSouthAfricanId(v: string): boolean {
+  return /^\d{13}$/.test(v);
+}
+
+/**
+ * Resolves a student by South African ID.
+ * Returns the student's user id or null.
+ */
+async function resolveStudentUserIdBySouthAfricanId(southAfricanId: string): Promise<string | null> {
+  const q = `
+    SELECT id
+    FROM users
+    WHERE role = 'STUDENT'
+      AND south_african_id = $1
+    LIMIT 1
+  `;
+  const r = await pool.query<{ id: string }>(q, [southAfricanId]);
   return r.rows[0]?.id ?? null;
 }
 
@@ -188,29 +212,31 @@ parentRouter.get("/parent", requireRole("PARENT"), async (req, res) => {
  * LINK REQUEST FLOW (Option A)
  * -------------------------
  *
- * PARENT creates a link request using a student-id like STU-1001 (email allowed as fallback).
+ * PARENT creates a link request using the student's South African ID.
  * ADMIN approves/rejects.
  */
 
 /**
  * POST /api/parent/link-requests
- * Body: { childId: "STU-1001" }  (preferred) OR { childId: "student@email.com" }
+ * Body: { southAfricanId: "0012311234088" }
  */
 parentRouter.post("/parent/link-requests", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
-    const childId = String(req.body?.childId ?? "").trim();
+    const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId ?? req.body?.childId);
+    if (!southAfricanId || !isValidSouthAfricanId(southAfricanId)) {
+      return err(res, 400, "VALIDATION", "southAfricanId is required and must be exactly 13 digits");
+    }
 
-    if (!childId) return err(res, 400, "VALIDATION", "childId is required (e.g. STU-1001)");
-
-    const studentId = await resolveStudentUserId(childId);
+    const studentId = await resolveStudentUserIdBySouthAfricanId(southAfricanId);
     if (!studentId) return err(res, 404, "NOT_FOUND", "Student not found");
 
     // Already approved link?
     if (await parentHasApprovedLink(parentId, studentId)) {
       return res.status(200).json({
         id: "already-linked",
-        childId,
+        childId: southAfricanId,
+        southAfricanId,
         status: "APPROVED",
         requestedAt: new Date().toISOString(),
       });
@@ -230,7 +256,8 @@ parentRouter.post("/parent/link-requests", requireRole("PARENT"), async (req, re
 
     return res.status(201).json({
       id,
-      childId,
+      childId: southAfricanId,
+      southAfricanId,
       status: "PENDING",
       requestedAt: new Date().toISOString(),
     });
@@ -253,6 +280,7 @@ parentRouter.get("/parent/link-requests", requireRole("PARENT"), async (req, res
         r.id,
         r.status,
         r.requested_at AS "requestedAt",
+        u.south_african_id AS "southAfricanId",
         u.public_student_id AS "childId",
         u.email AS "childEmail"
       FROM parent_link_requests r
@@ -265,7 +293,8 @@ parentRouter.get("/parent/link-requests", requireRole("PARENT"), async (req, res
     return res.json(
       r.rows.map((row: any) => ({
         id: row.id,
-        childId: row.childId ?? row.childEmail,
+        childId: row.southAfricanId ?? row.childId ?? row.childEmail,
+        southAfricanId: row.southAfricanId ?? null,
         status: row.status,
         requestedAt: row.requestedAt,
       }))
@@ -378,21 +407,17 @@ parentRouter.get("/parent/children", requireRole("PARENT"), async (req, res) => 
   }
 });
 
-// POST /api/parent/children { studentPublicId } (preferred) OR { studentEmail } (legacy)
+// POST /api/parent/children { southAfricanId }
 parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
 
-    const studentPublicId = String(req.body?.studentPublicId ?? "").trim();
-    const studentEmail = String(req.body?.studentEmail ?? "").trim().toLowerCase();
-
-    if (!studentPublicId && !studentEmail) {
-      return err(res, 400, "VALIDATION", "Provide studentPublicId (preferred) or studentEmail (legacy)");
+    const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId ?? req.body?.childId);
+    if (!southAfricanId || !isValidSouthAfricanId(southAfricanId)) {
+      return err(res, 400, "VALIDATION", "southAfricanId is required and must be exactly 13 digits");
     }
 
-    const identifier = studentPublicId || studentEmail;
-
-    const studentId = await resolveStudentUserId(identifier);
+    const studentId = await resolveStudentUserIdBySouthAfricanId(southAfricanId);
     if (!studentId) return err(res, 404, "NOT_FOUND", "Student not found");
 
     // If parent cannot link directly, create a pending request instead
@@ -412,7 +437,8 @@ parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) =>
         created: false,
         pending: true,
         message: "Link request submitted. Await admin approval.",
-        childId: identifier,
+        childId: southAfricanId,
+        southAfricanId,
       });
     }
 
@@ -498,6 +524,74 @@ parentRouter.get("/parent/results", requireRole("PARENT"), async (req, res) => {
   } catch (e: any) {
     console.error("[parent] GET /parent/results error", e);
     return err(res, 500, "INTERNAL", "Failed to load results");
+  }
+});
+
+/**
+ * ADMIN: list link requests (queue)
+ * GET /api/admin/parent/link-requests?status=PENDING|APPROVED|REJECTED|ALL
+ */
+parentRouter.get("/admin/parent/link-requests", requireRole("ADMIN"), async (req, res) => {
+  try {
+    const statusRaw = String(req.query.status ?? "PENDING").trim().toUpperCase();
+    const valid = new Set(["PENDING", "APPROVED", "REJECTED", "ALL"]);
+    if (!valid.has(statusRaw)) {
+      return err(res, 400, "VALIDATION", "status must be PENDING, APPROVED, REJECTED, or ALL");
+    }
+
+    const statusFilter = statusRaw === "ALL" ? null : statusRaw;
+
+    const params: string[] = [];
+    let where = "";
+    if (statusFilter) {
+      params.push(statusFilter);
+      where = `WHERE r.status = $1`;
+    }
+
+    const q = `
+      SELECT
+        r.id,
+        r.status,
+        r.requested_at AS "requestedAt",
+        r.decided_at AS "decidedAt",
+        p.id AS "parentUserId",
+        p.email AS "parentEmail",
+        s.id AS "childUserId",
+        s.email AS "childEmail",
+        s.south_african_id AS "southAfricanId",
+        s.public_student_id AS "childId",
+        d.id AS "decidedById",
+        d.email AS "decidedByEmail"
+      FROM parent_link_requests r
+      JOIN users p ON p.id = r.parent_user_id
+      JOIN users s ON s.id = r.student_user_id
+      LEFT JOIN users d ON d.id = r.decided_by
+      ${where}
+      ORDER BY
+        CASE WHEN r.status = 'PENDING' THEN 0 ELSE 1 END,
+        r.requested_at DESC
+    `;
+    const r = await pool.query(q, params);
+
+    return res.json(
+      r.rows.map((row: any) => ({
+        id: row.id,
+        status: row.status,
+        requestedAt: row.requestedAt,
+        decidedAt: row.decidedAt ?? null,
+        parentUserId: row.parentUserId,
+        parentEmail: row.parentEmail,
+        childUserId: row.childUserId,
+        childEmail: row.childEmail,
+        childId: row.southAfricanId ?? row.childId ?? row.childEmail,
+        southAfricanId: row.southAfricanId ?? null,
+        decidedById: row.decidedById ?? null,
+        decidedByEmail: row.decidedByEmail ?? null,
+      }))
+    );
+  } catch (e: any) {
+    console.error("[parent] GET /admin/parent/link-requests error", e);
+    return err(res, 500, "INTERNAL", "Failed to list link requests");
   }
 });
 
@@ -605,7 +699,7 @@ parentRouter.post("/admin/results/cleanup-demo", requireRole("ADMIN"), async (re
         res,
         400,
         "VALIDATION",
-        "childIds must be a non-empty array of student public IDs/emails"
+        "childIds must be a non-empty array of student numbers"
       );
     }
     if (childIds.length > 100) {

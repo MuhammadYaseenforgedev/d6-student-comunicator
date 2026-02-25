@@ -18,13 +18,33 @@ export type LinkRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | string;
 export type LinkRequest = {
   id: string;
   childId: string;
+  southAfricanId?: string | null;
   status: LinkRequestStatus;
   requestedAt: string;
+};
+
+export type AdminLinkRequestStatusFilter = "PENDING" | "APPROVED" | "REJECTED" | "ALL";
+export type AdminLinkRequestDecision = "APPROVED" | "REJECTED";
+
+export type AdminLinkRequest = {
+  id: string;
+  status: LinkRequestStatus;
+  requestedAt: string;
+  decidedAt: string | null;
+  parentUserId: string;
+  parentEmail: string;
+  childUserId: string;
+  childEmail: string;
+  childId: string;
+  southAfricanId?: string | null;
+  decidedById: string | null;
+  decidedByEmail: string | null;
 };
 
 export type LinkRequestCreateResult = {
   id: string;
   childId: string;
+  southAfricanId?: string | null;
   status: LinkRequestStatus;
   requestedAt: string;
 };
@@ -140,12 +160,47 @@ function normalizeLinkRequest(row: unknown): LinkRequest | null {
   const id = toStringValue(row.id).trim();
   if (!id) return null;
 
-  const childIdRaw = toStringValue(row.childId).trim();
-  const childId = childIdRaw || "unknown";
+  const southAfricanId = toStringValue(row.southAfricanId).trim();
+  const childIdRaw = toStringValue(row.childId, southAfricanId).trim();
+  const childId = southAfricanId || childIdRaw || "unknown";
   const status = toStringValue(row.status, "PENDING").toUpperCase();
   const requestedAt = toStringValue(row.requestedAt) || new Date().toISOString();
 
-  return { id, childId, status, requestedAt };
+  return { id, childId, southAfricanId: southAfricanId || null, status, requestedAt };
+}
+
+function normalizeAdminLinkRequest(row: unknown): AdminLinkRequest | null {
+  if (!isObject(row)) return null;
+
+  const id = toStringValue(row.id).trim();
+  const parentUserId = toStringValue(row.parentUserId).trim();
+  const parentEmail = toStringValue(row.parentEmail).trim();
+  const childUserId = toStringValue(row.childUserId).trim();
+  const childEmail = toStringValue(row.childEmail).trim();
+  const southAfricanId = toStringValue(row.southAfricanId).trim();
+  const childId = toStringValue(row.childId, southAfricanId || childEmail || "unknown").trim();
+  if (!id || !parentUserId || !parentEmail || !childUserId || !childEmail || !childId) return null;
+
+  const status = toStringValue(row.status, "PENDING").toUpperCase();
+  const requestedAt = toStringValue(row.requestedAt) || new Date().toISOString();
+  const decidedAtRaw = row.decidedAt;
+  const decidedByIdRaw = row.decidedById;
+  const decidedByEmailRaw = row.decidedByEmail;
+
+  return {
+    id,
+    status,
+    requestedAt,
+    decidedAt: typeof decidedAtRaw === "string" ? decidedAtRaw : null,
+    parentUserId,
+    parentEmail,
+    childUserId,
+    childEmail,
+    childId,
+    southAfricanId: southAfricanId || null,
+    decidedById: typeof decidedByIdRaw === "string" ? decidedByIdRaw : null,
+    decidedByEmail: typeof decidedByEmailRaw === "string" ? decidedByEmailRaw : null,
+  };
 }
 
 function normalizeResult(row: unknown, index: number): Result {
@@ -242,24 +297,53 @@ export async function listLinkRequests(): Promise<LinkRequest[]> {
     .filter((x): x is LinkRequest => x !== null);
 }
 
-export async function createLinkRequest(childId: string): Promise<LinkRequestCreateResult> {
-  const data = await apiPost<unknown>("/api/parent/parent/link-requests", { childId });
+export async function createLinkRequest(southAfricanId: string): Promise<LinkRequestCreateResult> {
+  const data = await apiPost<unknown>("/api/parent/parent/link-requests", { southAfricanId });
   const source = unwrapObject(data);
 
   if (!source) {
     return {
       id: "unknown",
-      childId,
+      childId: southAfricanId,
+      southAfricanId,
       status: "PENDING",
       requestedAt: new Date().toISOString(),
     };
   }
 
+  const returnedSouthAfricanId = toStringValue(source.southAfricanId, southAfricanId).trim();
+  const returnedChildId = toStringValue(source.childId, returnedSouthAfricanId || southAfricanId);
   return {
     id: toStringValue(source.id, "unknown"),
-    childId: toStringValue(source.childId, childId),
+    childId: returnedChildId,
+    southAfricanId: returnedSouthAfricanId || null,
     status: toStringValue(source.status, "PENDING").toUpperCase(),
     requestedAt: toStringValue(source.requestedAt, new Date().toISOString()),
+  };
+}
+
+export async function listAdminLinkRequests(
+  status: AdminLinkRequestStatusFilter = "PENDING"
+): Promise<AdminLinkRequest[]> {
+  const qs = new URLSearchParams();
+  qs.set("status", status);
+  const data = await apiGet<unknown>(`/api/parent/admin/parent/link-requests?${qs.toString()}`);
+  return unwrapList<unknown>(data)
+    .map(normalizeAdminLinkRequest)
+    .filter((x): x is AdminLinkRequest => x !== null);
+}
+
+export async function decideAdminLinkRequest(
+  id: string,
+  decision: AdminLinkRequestDecision
+): Promise<{ ok: boolean; status: string }> {
+  const data = await apiPost<unknown>(`/api/parent/admin/parent/link-requests/${encodeURIComponent(id)}/decide`, {
+    decision,
+  });
+  const source = unwrapObject(data);
+  return {
+    ok: source ? Boolean(source.ok) : true,
+    status: source ? toStringValue(source.status, decision) : decision,
   };
 }
 

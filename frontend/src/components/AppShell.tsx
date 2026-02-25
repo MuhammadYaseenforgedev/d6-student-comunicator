@@ -29,9 +29,11 @@ export default function AppShell() {
   const calendarTo = user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
   const homeTo = isParent ? "/app/parent" : "/app";
 
-  const title =
-    location.pathname.includes("/calendar")
-      ? "Calendar"
+    const title =
+      location.pathname.includes("/calendar")
+        ? "Calendar"
+      : location.pathname.includes("/admin/parent-links")
+      ? "Parent Link Approvals"
       : location.pathname.includes("/manage-results")
       ? "Manage Results"
       : location.pathname.includes("/uploads")
@@ -111,6 +113,7 @@ export default function AppShell() {
                     {(user?.role === "ADMIN" || user?.role === "LECTURER") && (
                       <Item to="/app/manage-results" label="Manage Results" />
                     )}
+                    {user?.role === "ADMIN" && <Item to="/app/admin/parent-links" label="Parent Link Approvals" />}
                   </>
                 )}
               </div>

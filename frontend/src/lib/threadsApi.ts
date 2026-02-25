@@ -45,11 +45,11 @@ export type Paged<T> = {
 
 // ---------- Config ----------
 
-// Vite env config: set this later when you deploy.
-// For local dev, this should match your backend port.
-const BASE_URL = (import.meta as unknown as { env: Record<string, string | undefined> }).env
-  ?.VITE_API_URL?.trim()
-  || "http://localhost:4000";
+// Vite env config: required in production deploys.
+const BASE_URL = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
+if (import.meta.env.PROD && !BASE_URL) {
+  throw new Error("VITE_API_URL is required for production builds.");
+}
 
 // If your backend mounts routes at /api, keep this.
 // If your backend already includes /api in BASE_URL, remove "/api" here.
@@ -64,9 +64,19 @@ function requireToken(): string {
 }
 
 async function readErrorMessage(res: Response): Promise<string> {
-  // Backend error shape: { error: { code, message } } OR { message }
+  // Backend can return: { error: { code, message } } OR { error: "..." } OR { message }
   try {
     const data = (await res.json()) as unknown;
+
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "error" in data &&
+      typeof (data as { error?: unknown }).error === "string"
+    ) {
+      const msg = (data as { error: string }).error.trim();
+      if (msg) return msg;
+    }
 
     if (
       typeof data === "object" &&

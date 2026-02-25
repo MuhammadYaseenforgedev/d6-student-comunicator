@@ -13,10 +13,11 @@ function err(res: any, status: number, code: string, message: string) {
 }
 
 /**
- * Store uploads in backend/uploads (relative to backend working directory).
- * Your DB stores storagePath, and we resolve it from process.cwd().
+ * Store uploads in backend/uploads by default.
+ * Override with UPLOAD_DIR for cloud/container environments.
  */
-const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");
+const PROJECT_ROOT = path.resolve(__dirname, "../..");
+const UPLOAD_DIR = path.resolve(PROJECT_ROOT, String(process.env.UPLOAD_DIR ?? "").trim() || "uploads");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -75,8 +76,10 @@ function resolveUploadPath(storagePath: string): string | null {
   // Require uploads/ prefix (your DB schema style)
   if (!normalized.startsWith("uploads/")) return null;
 
-  // Resolve from project root
-  const absPath = path.resolve(process.cwd(), normalized);
+  // Resolve relative to the active upload root.
+  const relativeUploadPath = normalized.slice("uploads/".length);
+  if (!relativeUploadPath) return null;
+  const absPath = path.resolve(UPLOAD_DIR, relativeUploadPath);
 
   // Ensure absPath is within UPLOAD_DIR
   const rel = path.relative(UPLOAD_DIR, absPath);

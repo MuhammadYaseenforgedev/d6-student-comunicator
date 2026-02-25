@@ -23,7 +23,10 @@ type ViteEnv = {
 };
 
 const env = (import.meta as unknown as { env: ViteEnv }).env;
-const BASE_URL = env?.VITE_API_URL?.trim() ?? "";
+const BASE_URL = (env?.VITE_API_URL?.trim() ?? "").replace(/\/+$/, "");
+if (import.meta.env.PROD && !BASE_URL) {
+  throw new Error("VITE_API_URL is required for production builds.");
+}
 
 /**
  * OTP challenge returned by backend.
@@ -56,7 +59,7 @@ export function normalizeEmail(email: string) {
  * If BASE_URL is empty, we assume backend is not wired yet.
  */
 function isDevFallbackEnabled() {
-  return BASE_URL.length === 0;
+  return !import.meta.env.PROD && BASE_URL.length === 0;
 }
 
 /**

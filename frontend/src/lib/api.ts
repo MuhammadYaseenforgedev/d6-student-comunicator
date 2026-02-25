@@ -1,8 +1,9 @@
 // frontend/src/lib/api.ts
 
-const RAW_API_URL = (import.meta.env.VITE_API_URL || "").trim();
-// If VITE_API_URL is not set, default to "" and rely on Vite proxy for /api/* in dev.
-const API_URL = RAW_API_URL.replace(/\/+$/, "");
+const API_URL = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
+if (import.meta.env.PROD && !API_URL) {
+  throw new Error("VITE_API_URL is required for production builds.");
+}
 
 function getToken(): string | null {
   return localStorage.getItem("token");

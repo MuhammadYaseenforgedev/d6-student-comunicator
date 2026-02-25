@@ -202,6 +202,18 @@ describe("RBAC matrix (automated)", () => {
     },
 
     {
+      name: "ADMIN can list parent link request queue",
+      run: () => request(app).get("/api/parent/admin/parent/link-requests").set(auth(ctx.adminToken)),
+      expect: [200],
+    },
+
+    {
+      name: "LECTURER cannot list parent link request queue",
+      run: () => request(app).get("/api/parent/admin/parent/link-requests").set(auth(ctx.lecturerToken)),
+      expect: [401, 403],
+    },
+
+    {
       name: "STUDENT can access /calendar without childId",
       run: () => request(app).get("/api/calendar").set(auth(ctx.studentToken)),
       // You said student gets 200 currently.

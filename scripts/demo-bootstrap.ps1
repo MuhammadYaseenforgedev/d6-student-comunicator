@@ -18,6 +18,16 @@ $demo = [ordered]@{
   STUDENT2 = "student_demo2@local.test"
   PARENT = "parent_demo@local.test"
 }
+$demoStudentIdentity = @{
+  "student_demo@local.test" = @{
+    studentNumber = "STU-DEMO-1001"
+    southAfricanId = "9001015009087"
+  }
+  "student_demo2@local.test" = @{
+    studentNumber = "STU-DEMO-1002"
+    southAfricanId = "9001015009088"
+  }
+}
 
 $missing = @{}
 $warn = @{}
@@ -304,6 +314,15 @@ function Try-AdminCredsFromEnv() {
   }
 }
 
+function Get-StudentIdentity([string]$email) {
+  $key = [string]$email
+  if (-not $key) { return $null }
+  if ($demoStudentIdentity.ContainsKey($key)) {
+    return $demoStudentIdentity[$key]
+  }
+  return $null
+}
+
 function Otp([string]$email, [string]$purpose) {
   $r = Api POST "/api/auth/request-otp" "" @{ email = $email; purpose = $purpose }
   if (-not $r.ok) {
@@ -341,8 +360,16 @@ function AuthFromResponse([object]$r, [string]$ctx) {
   return [pscustomobject]@{ ok = $true; token = $token; user = $user; reason = "" }
 }
 
-function Login([string]$email, [string]$pass) {
-  $r = Api POST "/api/auth/login" "" @{ email = $email; password = $pass }
+function Login([string]$email, [string]$pass, [string]$studentNumber = "") {
+  $loginBody = @{
+    email = $email
+    password = $pass
+  }
+  if (-not [string]::IsNullOrWhiteSpace($studentNumber)) {
+    $loginBody.studentNumber = $studentNumber
+  }
+
+  $r = Api POST "/api/auth/login" "" $loginBody
   if ($r.ok) {
     $parsed = AuthFromResponse $r "Login"
     if ($parsed.ok) { return $parsed }
@@ -351,7 +378,15 @@ function Login([string]$email, [string]$pass) {
   if ($r.status -eq 400) {
     $otp = Otp $email "LOGIN"
     if ($otp) {
-      $r2 = Api POST "/api/auth/login" "" @{ email = $email; password = $pass; otp = $otp }
+      $loginOtpBody = @{
+        email = $email
+        password = $pass
+        otp = $otp
+      }
+      if (-not [string]::IsNullOrWhiteSpace($studentNumber)) {
+        $loginOtpBody.studentNumber = $studentNumber
+      }
+      $r2 = Api POST "/api/auth/login" "" $loginOtpBody
       if ($r2.ok) {
         $parsed2 = AuthFromResponse $r2 "Login"
         if ($parsed2.ok) { return $parsed2 }
@@ -364,7 +399,7 @@ function Login([string]$email, [string]$pass) {
 }
 
 function RegisterParent([string]$email, [string]$pass) {
-  $r = Api POST "/api/auth/register" "" @{ email = $email; password = $pass }
+  $r = Api POST "/api/auth/register" "" @{ email = $email; password = $pass; role = "PARENT" }
   if ($r.ok) {
     $parsed = AuthFromResponse $r "Register"
     if ($parsed.ok) {
@@ -373,13 +408,13 @@ function RegisterParent([string]$email, [string]$pass) {
     return [pscustomobject]@{ ok = $false; exists = $false; reason = $parsed.reason }
   }
   $er = Err $r
-  if ($r.status -eq 400 -and $er -match "Email already exists") {
+  if ($r.status -eq 400 -and $er -match "(?i)already exists") {
     return [pscustomobject]@{ ok = $false; exists = $true; reason = $er }
   }
   if ($r.status -eq 400) {
     $otp = Otp $email "REGISTER"
     if ($otp) {
-      $r2 = Api POST "/api/auth/register" "" @{ email = $email; password = $pass; otp = $otp }
+      $r2 = Api POST "/api/auth/register" "" @{ email = $email; password = $pass; role = "PARENT"; otp = $otp }
       if ($r2.ok) {
         $parsed2 = AuthFromResponse $r2 "Register"
         if ($parsed2.ok) {
@@ -388,7 +423,7 @@ function RegisterParent([string]$email, [string]$pass) {
         return [pscustomobject]@{ ok = $false; exists = $false; reason = $parsed2.reason }
       }
       $er2 = Err $r2
-      return [pscustomobject]@{ ok = $false; exists = ($r2.status -eq 400 -and $er2 -match "Email already exists"); reason = $er2 }
+      return [pscustomobject]@{ ok = $false; exists = ($r2.status -eq 400 -and $er2 -match "(?i)already exists"); reason = $er2 }
     }
   }
   return [pscustomobject]@{ ok = $false; exists = $false; reason = $er }
@@ -406,8 +441,16 @@ function EnsureParent([string]$email, [string]$pass) {
   return [pscustomobject]@{ ok = $false; reason = "Parent setup failed. Login=$($l.reason); Register=$($reg.reason)" }
 }
 
-function EnsureRole([string]$role, [string]$email, [string]$pass, [string]$adminToken) {
-  $l = Login $email $pass
+function EnsureRole(
+  [string]$role,
+  [string]$email,
+  [string]$pass,
+  [string]$adminToken,
+  [string]$studentNumber = "",
+  [string]$southAfricanId = ""
+) {
+  $loginStudentNumber = if ($role -eq "STUDENT") { $studentNumber } else { "" }
+  $l = Login $email $pass $loginStudentNumber
   if ($l.ok) {
     if (([string]$l.user.role).ToUpperInvariant() -ne $role) {
       Add-Warn "$email logged in as $($l.user.role), expected $role."
@@ -418,7 +461,22 @@ function EnsureRole([string]$role, [string]$email, [string]$pass, [string]$admin
     Add-Missing "Cannot create $role user $email without ADMIN token."
     return [pscustomobject]@{ ok = $false; reason = "No admin token" }
   }
-  $c = Api POST "/api/auth/admin-create" $adminToken @{ email = $email; password = $pass; role = $role }
+
+  $createBody = @{
+    email = $email
+    password = $pass
+    role = $role
+  }
+  if ($role -eq "STUDENT") {
+    if ([string]::IsNullOrWhiteSpace($studentNumber) -or [string]::IsNullOrWhiteSpace($southAfricanId)) {
+      Add-Missing "Cannot create STUDENT user $email without studentNumber and southAfricanId."
+      return [pscustomobject]@{ ok = $false; reason = "Missing student identity" }
+    }
+    $createBody.studentNumber = $studentNumber
+    $createBody.southAfricanId = $southAfricanId
+  }
+
+  $c = Api POST "/api/auth/admin-create" $adminToken $createBody
   if ($c.status -eq 404) {
     Add-Missing "MISSING ENDPOINT: POST /api/auth/admin-create"
     return [pscustomobject]@{ ok = $false; reason = "admin-create missing" }
@@ -426,7 +484,7 @@ function EnsureRole([string]$role, [string]$email, [string]$pass, [string]$admin
   if (-not $c.ok -and $c.status -ne 400) {
     return [pscustomobject]@{ ok = $false; reason = (Err $c) }
   }
-  $l2 = Login $email $pass
+  $l2 = Login $email $pass $loginStudentNumber
   if ($l2.ok) {
     if (([string]$l2.user.role).ToUpperInvariant() -ne $role) {
       Add-Warn "$email logged in as $($l2.user.role), expected $role."
@@ -477,28 +535,28 @@ function ApproveReq([string]$a, [string]$id) {
   }
 }
 
-function EnsureLink([string]$pt, [string]$at, [string]$childKey, [string]$childEmail) {
+function EnsureLink([string]$pt, [string]$at, [string]$southAfricanId, [string]$childEmail) {
   $children = @(ParentChildren $pt)
   $hit = $children | Where-Object { ([string]$_.email).Equals($childEmail, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
   if ($hit) { return $children }
 
   $req = @(ParentReqs $pt) | Where-Object {
     $c = [string]$_.childId
-    $c.Equals($childKey, [System.StringComparison]::OrdinalIgnoreCase) -or
+    $c.Equals($southAfricanId, [System.StringComparison]::OrdinalIgnoreCase) -or
     $c.Equals($childEmail, [System.StringComparison]::OrdinalIgnoreCase)
   } | Select-Object -First 1
 
   if ($req -and ([string]$req.status).ToUpperInvariant() -eq "PENDING") {
-    if ($at) { ApproveReq $at ([string]$req.id) } else { Add-Missing "Pending link request for $childKey requires ADMIN approval." }
+    if ($at) { ApproveReq $at ([string]$req.id) } else { Add-Missing "Pending link request for $southAfricanId requires ADMIN approval." }
   }
 
   $children = @(ParentChildren $pt)
   $hit = $children | Where-Object { ([string]$_.email).Equals($childEmail, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
   if ($hit) { return $children }
 
-  $c = Api POST "/api/parent/parent/link-requests" $pt @{ childId = $childKey }
+  $c = Api POST "/api/parent/parent/link-requests" $pt @{ southAfricanId = $southAfricanId }
   if (-not $c.ok -and $c.status -ne 200) {
-    Add-Warn "link-request create failed for ${childKey}: $(Err $c)"
+    Add-Warn "link-request create failed for SA ID ${southAfricanId}: $(Err $c)"
     return @(ParentChildren $pt)
   }
 
@@ -514,7 +572,7 @@ function EnsureLink([string]$pt, [string]$at, [string]$childKey, [string]$childE
     if ($at -and $rid -and $rid -ne "already-linked") {
       ApproveReq $at $rid
     } else {
-      Add-Missing "Link request for $childKey is pending and cannot be auto-approved without ADMIN token."
+      Add-Missing "Link request for $southAfricanId is pending and cannot be auto-approved without ADMIN token."
     }
   }
 
@@ -946,17 +1004,31 @@ try {
   $lect = EnsureRole "LECTURER" $demo.LECTURER $demoPass $adminToken
   if ($lect.ok) { SaveUser "LECTURER" $demo.LECTURER $lect }
 
-  $stud = EnsureRole "STUDENT" $demo.STUDENT $demoPass $adminToken
+  $studIdentity = Get-StudentIdentity $demo.STUDENT
+  $studNumber = if ($studIdentity) { [string]$studIdentity.studentNumber } else { "" }
+  $studSouthAfricanId = if ($studIdentity) { [string]$studIdentity.southAfricanId } else { "" }
+  $stud = EnsureRole "STUDENT" $demo.STUDENT $demoPass $adminToken $studNumber $studSouthAfricanId
   if ($stud.ok) { SaveUser "STUDENT" $demo.STUDENT $stud }
 
-  $stud2 = EnsureRole "STUDENT" $demo.STUDENT2 $demoPass $adminToken
+  $stud2Identity = Get-StudentIdentity $demo.STUDENT2
+  $stud2Number = if ($stud2Identity) { [string]$stud2Identity.studentNumber } else { "" }
+  $stud2SouthAfricanId = if ($stud2Identity) { [string]$stud2Identity.southAfricanId } else { "" }
+  $stud2 = EnsureRole "STUDENT" $demo.STUDENT2 $demoPass $adminToken $stud2Number $stud2SouthAfricanId
   if ($stud2.ok) { SaveUser "STUDENT2" $demo.STUDENT2 $stud2 }
 
   $pt = [string]$parent.token
   $studentToken = if ($stud.ok) { [string]$stud.token } else { "" }
 
-  if ($stud.ok) { [void](EnsureLink $pt $adminToken $demo.STUDENT $demo.STUDENT) }
-  if ($stud2.ok) { [void](EnsureLink $pt $adminToken $demo.STUDENT2 $demo.STUDENT2) }
+  if ($stud.ok -and $studSouthAfricanId) {
+    [void](EnsureLink $pt $adminToken $studSouthAfricanId $demo.STUDENT)
+  } elseif ($stud.ok) {
+    Add-Missing "Missing SA ID mapping for $($demo.STUDENT). Cannot submit parent link request."
+  }
+  if ($stud2.ok -and $stud2SouthAfricanId) {
+    [void](EnsureLink $pt $adminToken $stud2SouthAfricanId $demo.STUDENT2)
+  } elseif ($stud2.ok) {
+    Add-Missing "Missing SA ID mapping for $($demo.STUDENT2). Cannot submit parent link request."
+  }
 
   $children = @(ParentChildren $pt)
   $res.linkedChildren = @($children | ForEach-Object { [string]$_.id })
@@ -973,7 +1045,7 @@ try {
     Fail "Parent is not linked to a student child after link setup." $null @{ children = $children }
   } else {
     $childId = [string]$primary.id
-    $childKey = [string]$primary.email
+    $childKey = if ($primary.publicStudentId) { [string]$primary.publicStudentId } else { [string]$primary.email }
 
     if ($childKey) {
       $res.financeDocCount = EnsureFinance $pt $childKey

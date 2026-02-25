@@ -127,6 +127,18 @@ function parseRole(v: unknown): Role | null {
   return VALID_ROLES.includes(role as Role) ? (role as Role) : null;
 }
 
+function normalizeStudentNumber(v: unknown): string {
+  return String(v ?? "").trim().toUpperCase();
+}
+
+function normalizeSouthAfricanId(v: unknown): string {
+  return String(v ?? "").replace(/\D+/g, "");
+}
+
+function isValidSouthAfricanId(v: string): boolean {
+  return /^\d{13}$/.test(v);
+}
+
 function isStaffSelfRegisterRole(role: Role): role is StaffSelfRegisterRole {
   return STAFF_SELF_REGISTER_ROLES.includes(role as StaffSelfRegisterRole);
 }
@@ -341,7 +353,15 @@ authRouter.post("/request-otp", async (req, res) => {
    REGISTER
    POST /register
    Supports:
-   - OTP register: { email, password, role, otp, staffRegisterPassword? }
+   - OTP register:
+     {
+       email,
+       password,
+       role,
+       otp,
+       staffRegisterPassword?,          // required for ADMIN/LECTURER
+       studentNumber?, southAfricanId?  // required for STUDENT
+     }
    - Optional dev register (if enabled): { email, password } when AUTH_ALLOW_PASSWORD_REGISTER=true
 =================================*/
 authRouter.post("/register", async (req, res) => {
@@ -353,6 +373,8 @@ authRouter.post("/register", async (req, res) => {
   const role = roleRaw ? parseRole(roleRaw) : ("STUDENT" as Role);
   const staffRegisterPassword = String(req.body?.staffRegisterPassword ?? "").trim();
   const otp = String(req.body?.otp ?? "").trim();
+  const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
+  const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
 
   if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
@@ -364,6 +386,29 @@ authRouter.post("/register", async (req, res) => {
 
   if (!(PUBLIC_SELF_REGISTER_ROLES as readonly Role[]).includes(role) && !isStaffSelfRegisterRole(role)) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
+  }
+
+  if (role === "STUDENT") {
+    if (!southAfricanId) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "southAfricanId is required for student registration" },
+      });
+    }
+    if (!isValidSouthAfricanId(southAfricanId)) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "southAfricanId must be exactly 13 digits" },
+      });
+    }
+    if (!studentNumber) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "studentNumber is required for student registration" },
+      });
+    }
+    if (studentNumber.length > 64) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "studentNumber must be 64 characters or fewer" },
+      });
+    }
   }
 
   if (isStaffSelfRegisterRole(role)) {
@@ -405,31 +450,42 @@ authRouter.post("/register", async (req, res) => {
   try {
       const result = await pool.query(
         `
-        INSERT INTO users (email, password_hash, role)
-        VALUES ($1, $2, $3)
+        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id, email, role
       `,
-        [email, passwordHash, role]
+        [email, passwordHash, role, role === "STUDENT" ? studentNumber : null, role === "STUDENT" ? southAfricanId : null]
       );
 
     const user = result.rows[0] as JwtUser;
     const token = signToken(user);
     return res.status(201).json({ token, user });
-  } catch {
-    return res.status(400).json({ error: { code: "VALIDATION", message: "Email already exists" } });
+  } catch (e: any) {
+    if (String(e?.code ?? "") === "23505") {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION",
+          message: "Account already exists (email, student number, or South African ID)",
+        },
+      });
+    }
+    console.error("[auth] POST /register error", e);
+    return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to register account" } });
   }
 });
 
 /* ===============================
    ADMIN CREATE USER (protected)
    POST /admin-create
-   Body: { email, password, role }
+   Body: { email, password, role, studentNumber?, southAfricanId? }
    Only authenticated ADMIN may create privileged roles.
 =================================*/
 authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   const roleRaw = String(req.body?.role ?? "").trim().toUpperCase();
+  const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
+  const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
 
   if (!email || !password || !roleRaw) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
@@ -440,21 +496,80 @@ authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
   }
 
   const role = roleRaw as Role;
+
+  if (role === "STUDENT") {
+    if (!southAfricanId) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "southAfricanId is required for student creation" },
+      });
+    }
+    if (!isValidSouthAfricanId(southAfricanId)) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "southAfricanId must be exactly 13 digits" },
+      });
+    }
+    if (!studentNumber) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "studentNumber is required for student creation" },
+      });
+    }
+    if (studentNumber.length > 64) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "studentNumber must be 64 characters or fewer" },
+      });
+    }
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
 
   try {
     const result = await pool.query(
       `
-        INSERT INTO users (email, password_hash, role)
-        VALUES ($1, $2, $3)
+        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id, email, role
       `,
-      [email, passwordHash, role]
+      [email, passwordHash, role, role === "STUDENT" ? studentNumber : null, role === "STUDENT" ? southAfricanId : null]
     );
 
     return res.status(201).json({ user: result.rows[0] });
-  } catch {
-    return res.status(400).json({ error: { code: "VALIDATION", message: "Email already exists" } });
+  } catch (e: any) {
+    if (String(e?.code ?? "") === "23505") {
+      if (role === "STUDENT") {
+        try {
+          const updated = await pool.query(
+            `
+              UPDATE users
+              SET
+                role = 'STUDENT',
+                public_student_id = COALESCE(public_student_id, $2),
+                south_african_id = COALESCE(south_african_id, $3)
+              WHERE lower(email) = lower($1)
+              RETURNING id, email, role
+            `,
+            [email, studentNumber, southAfricanId]
+          );
+
+          if ((updated.rowCount ?? 0) > 0) {
+            return res.status(200).json({ user: updated.rows[0], updated: true });
+          }
+        } catch (upsertErr: any) {
+          if (String(upsertErr?.code ?? "") !== "23505") {
+            return res.status(500).json({
+              error: { code: "INTERNAL", message: "Failed to update existing student account" },
+            });
+          }
+        }
+      }
+
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION",
+          message: "Account already exists (email, student number, or South African ID)",
+        },
+      });
+    }
+    return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to create account" } });
   }
 });
 
@@ -462,7 +577,7 @@ authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
    LOGIN
    POST /login
    Supports:
-   - OTP login: { email, password, otp }
+   - OTP login: { email, password, otp, studentNumber? } // studentNumber required for STUDENT accounts
    - Password-only login: { email, password } when allowed (dev speed)
 =================================*/
 authRouter.post("/login", async (req, res) => {
@@ -471,6 +586,7 @@ authRouter.post("/login", async (req, res) => {
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   const otp = String(req.body?.otp ?? "").trim();
+  const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
 
   if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
@@ -505,6 +621,18 @@ authRouter.post("/login", async (req, res) => {
       return res.status(400).json({
         error: { code: "VALIDATION", message: "OTP required for login" },
       });
+    }
+  }
+
+  if (String(userRow.role ?? "").toUpperCase() === "STUDENT") {
+    if (!studentNumber) {
+      return res.status(400).json({
+        error: { code: "VALIDATION", message: "studentNumber is required for student login" },
+      });
+    }
+    const expectedStudentNumber = normalizeStudentNumber(userRow.public_student_id);
+    if (!expectedStudentNumber || studentNumber !== expectedStudentNumber) {
+      return res.status(401).json({ error: { code: "AUTH", message: "Invalid credentials" } });
     }
   }
 

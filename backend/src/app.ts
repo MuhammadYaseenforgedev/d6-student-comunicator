@@ -22,10 +22,14 @@ import { userRouter } from "./routes/users";
 function buildCorsOrigins(): string[] {
   const raw = String(process.env.CORS_ORIGIN ?? "").trim();
   if (!raw) return [];
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return Array.from(
+    new Set(
+      raw
+        .split(",")
+        .map((s) => s.trim().replace(/\/+$/, ""))
+        .filter(Boolean)
+    )
+  );
 }
 
 export function createApp() {
@@ -61,7 +65,8 @@ export function createApp() {
         return cb(null, isDev);
       }
 
-      const ok = allowedOrigins.includes(origin);
+      const normalizedOrigin = String(origin).trim().replace(/\/+$/, "");
+      const ok = allowedOrigins.includes(normalizedOrigin);
       return cb(ok ? null : new Error(`CORS blocked origin: ${origin}`), ok);
     },
     credentials: true,
