@@ -82,7 +82,24 @@ export function createApp() {
   // =========================
   // Public routes
   // =========================
+  app.get("/", (_req: Request, res: Response) => {
+    return res.json({
+      ok: true,
+      service: "d6-student-comunicator",
+      endpoints: ["/health", "/api/health", "/api/auth"],
+    });
+  });
+
+  app.get("/api", (_req: Request, res: Response) => {
+    return res.json({
+      ok: true,
+      service: "d6-student-comunicator",
+      endpoints: ["/api/health", "/api/auth"],
+    });
+  });
+
   app.use("/api", apiListWrapper);
+  app.use("/health", healthRouter);
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
 
