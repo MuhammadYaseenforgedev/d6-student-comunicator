@@ -98,6 +98,17 @@ function resolveUploadPath(storagePath: string): string | null {
   return absPath;
 }
 
+function cleanupUploadedFile(filePath: string | undefined): void {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (e: unknown) {
+    console.error("[uploads] cleanup warning", e);
+  }
+}
+
 /**
  * POST /api/uploads
  * multipart/form-data
@@ -116,13 +127,16 @@ uploadRouter.post(
 
       if (user.role === "ADMIN" || user.role === "LECTURER") {
         if (kind !== "LECTURER_MATERIAL") {
+          cleanupUploadedFile(req.file?.path);
           return err(res, 400, "VALIDATION", "Invalid kind. ADMIN/LECTURER must use LECTURER_MATERIAL.");
         }
       } else if (user.role === "STUDENT") {
         if (kind !== "STUDENT_SUBMISSION") {
+          cleanupUploadedFile(req.file?.path);
           return err(res, 400, "VALIDATION", "Invalid kind. STUDENT must use STUDENT_SUBMISSION.");
         }
       } else {
+        cleanupUploadedFile(req.file?.path);
         return err(res, 403, "FORBIDDEN", "Only ADMIN, LECTURER, or STUDENT can upload files.");
       }
 
@@ -145,6 +159,7 @@ uploadRouter.post(
       return res.status(201).json(created);
     } catch (e: unknown) {
       console.error("[uploads] POST / error", e);
+      cleanupUploadedFile(req.file?.path);
       return err(res, 500, "INTERNAL", "Upload failed");
     }
   }

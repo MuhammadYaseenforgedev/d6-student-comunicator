@@ -133,8 +133,21 @@ messageRouter.delete(
         return err(res, 403, "FORBIDDEN", "You do not have access to moderate this channel");
       }
 
-      // NOTE: pgMessageRepo.delete currently returns false always, so this will return 404.
-      // That's okay for now if the UI isn't using delete.
+      // Ensure message belongs to the channel in the route path (prevents cross-channel IDOR).
+      const belongs = await pool.query(
+        `
+        SELECT 1
+        FROM messages
+        WHERE id = $1
+          AND channel_id = $2
+        LIMIT 1
+        `,
+        [messageId, channelId]
+      );
+      if ((belongs.rowCount ?? 0) === 0) {
+        return err(res, 404, "NOT_FOUND", "Message not found");
+      }
+
       const ok = await repos.messages.delete(messageId);
       if (!ok) return err(res, 404, "NOT_FOUND", "Message not found");
 
