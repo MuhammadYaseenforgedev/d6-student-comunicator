@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireRole } from "../middleware/rbac";
 import { repos } from "../persistence";
 import { pool } from "../config/db";
+import { messageLimiter } from "../middleware/rateLimit";
 
 export const messageRouter = Router();
 
@@ -86,6 +87,7 @@ messageRouter.get(
 messageRouter.post(
   "/channels/:channelId/messages",
   requireRole("ADMIN", "LECTURER", "STUDENT"),
+  messageLimiter,
   async (req, res) => {
     const { channelId } = req.params as { channelId: string };
     const { body } = req.body as { body?: string };

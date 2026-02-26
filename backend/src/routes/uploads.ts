@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import multer from "multer";
 import { requireRole } from "../middleware/rbac";
+import { uploadLimiter } from "../middleware/rateLimit";
 import { repos } from "../persistence";
 import type { UploadKind } from "../persistence/types";
 
@@ -119,6 +120,7 @@ function cleanupUploadedFile(filePath: string | undefined): void {
 uploadRouter.post(
   "/",
   requireRole("ADMIN", "LECTURER", "STUDENT"),
+  uploadLimiter,
   uploadSingle("file"),
   async (req: Request, res: Response) => {
     try {

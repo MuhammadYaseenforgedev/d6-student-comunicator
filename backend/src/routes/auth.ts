@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { pool } from "../config/db";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/rbac";
+import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
 
 export const authRouter = Router();
 
@@ -364,7 +365,7 @@ authRouter.post("/request-otp", async (req, res) => {
      }
    - Optional dev register (if enabled): { email, password } when AUTH_ALLOW_PASSWORD_REGISTER=true
 =================================*/
-authRouter.post("/register", async (req, res) => {
+authRouter.post("/register", registerLimiter, async (req, res) => {
   const { requireOtp, allowPasswordRegister } = authPolicy();
 
   const email = normEmail(req.body?.email);
@@ -580,7 +581,7 @@ authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
    - OTP login: { email, password, otp, studentNumber? } // studentNumber required for STUDENT accounts
    - Password-only login: { email, password } when allowed (dev speed)
 =================================*/
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", loginLimiter, async (req, res) => {
   const { requireOtp, allowPasswordLogin } = authPolicy();
 
   const email = normEmail(req.body?.email);
