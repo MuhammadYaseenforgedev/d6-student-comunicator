@@ -1,3 +1,2 @@
-import { memoryRepos } from "./memory";
-
-export const repos = memoryRepos;
+import { pgRepos } from "./pg";
+export const repos = pgRepos;

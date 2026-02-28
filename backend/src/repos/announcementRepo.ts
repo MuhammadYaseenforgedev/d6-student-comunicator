@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { Announcement } from "../models/announcement";
 import { announcements } from "../store/announcementStore";
+import type { UpdateAnnouncementInput } from "../persistence/types";
 
 export const announcementRepo = {
   listByChannel(channelId: string) {
@@ -38,5 +39,28 @@ export const announcementRepo = {
 
     announcements.push(created);
     return created;
+  },
+
+  update(input: UpdateAnnouncementInput): Announcement | null {
+    const idx = announcements.findIndex(
+      (a) => a.id === input.id && a.channelId === input.channelId
+    );
+    if (idx < 0) return null;
+
+    const current = announcements[idx];
+    announcements[idx] = {
+      ...current,
+      title: input.title ?? current.title,
+      body: input.body ?? current.body,
+      pinned: typeof input.pinned === "boolean" ? input.pinned : current.pinned,
+    };
+    return announcements[idx];
+  },
+
+  delete(id: string, channelId: string): boolean {
+    const idx = announcements.findIndex((a) => a.id === id && a.channelId === channelId);
+    if (idx < 0) return false;
+    announcements.splice(idx, 1);
+    return true;
   },
 };
