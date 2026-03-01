@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "migrate": "node scripts/migrate.cjs",
+    "seed:exec-demo": "npm run build && node scripts/seed_exec_demo.cjs",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist",
     "lint": "eslint . --ext .ts",

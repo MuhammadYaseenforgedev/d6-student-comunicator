@@ -21,8 +21,11 @@ function auth(token: string) {
 
 describe("Thread messaging permissions", () => {
   const ctx = {} as Ctx;
+  const previousThreadsMode = process.env.THREADS_MODE;
 
   beforeAll(async () => {
+    process.env.THREADS_MODE = "D6";
+
     const parent = await createUser("PARENT");
     const lecturer = await createUser("LECTURER");
     const admin = await createUser("ADMIN");
@@ -40,6 +43,7 @@ describe("Thread messaging permissions", () => {
   });
 
   afterAll(async () => {
+    process.env.THREADS_MODE = previousThreadsMode;
     await cleanupTestUsers();
   });
 
@@ -61,13 +65,15 @@ describe("Thread messaging permissions", () => {
     expect([200, 201]).toContain(res.status);
   });
 
-  test("Parent cannot start thread with Student", async () => {
+  test("Parent cannot start thread with Student under D6 mode", async () => {
     const res = await request(app)
       .post("/api/threads")
       .set(auth(ctx.parentToken))
       .send({ participantEmails: [ctx.studentEmail] });
 
     expect(res.status).toBe(403);
+    expect(String(res.body?.error?.code ?? "")).toBe("FORBIDDEN");
+    expect(String(res.body?.error?.message ?? "").toLowerCase()).toContain("not allowed between these roles");
   });
 
   test("Parent cannot send message into a parent-student thread", async () => {

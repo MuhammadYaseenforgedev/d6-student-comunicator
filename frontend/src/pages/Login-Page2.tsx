@@ -4,7 +4,7 @@
 // 1) Request OTP: POST /auth/request-otp (fallback /api/auth/request-otp)
 // 2) Register: POST /auth/register (fallback /api/auth/register) with otp
 //    - STUDENT requires southAfricanId + studentNumber
-// 3) Login: POST /auth/login (fallback /api/auth/login) with otp
+// 3) Login: POST /auth/login (fallback /api/auth/login) with optional otp
 //    - STUDENT requires studentNumber
 //
 // Stores token + user in localStorage via setAuth so RequireAuth routing works.
@@ -59,6 +59,45 @@ function extractMessage(raw: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function extractErrorCode(raw: unknown): string {
+  if (!isRecord(raw)) return "";
+  const code = raw.code;
+  if (typeof code === "string" && code.trim()) return code.trim().toUpperCase();
+  const err = raw.error;
+  if (isRecord(err)) {
+    const nestedCode = err.code;
+    if (typeof nestedCode === "string" && nestedCode.trim()) return nestedCode.trim().toUpperCase();
+  }
+  return "";
+}
+
+function isOtpRequiredLoginError(error: HttpError, otpCode: string): boolean {
+  if (otpCode.trim()) return false;
+
+  const status = Number(error?.status ?? 0);
+  if (![400, 401].includes(status)) return false;
+
+  const msg = String(error?.message ?? "").toLowerCase();
+  const code = extractErrorCode(error?.raw);
+
+  // Backends vary: explicit "OTP required" or generic "Missing fields" when OTP is enforced.
+  if (msg.includes("otp required") || msg.includes("otp") || code === "OTP_REQUIRED") return true;
+  if (status === 400 && code === "VALIDATION" && msg.includes("missing fields")) return true;
+  return false;
+}
+
+function loginErrorBanner(error: HttpError, otpCode: string): string {
+  if (isOtpRequiredLoginError(error, otpCode)) {
+    return "OTP required for this environment. Request OTP, then retry.";
+  }
+
+  const status = Number(error?.status ?? 0);
+  if (status === 401) return "Invalid credentials. Check email/password (and student number for student accounts).";
+  if (status === 403) return "Access denied for this account in the current environment.";
+  if (status === 429) return "Too many login attempts. Please wait a minute and retry.";
+  return error?.message ?? "Something went wrong.";
 }
 
 function normalizeStudentNumber(v: string): string {
@@ -117,7 +156,7 @@ export default function LoginPage2() {
   const [role, setRole] = useState<UserRole>("STUDENT");
   const [staffRegisterPassword, setStaffRegisterPassword] = useState("");
 
-  // OTP is REQUIRED by backend for both login and register
+  // OTP may be required by backend policy.
   const [otp, setOtp] = useState("");
 
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -168,15 +207,25 @@ export default function LoginPage2() {
   }
 
   async function doLogin(eNorm: string, pw: string, otpCode: string, studentNumberInput: string) {
+    const payload: {
+      email: string;
+      password: string;
+      otp?: string;
+      studentNumber: string;
+    } = {
+      email: eNorm,
+      password: pw,
+      studentNumber: normalizeStudentNumber(studentNumberInput),
+    };
+
+    if (otpCode.trim()) {
+      payload.otp = otpCode.trim();
+    }
+
     const init: RequestInit = {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        email: eNorm,
-        password: pw,
-        otp: otpCode,
-        studentNumber: normalizeStudentNumber(studentNumberInput),
-      }),
+      body: JSON.stringify(payload),
     };
 
     const data = await tryPath<LoginResponse>(
@@ -284,8 +333,8 @@ export default function LoginPage2() {
       }
     }
 
-    if (!otp.trim()) {
-      return setError("OTP is required. Click 'Request OTP' first, then enter the code.");
+    if (mode === "register" && !otp.trim()) {
+      return setError("OTP is required for registration. Click 'Request OTP' first, then enter the code.");
     }
 
     try {
@@ -305,7 +354,11 @@ export default function LoginPage2() {
       }
     } catch (err) {
       const e2 = err as HttpError;
-      setError(e2?.message ?? "Something went wrong.");
+      if (mode === "login") {
+        setError(loginErrorBanner(e2, otp));
+      } else {
+        setError(e2?.message ?? "Something went wrong.");
+      }
     } finally {
       setBusy(false);
     }
@@ -313,7 +366,7 @@ export default function LoginPage2() {
 
   const canRequestOtp = !!email.trim() && !busy;
   const canSubmit =
-    !!otp.trim() &&
+    (mode === "login" || !!otp.trim()) &&
     !busy &&
     (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
     (!roleNeedsStudentIdentity ||
@@ -572,7 +625,7 @@ export default function LoginPage2() {
                 </button>
               </div>
               <p className="mt-2 text-xs text-white/55">
-                In dev, OTP prints in backend terminal. If OTP_RETURN_DEV_CODE=true, it auto-fills here.
+                Login can be submitted without OTP. If the backend requires OTP, request one, then retry.
               </p>
             </div>
 
