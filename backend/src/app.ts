@@ -18,6 +18,9 @@ import { threadRouter } from "./routes/threads";
 import { calendarRouter } from "./routes/calendar";
 import { financeRouter } from "./routes/finance";
 import { userRouter } from "./routes/users";
+import { meRouter } from "./routes/me";
+import { attendanceRouter } from "./routes/attendance";
+import { demoRouter } from "./routes/demo";
 
 function buildCorsOrigins(): string[] {
   const raw = String(process.env.CORS_ORIGIN ?? "").trim();
@@ -108,10 +111,13 @@ export function createApp() {
   // =========================
   app.use(requireAuth);
 
+  app.use("/api", meRouter);
   app.use("/api/channels", channelRouter);
   app.use("/api", announcementRouter);
   app.use("/api", messageRouter);
   app.use("/api", eventRouter);
+  app.use("/api", attendanceRouter);
+  app.use("/api/demo", demoRouter);
 
   app.use("/api/uploads", uploadRouter);
   app.use("/api/users", userRouter);
