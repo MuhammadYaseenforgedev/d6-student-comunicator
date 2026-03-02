@@ -688,6 +688,24 @@ authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
    - Password-only login: { email, password } when allowed (dev speed)
 =================================*/
 authRouter.post("/login", loginLimiter, async (req, res) => {
+  // TEMP: DEMO BYPASS (REMOVE BEFORE REAL RELEASE)
+  if (process.env.DEMO_BYPASS_LOGIN === "true") {
+    const email = String(req.body?.email ?? "").trim().toLowerCase();
+
+    const role: Role = email.includes("+admin")
+      ? "ADMIN"
+      : email.includes("+lecturer")
+        ? "LECTURER"
+        : email.includes("+student")
+          ? "STUDENT"
+          : email.includes("+parent")
+            ? "PARENT"
+            : "STUDENT";
+
+    const token = signToken({ id: email, email, role });
+    return res.json({ token, user: { email, role } });
+  }
+
   const { requireOtp, allowPasswordLogin } = authPolicy();
 
   const email = normEmail(req.body?.email);
