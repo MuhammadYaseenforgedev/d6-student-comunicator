@@ -12,6 +12,13 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { setAuth, type UserRole } from "../lib/auth";
+import { type ApiClientError } from "../lib/apiClient";
+import {
+  fetchAuthMe,
+  login as loginApi,
+  register as registerApi,
+  requestOtp as requestOtpApi,
+} from "../lib/authService";
 
 type LocationState = { from?: string };
 type Mode = "login" | "register";
@@ -20,46 +27,19 @@ function landingFor(role: UserRole) {
   return role === "PARENT" ? "/app/parent" : "/app";
 }
 
-type AuthUserDTO = { id: string; email: string; role: UserRole };
-type LoginResponse = { token: string; user?: AuthUserDTO };
-type RegisterResponse = { token?: string; user?: AuthUserDTO; message?: string };
-type OtpResponse = { ok: boolean; expiresAt?: string; devCode?: string };
-
-const API_BASE = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
+const API_PRIMARY = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
+const API_SECONDARY = String(import.meta.env.VITE_API_URL_SECONDARY ?? "").trim().replace(/\/+$/, "");
+const API_TARGET = String(import.meta.env.VITE_API_TARGET ?? "primary").trim().toLowerCase();
+const API_BASE = API_TARGET === "secondary" && API_SECONDARY ? API_SECONDARY : API_PRIMARY;
 const IS_PROD_BUILD = Boolean(import.meta.env.PROD);
 const ENV_CONFIG_ERROR = !API_BASE
   ? "Environment misconfigured: VITE_API_URL is missing. Contact support."
   : null;
 
-type HttpError = Error & { status?: number; raw?: unknown };
+type HttpError = ApiClientError;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
-}
-
-function extractMessage(raw: unknown, fallback: string) {
-  if (typeof raw === "string" && raw.trim()) return raw;
-
-  if (isRecord(raw)) {
-    const msg = raw.message;
-    if (typeof msg === "string" && msg.trim()) return msg;
-
-    const err = raw.error;
-    if (typeof err === "string" && err.trim()) return err;
-
-    if (isRecord(err)) {
-      const errMsg = err.message;
-      if (typeof errMsg === "string" && errMsg.trim()) return errMsg;
-    }
-
-    try {
-      return JSON.stringify(raw);
-    } catch {
-      return fallback;
-    }
-  }
-
-  return fallback;
 }
 
 function extractErrorCode(raw: unknown): string {
@@ -109,27 +89,6 @@ function normalizeSouthAfricanId(v: string): string {
   return v.replace(/\D+/g, "");
 }
 
-async function jsonFetch<T>(url: string, init: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const text = await res.text();
-
-  let data: unknown = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-
-  if (!res.ok) {
-    const err: HttpError = new Error(extractMessage(data, `Request failed (${res.status})`));
-    err.status = res.status;
-    err.raw = data;
-    throw err;
-  }
-
-  return data as T;
-}
-
 export default function LoginPage2() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -160,11 +119,7 @@ export default function LoginPage2() {
   const roleNeedsStudentIdentity = mode === "register" && role === "STUDENT";
 
   async function fetchMe(token: string) {
-    const me = await jsonFetch<{ user: AuthUserDTO }>(`${API_BASE}/api/auth/me`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    return me.user;
+    return fetchAuthMe(token);
   }
 
   async function requestOtp(purpose: "LOGIN" | "REGISTER") {
@@ -175,13 +130,7 @@ export default function LoginPage2() {
     setError(null);
     setInfo(null);
 
-    const init: RequestInit = {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ email: eNorm, purpose }),
-    };
-
-    const data = await jsonFetch<OtpResponse>(`${API_BASE}/api/auth/request-otp`, init);
+    const data = await requestOtpApi({ email: eNorm, purpose });
 
     if (data?.devCode) {
       setOtp(data.devCode);
@@ -207,13 +156,7 @@ export default function LoginPage2() {
       payload.otp = otpCode.trim();
     }
 
-    const init: RequestInit = {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload),
-    };
-
-    const data = await jsonFetch<LoginResponse>(`${API_BASE}/api/auth/login`, init);
+    const data = await loginApi(payload);
 
     if (!data?.token) throw new Error("Login succeeded but no token was returned.");
 
@@ -256,13 +199,7 @@ export default function LoginPage2() {
       payload.southAfricanId = normalizeSouthAfricanId(southAfricanIdInput);
     }
 
-    const init: RequestInit = {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload),
-    };
-
-    const data = await jsonFetch<RegisterResponse>(`${API_BASE}/api/auth/register`, init);
+    const data = await registerApi(payload);
 
     if (data?.token) {
       const user = data.user ?? (await fetchMe(data.token));

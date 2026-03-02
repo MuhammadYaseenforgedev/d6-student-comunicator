@@ -1,7 +1,9 @@
 // src/components/AppShell.tsx
+import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearAuth, getUser } from "../lib/auth";
 import AppErrorBoundary from "./AppErrorBoundary";
+import { fetchMeProfile, type MeProfile } from "../lib/authService";
 
 function Item({ to, label }: { to: string; label: string }) {
   return (
@@ -26,8 +28,49 @@ export default function AppShell() {
   const navigate = useNavigate();
   const user = getUser();
   const isParent = user?.role === "PARENT";
+  const isStudent = user?.role === "STUDENT";
   const calendarTo = user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
   const homeTo = isParent ? "/app/parent" : "/app";
+  const userId = user?.id ?? "";
+  const userRole = user?.role ?? "";
+  const [profile, setProfile] = useState<MeProfile | null>(null);
+
+  useEffect(() => {
+    if (userRole !== "STUDENT" || !userId) {
+      setProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+    void fetchMeProfile()
+      .then((p) => {
+        if (!cancelled) setProfile(p);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          console.error("[app-shell] failed to load /api/me profile", e);
+          setProfile(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, userRole]);
+
+  const studentDisplayName = useMemo(() => {
+    if (!isStudent) return "";
+    const first = profile?.firstName?.trim() ?? "";
+    const last = profile?.lastName?.trim() ?? "";
+    const combined = `${first} ${last}`.trim();
+    if (combined) return combined;
+    return user?.email ?? "Student";
+  }, [isStudent, profile?.firstName, profile?.lastName, user?.email]);
+
+  const studentCourse = useMemo(() => {
+    if (!isStudent) return "";
+    return profile?.courseName?.trim() || "Course not assigned";
+  }, [isStudent, profile?.courseName]);
 
     const title =
       location.pathname.includes("/calendar")
@@ -38,6 +81,8 @@ export default function AppShell() {
       ? "Manage Results"
       : location.pathname.includes("/uploads")
       ? "Uploads"
+      : location.pathname.includes("/attendance")
+      ? "Attendance"
       : location.pathname.includes("/modules")
       ? "Modules"
       : location.pathname.includes("/faculty")
@@ -93,6 +138,7 @@ export default function AppShell() {
                     <Item to="/app/parent/results" label="Results" />
                     <Item to="/app/parent/finance" label="Finance" />
                     <Item to={calendarTo} label="Calendar" />
+                    <Item to="/app/parent/attendance" label="Attendance" />
                     <Item to="/app/parent/children" label="Links" />
                     <Item to="/app/uploads" label="Uploads" />
                     <Item to="/app/messages" label="Messages" />
@@ -109,6 +155,7 @@ export default function AppShell() {
                     <Item to="/app/uploads" label="Uploads" />
                     <Item to="/app/messages" label="Messages" />
                     <Item to={calendarTo} label="Calendar" />
+                    <Item to="/app/attendance" label="Attendance" />
 
                     {(user?.role === "ADMIN" || user?.role === "LECTURER") && (
                       <Item to="/app/manage-results" label="Manage Results" />
@@ -140,6 +187,12 @@ export default function AppShell() {
               <div>
                 <div className="text-lg font-semibold">{title}</div>
                 <div className="text-xs text-white/60">{location.pathname}</div>
+                {isStudent && (
+                  <div className="mt-2">
+                    <div className="text-sm font-semibold text-cyan-200">{studentDisplayName}</div>
+                    <div className="text-xs text-white/70">{studentCourse}</div>
+                  </div>
+                )}
               </div>
 
               <div className="hidden md:flex items-center gap-2">

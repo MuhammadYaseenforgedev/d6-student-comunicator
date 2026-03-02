@@ -187,6 +187,11 @@ export default function ParentOverview() {
           to="/app/parent/calendar"
         />
         <Card
+          title="Attendance"
+          desc="Track present/absent/late history for linked children."
+          to="/app/parent/attendance"
+        />
+        <Card
           title="Children"
           desc="Link children using South African ID (admin approval required)."
           to="/app/parent/children"

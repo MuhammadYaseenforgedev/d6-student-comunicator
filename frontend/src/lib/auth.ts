@@ -21,6 +21,9 @@ export type AuthUser = {
   email: string;
   role: UserRole;
   campusId?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  courseName?: string | null;
 };
 
 /**

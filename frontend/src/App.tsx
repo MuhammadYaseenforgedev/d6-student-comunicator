@@ -24,6 +24,7 @@ import Uploads from "./pages/Uploads1";
 import Calendar from "./pages/Calendar";
 import ManageResults from "./pages/ManageResults";
 import AdminParentLinks from "./pages/AdminParentLinks";
+import Attendance from "./pages/Attendance";
 
 import ParentPortalLayout from "./pages/parent/ParentPortalLayout";
 import ParentOverview from "./pages/parent/ParentOverview";
@@ -31,6 +32,7 @@ import ParentFinance from "./pages/parent/ParentFinance";
 import ParentResults from "./pages/parent/ParentResults";
 import ParentCalendar from "./pages/parent/ParentCalendar";
 import ParentLinks from "./pages/parent/ParentLinks";
+import ParentAttendance from "./pages/parent/ParentAttendance";
 import { getUser } from "./lib/auth";
 
 // Images (ensure these exist in src/assets)
@@ -71,6 +73,7 @@ export default function App() {
                   <Route path="clubs" element={<Clubs />} />
                   <Route path="emergency" element={<Emergency />} />
                   <Route path="c/:id" element={<ChannelPage />} />
+                  <Route path="attendance" element={<Attendance />} />
                 </Route>
 
                 <Route element={<RequireRole roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]} />}>
@@ -96,6 +99,7 @@ export default function App() {
                     <Route path="results" element={<ParentResults />} />
                     <Route path="calendar" element={<ParentCalendar />} />
                     <Route path="children" element={<ParentLinks />} />
+                    <Route path="attendance" element={<ParentAttendance />} />
                   </Route>
                 </Route>
               </Route>

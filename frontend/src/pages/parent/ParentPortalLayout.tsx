@@ -16,11 +16,12 @@ export default function ParentPortalLayout() {
 
       {/* Tabs */}
       <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/30 p-2">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
           <Tab to="/app/parent" end label="Overview" />
           <Tab to="/app/parent/finance" label="Finance" />
           <Tab to="/app/parent/results" label="Results" />
           <Tab to="/app/parent/calendar" label="Calendar" />
+          <Tab to="/app/parent/attendance" label="Attendance" />
           <Tab to="/app/parent/children" label="Children" />
         </div>
       </div>

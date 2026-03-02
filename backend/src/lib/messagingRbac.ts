@@ -9,7 +9,9 @@ export function toMessagingRole(v: unknown): MessagingRole | null {
 export function canMessage(senderRole: MessagingRole, recipientRole: MessagingRole): boolean {
   if (senderRole === "ADMIN") return true;
   if (senderRole === "PARENT") return recipientRole === "LECTURER" || recipientRole === "ADMIN";
-  if (senderRole === "STUDENT") return recipientRole === "LECTURER" || recipientRole === "ADMIN";
+  if (senderRole === "STUDENT") {
+    return recipientRole === "STUDENT" || recipientRole === "LECTURER" || recipientRole === "ADMIN";
+  }
   if (senderRole === "LECTURER") {
     return recipientRole === "STUDENT" || recipientRole === "PARENT" || recipientRole === "ADMIN";
   }

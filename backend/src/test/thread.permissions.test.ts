@@ -9,10 +9,12 @@ type Ctx = {
   lecturerToken: string;
   adminToken: string;
   studentToken: string;
+  secondStudentToken: string;
   parentId: string;
   lecturerEmail: string;
   adminEmail: string;
   studentEmail: string;
+  secondStudentEmail: string;
 };
 
 function auth(token: string) {
@@ -30,16 +32,19 @@ describe("Thread messaging permissions", () => {
     const lecturer = await createUser("LECTURER");
     const admin = await createUser("ADMIN");
     const student = await createUser("STUDENT");
+    const secondStudent = await createUser("STUDENT");
 
     ctx.parentToken = signJwt(parent);
     ctx.lecturerToken = signJwt(lecturer);
     ctx.adminToken = signJwt(admin);
     ctx.studentToken = signJwt(student);
+    ctx.secondStudentToken = signJwt(secondStudent);
 
     ctx.parentId = parent.id;
     ctx.lecturerEmail = lecturer.email;
     ctx.adminEmail = admin.email;
     ctx.studentEmail = student.email;
+    ctx.secondStudentEmail = secondStudent.email;
   });
 
   afterAll(async () => {
@@ -135,6 +140,24 @@ describe("Thread messaging permissions", () => {
       .post(`/api/threads/${threadId}/messages`)
       .set(auth(ctx.studentToken))
       .send({ body: "student to lecturer" });
+
+    expect(msgRes.status).toBe(201);
+  });
+
+  test("Student can start thread with another Student", async () => {
+    const threadRes = await request(app)
+      .post("/api/threads")
+      .set(auth(ctx.studentToken))
+      .send({ participantEmails: [ctx.secondStudentEmail] });
+
+    expect([200, 201]).toContain(threadRes.status);
+    const threadId = String(threadRes.body?.id ?? "");
+    expect(threadId).toBeTruthy();
+
+    const msgRes = await request(app)
+      .post(`/api/threads/${threadId}/messages`)
+      .set(auth(ctx.studentToken))
+      .send({ body: "student to student" });
 
     expect(msgRes.status).toBe(201);
   });
