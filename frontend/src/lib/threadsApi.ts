@@ -47,13 +47,18 @@ export type Paged<T> = {
 
 // Vite env config: required in production deploys.
 const BASE_URL = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
-if (import.meta.env.PROD && !BASE_URL) {
-  throw new Error("VITE_API_URL is required for production builds.");
-}
+const API_CONFIG_ERROR = !BASE_URL
+  ? "VITE_API_URL is missing. Set it to your backend origin (for example: https://d6-student-comunicator.onrender.com)."
+  : null;
 
 // If your backend mounts routes at /api, keep this.
 // If your backend already includes /api in BASE_URL, remove "/api" here.
 const API_PREFIX = "/api";
+
+function requireBaseUrl(): string {
+  if (API_CONFIG_ERROR) throw new Error(API_CONFIG_ERROR);
+  return BASE_URL;
+}
 
 // ---------- Helpers ----------
 
@@ -107,7 +112,7 @@ async function readErrorMessage(res: Response): Promise<string> {
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const token = requireToken();
 
-  const res = await fetch(`${BASE_URL}${API_PREFIX}${path}`, {
+  const res = await fetch(`${requireBaseUrl()}${API_PREFIX}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

@@ -66,6 +66,85 @@ function shouldReturnDevCode() {
   return !isProduction() && String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
 }
 
+class OtpDeliveryError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "OtpDeliveryError";
+    this.status = status;
+  }
+}
+
+type OtpEmailProviderConfig = {
+  provider: "resend";
+  apiKey: string;
+  fromEmail: string;
+  replyTo?: string;
+};
+
+function getOtpEmailProviderConfig(): OtpEmailProviderConfig | null {
+  const provider = String(process.env.OTP_EMAIL_PROVIDER ?? "resend").trim().toLowerCase();
+  const apiKey = String(process.env.RESEND_API_KEY ?? "").trim();
+  const fromEmail = String(process.env.OTP_EMAIL_FROM ?? "").trim();
+  const replyTo = String(process.env.OTP_EMAIL_REPLY_TO ?? "").trim();
+
+  if (!provider || provider !== "resend") return null;
+  if (!apiKey || !fromEmail) return null;
+
+  return {
+    provider: "resend",
+    apiKey,
+    fromEmail,
+    ...(replyTo ? { replyTo } : {}),
+  };
+}
+
+function otpPurposeLabel(purpose: "LOGIN" | "REGISTER"): string {
+  return purpose === "REGISTER" ? "registration" : "login";
+}
+
+async function sendOtpEmail(
+  email: string,
+  purpose: "LOGIN" | "REGISTER",
+  code: string,
+  expiresAt: string
+): Promise<void> {
+  const provider = getOtpEmailProviderConfig();
+  if (!provider) {
+    throw new OtpDeliveryError(503, "Email provider not configured");
+  }
+
+  const subject = `Your D6 ${otpPurposeLabel(purpose)} OTP code`;
+  const html = [
+    "<p>Your one-time password (OTP) code is:</p>",
+    `<p style="font-size:28px;font-weight:700;letter-spacing:4px;">${code}</p>`,
+    `<p>This code expires at ${expiresAt}.</p>`,
+    "<p>If you did not request this code, you can ignore this email.</p>",
+  ].join("");
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${provider.apiKey}`,
+    },
+    body: JSON.stringify({
+      from: provider.fromEmail,
+      to: [email],
+      subject,
+      html,
+      ...(provider.replyTo ? { reply_to: provider.replyTo } : {}),
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error("[auth] OTP email send failed", { status: res.status, body });
+    throw new OtpDeliveryError(503, "Failed to send OTP email");
+  }
+}
+
 function generateOtpCode(): string {
   const n = crypto.randomInt(0, 1_000_000);
   return String(n).padStart(6, "0");
@@ -226,7 +305,22 @@ async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp
     [email, purpose, codeHash, expiresAt, requestIp]
   );
 
-  if (!isProduction()) {
+  if (isProduction()) {
+    try {
+      await sendOtpEmail(email, purpose, code, expiresAt);
+    } catch (e) {
+      await pool.query(
+        `
+          DELETE FROM email_otps
+          WHERE lower(email) = lower($1)
+            AND purpose = $2
+            AND code_hash = $3
+        `,
+        [email, purpose, codeHash]
+      );
+      throw e;
+    }
+  } else {
     console.log(`[OTP][${purpose}] email=${email} ip=${requestIp} code=${code} (expires ${expiresAt})`);
   }
 
@@ -341,13 +435,25 @@ authRouter.post("/request-otp", async (req, res) => {
     }
   }
 
-  const out = await createOtp(email, purpose, ip);
+  try {
+    const out = await createOtp(email, purpose, ip);
 
-  return res.json({
-    ok: true,
-    expiresAt: out.expiresAt,
-    devCode: out.devCode,
-  });
+    return res.json({
+      ok: true,
+      expiresAt: out.expiresAt,
+      devCode: out.devCode,
+    });
+  } catch (e) {
+    if (e instanceof OtpDeliveryError) {
+      return res.status(e.status).json({
+        error: { code: "EMAIL_PROVIDER", message: e.message },
+      });
+    }
+    console.error("[auth] POST /request-otp error", e);
+    return res.status(500).json({
+      error: { code: "INTERNAL", message: "Failed to request OTP" },
+    });
+  }
 });
 
 /* ===============================

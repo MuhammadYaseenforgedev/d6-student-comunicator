@@ -69,7 +69,7 @@ export function createApp() {
       const ok = allowedOrigins.includes(normalizedOrigin);
       return cb(ok ? null : new Error(`CORS blocked origin: ${origin}`), ok);
     },
-    credentials: true,
+    credentials: false,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Content-Disposition"],

@@ -1,10 +1,10 @@
 // src/pages/Login-Page2.tsx
 // REAL AUTH (backend + JWT + OTP).
 // Flow:
-// 1) Request OTP: POST /auth/request-otp (fallback /api/auth/request-otp)
-// 2) Register: POST /auth/register (fallback /api/auth/register) with otp
+// 1) Request OTP: POST /api/auth/request-otp
+// 2) Register: POST /api/auth/register with otp
 //    - STUDENT requires southAfricanId + studentNumber
-// 3) Login: POST /auth/login (fallback /api/auth/login) with optional otp
+// 3) Login: POST /api/auth/login with optional otp
 //    - STUDENT requires studentNumber
 //
 // Stores token + user in localStorage via setAuth so RequireAuth routing works.
@@ -26,9 +26,10 @@ type RegisterResponse = { token?: string; user?: AuthUserDTO; message?: string }
 type OtpResponse = { ok: boolean; expiresAt?: string; devCode?: string };
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
-if (import.meta.env.PROD && !API_BASE) {
-  throw new Error("VITE_API_URL is required for production builds.");
-}
+const IS_PROD_BUILD = Boolean(import.meta.env.PROD);
+const ENV_CONFIG_ERROR = !API_BASE
+  ? "Environment misconfigured: VITE_API_URL is missing. Contact support."
+  : null;
 
 type HttpError = Error & { status?: number; raw?: unknown };
 
@@ -129,17 +130,6 @@ async function jsonFetch<T>(url: string, init: RequestInit): Promise<T> {
   return data as T;
 }
 
-/** Tries a primary path, if it 404s then tries the fallback. */
-async function tryPath<T>(primaryUrl: string, fallbackUrl: string, init: RequestInit): Promise<T> {
-  try {
-    return await jsonFetch<T>(primaryUrl, init);
-  } catch (e) {
-    const status = (e as HttpError)?.status;
-    if (status === 404) return await jsonFetch<T>(fallbackUrl, init);
-    throw e;
-  }
-}
-
 export default function LoginPage2() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -170,11 +160,10 @@ export default function LoginPage2() {
   const roleNeedsStudentIdentity = mode === "register" && role === "STUDENT";
 
   async function fetchMe(token: string) {
-    const me = await tryPath<{ user: AuthUserDTO }>(
-      `${API_BASE}/api/auth/me`,
-      `${API_BASE}/auth/me`,
-      { method: "GET", headers: { Authorization: `Bearer ${token}` } }
-    );
+    const me = await jsonFetch<{ user: AuthUserDTO }>(`${API_BASE}/api/auth/me`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
     return me.user;
   }
 
@@ -192,11 +181,7 @@ export default function LoginPage2() {
       body: JSON.stringify({ email: eNorm, purpose }),
     };
 
-    const data = await tryPath<OtpResponse>(
-      `${API_BASE}/api/auth/request-otp`,
-      `${API_BASE}/auth/request-otp`,
-      init
-    );
+    const data = await jsonFetch<OtpResponse>(`${API_BASE}/api/auth/request-otp`, init);
 
     if (data?.devCode) {
       setOtp(data.devCode);
@@ -228,11 +213,7 @@ export default function LoginPage2() {
       body: JSON.stringify(payload),
     };
 
-    const data = await tryPath<LoginResponse>(
-      `${API_BASE}/api/auth/login`,
-      `${API_BASE}/auth/login`,
-      init
-    );
+    const data = await jsonFetch<LoginResponse>(`${API_BASE}/api/auth/login`, init);
 
     if (!data?.token) throw new Error("Login succeeded but no token was returned.");
 
@@ -281,11 +262,7 @@ export default function LoginPage2() {
       body: JSON.stringify(payload),
     };
 
-    const data = await tryPath<RegisterResponse>(
-      `${API_BASE}/api/auth/register`,
-      `${API_BASE}/auth/register`,
-      init
-    );
+    const data = await jsonFetch<RegisterResponse>(`${API_BASE}/api/auth/register`, init);
 
     if (data?.token) {
       const user = data.user ?? (await fetchMe(data.token));
@@ -309,6 +286,7 @@ export default function LoginPage2() {
     const eNorm = email.trim().toLowerCase();
     const studentNumberNorm = normalizeStudentNumber(studentNumber);
     const southAfricanIdNorm = normalizeSouthAfricanId(southAfricanId);
+    if (ENV_CONFIG_ERROR) return setError(ENV_CONFIG_ERROR);
     if (!eNorm) return setError("Please enter an email.");
 
     if (!password || password.length < 6) return setError("Password must be at least 6 characters.");
@@ -364,8 +342,21 @@ export default function LoginPage2() {
     }
   }
 
-  const canRequestOtp = !!email.trim() && !busy;
+  async function onRequestOtpClick() {
+    try {
+      setBusy(true);
+      await requestOtp(mode === "login" ? "LOGIN" : "REGISTER");
+    } catch (err) {
+      const e2 = err as HttpError;
+      setError(e2?.message ?? "Failed to request OTP.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canRequestOtp = !ENV_CONFIG_ERROR && !!email.trim() && !busy;
   const canSubmit =
+    !ENV_CONFIG_ERROR &&
     (mode === "login" || !!otp.trim()) &&
     !busy &&
     (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
@@ -439,6 +430,12 @@ export default function LoginPage2() {
           {error && (
             <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
               {error}
+            </div>
+          )}
+
+          {ENV_CONFIG_ERROR && (
+            <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+              {ENV_CONFIG_ERROR}
             </div>
           )}
 
@@ -618,7 +615,9 @@ export default function LoginPage2() {
                 <button
                   type="button"
                   disabled={!canRequestOtp}
-                  onClick={() => requestOtp(mode === "login" ? "LOGIN" : "REGISTER")}
+                  onClick={() => {
+                    void onRequestOtpClick();
+                  }}
                   className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 transition disabled:opacity-50"
                 >
                   Request OTP
@@ -642,7 +641,9 @@ export default function LoginPage2() {
               {busy ? "Please wait..." : mode === "login" ? "Sign In" : "Create account"}
             </button>
 
-            <p className="text-xs text-white/55 text-center">Backend: {API_BASE}</p>
+            <p className="text-xs text-white/55 text-center">
+              Environment Debug: backend={API_BASE || "MISSING"} | build={IS_PROD_BUILD ? "production" : "development"}
+            </p>
           </form>
         </div>
       </div>

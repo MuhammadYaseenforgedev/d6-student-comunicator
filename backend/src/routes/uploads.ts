@@ -110,6 +110,21 @@ function cleanupUploadedFile(filePath: string | undefined): void {
   }
 }
 
+function requestOrigin(req: Request): string {
+  const proto = String(req.headers["x-forwarded-proto"] ?? req.protocol)
+    .split(",")[0]
+    ?.trim();
+  const host = String(req.get("host") ?? "").trim();
+  const safeProto = proto || "http";
+  return host ? `${safeProto}://${host}` : "";
+}
+
+function withDownloadUrl<T extends { id: string }>(req: Request, item: T): T & { downloadUrl: string } {
+  const origin = requestOrigin(req);
+  const downloadUrl = origin ? `${origin}/api/uploads/${item.id}/download` : `/api/uploads/${item.id}/download`;
+  return { ...item, downloadUrl };
+}
+
 /**
  * POST /api/uploads
  * multipart/form-data
@@ -158,7 +173,7 @@ uploadRouter.post(
         uploadedBy: user.id,
       });
 
-      return res.status(201).json(created);
+      return res.status(201).json(withDownloadUrl(req, created));
     } catch (e: unknown) {
       console.error("[uploads] POST / error", e);
       cleanupUploadedFile(req.file?.path);
@@ -174,7 +189,7 @@ uploadRouter.get("/", requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"), asy
   try {
     const user = req.user!;
     const items = await repos.uploads.listForUser({ id: user.id, role: user.role });
-    return res.json(items);
+    return res.json(items.map((u) => withDownloadUrl(req, u)));
   } catch (e: unknown) {
     console.error("[uploads] GET / error", e);
     return err(res, 500, "INTERNAL", "Failed to list uploads");
