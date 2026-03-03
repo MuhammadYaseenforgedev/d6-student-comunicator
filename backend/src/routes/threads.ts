@@ -35,7 +35,19 @@ threadRouter.get("/", async (req, res) => {
       count: out.threads.length,
       nextBefore: out.nextBefore,
     });
-  } catch {
+  } catch (e: any) {
+    // TEMP DEBUG: remove after Render 500 diagnostics are complete.
+    console.error("[THREADS_DEBUG] GET /api/threads failed", {
+      err: e,
+      stack: e?.stack,
+      user: {
+        id: req.user?.id,
+        email: req.user?.email,
+        role: req.user?.role,
+      },
+      path: req.path,
+      query: req.query,
+    });
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });
