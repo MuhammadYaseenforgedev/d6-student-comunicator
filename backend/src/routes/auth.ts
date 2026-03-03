@@ -692,7 +692,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   if (process.env.DEMO_BYPASS_LOGIN === "true") {
     const email = String(req.body?.email ?? "").trim().toLowerCase();
 
-    const role: Role = email.includes("+admin")
+    const fallbackRole: Role = email.includes("+admin")
       ? "ADMIN"
       : email.includes("+lecturer")
         ? "LECTURER"
@@ -702,8 +702,21 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
             ? "PARENT"
             : "STUDENT";
 
-    const token = signToken({ id: email, email, role });
-    return res.json({ token, user: { email, role } });
+    const userResult = await pool.query<{ id: string; email: string; role: string }>(
+      "SELECT id, email, role FROM public.users WHERE lower(email)=lower($1) LIMIT 1",
+      [email]
+    );
+    const userRow = userResult.rows[0];
+
+    if (!userRow) {
+      return res.status(401).json({ error: { code: "AUTH", message: "User not seeded" } });
+    }
+
+    const dbRole = String(userRow.role ?? "").toUpperCase();
+    const role: Role = VALID_ROLES.includes(dbRole as Role) ? (dbRole as Role) : fallbackRole;
+
+    const token = signToken({ id: userRow.id, email: userRow.email, role });
+    return res.json({ token, user: { email: userRow.email, role } });
   }
 
   const { requireOtp, allowPasswordLogin } = authPolicy();
