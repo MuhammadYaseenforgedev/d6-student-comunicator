@@ -66,6 +66,12 @@ function shouldReturnDevCode() {
   return !isProduction() && String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
 }
 
+function shouldUseDemoOtpResponse(email: string) {
+  if (String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() !== "true") return false;
+  const normalized = normEmail(email);
+  return normalized.endsWith("@local.test") || normalized.startsWith("demo+");
+}
+
 class OtpDeliveryError extends Error {
   status: number;
 
@@ -279,7 +285,12 @@ async function checkIpOtpRateLimit(ip: string) {
 /* ===============================
    OTP CREATION (HARDENED)
 =================================*/
-async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp: string) {
+async function createOtp(
+  email: string,
+  purpose: "LOGIN" | "REGISTER",
+  requestIp: string,
+  options?: { skipEmailDelivery?: boolean; forceDevCode?: boolean }
+) {
   const { ttlMinutes } = otpConfig();
 
   await pool.query(
@@ -305,7 +316,9 @@ async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp
     [email, purpose, codeHash, expiresAt, requestIp]
   );
 
-  if (isProduction()) {
+  const skipEmailDelivery = Boolean(options?.skipEmailDelivery);
+
+  if (isProduction() && !skipEmailDelivery) {
     try {
       await sendOtpEmail(email, purpose, code, expiresAt);
     } catch (e) {
@@ -324,7 +337,7 @@ async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp
     console.log(`[OTP][${purpose}] email=${email} ip=${requestIp} code=${code} (expires ${expiresAt})`);
   }
 
-  return { expiresAt, devCode: shouldReturnDevCode() ? code : undefined };
+  return { expiresAt, devCode: options?.forceDevCode ? code : shouldReturnDevCode() ? code : undefined };
 }
 
 /* ===============================
@@ -436,20 +449,37 @@ authRouter.post("/request-otp", async (req, res) => {
   }
 
   try {
-    const out = await createOtp(email, purpose, ip);
+    const useDemoOtpResponse = shouldUseDemoOtpResponse(email);
+    const out = await createOtp(email, purpose, ip, {
+      skipEmailDelivery: useDemoOtpResponse,
+      forceDevCode: useDemoOtpResponse,
+    });
+
+    if (useDemoOtpResponse) {
+      return res.json({
+        ok: true,
+        devOtp: out.devCode,
+      });
+    }
 
     return res.json({
       ok: true,
       expiresAt: out.expiresAt,
       devCode: out.devCode,
     });
-  } catch (e) {
+  } catch (e: any) {
+    // TEMP DEBUG CODE: remove after production OTP diagnostics are complete.
+    console.error("[OTP_DEBUG] POST /request-otp failure", {
+      email,
+      stack: e?.stack,
+      err: e,
+    });
+
     if (e instanceof OtpDeliveryError) {
       return res.status(e.status).json({
         error: { code: "EMAIL_PROVIDER", message: e.message },
       });
     }
-    console.error("[auth] POST /request-otp error", e);
     return res.status(500).json({
       error: { code: "INTERNAL", message: "Failed to request OTP" },
     });
