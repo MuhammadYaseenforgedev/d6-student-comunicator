@@ -37,7 +37,6 @@ export default function AppShell() {
 
   useEffect(() => {
     if (userRole !== "STUDENT" || !userId) {
-      setProfile(null);
       return;
     }
 
