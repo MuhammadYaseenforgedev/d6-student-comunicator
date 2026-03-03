@@ -49,23 +49,43 @@ function cleanOptionalText(v: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : "";
 }
 
+async function listAnnouncementsForChannel(req: any, res: any, channelId: string) {
+  const user = req.user!;
+  const access = await getChannelAccess(channelId, user.id);
+  if (!access.exists) return err(res, 404, "NOT_FOUND", "Channel not found");
+  if (!canViewChannel(user.role, access)) {
+    return err(res, 403, "FORBIDDEN", "You do not have access to this channel");
+  }
+
+  const list = await repos.announcements.listByChannel(channelId);
+  return res.json(list);
+}
+
+// Compatibility alias:
+// GET /api/announcements?channelId=...
+announcementRouter.get(
+  "/announcements",
+  requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"),
+  async (req, res) => {
+    try {
+      const channelId = String(req.query.channelId ?? "").trim();
+      if (!channelId) return err(res, 400, "VALIDATION", "channelId query parameter is required");
+      return await listAnnouncementsForChannel(req, res, channelId);
+    } catch (e: any) {
+      console.error("[announcements] GET alias error", e);
+      return err(res, 500, "INTERNAL", "Failed to list announcements");
+    }
+  }
+);
+
 // List announcements for a channel (all logged-in roles, including PARENT)
 announcementRouter.get(
   "/channels/:channelId/announcements",
   requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"),
   async (req, res) => {
     try {
-      const user = req.user!;
       const { channelId } = req.params as { channelId: string };
-
-      const access = await getChannelAccess(channelId, user.id);
-      if (!access.exists) return err(res, 404, "NOT_FOUND", "Channel not found");
-      if (!canViewChannel(user.role, access)) {
-        return err(res, 403, "FORBIDDEN", "You do not have access to this channel");
-      }
-
-      const list = await repos.announcements.listByChannel(channelId);
-      return res.json(list);
+      return await listAnnouncementsForChannel(req, res, channelId);
     } catch (e: any) {
       console.error("[announcements] GET error", e);
       return err(res, 500, "INTERNAL", "Failed to list announcements");
