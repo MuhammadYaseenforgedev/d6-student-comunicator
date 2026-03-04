@@ -16,6 +16,18 @@ function parseLimit(raw: unknown, fallback = 50) {
   return Math.min(Math.floor(n), 100);
 }
 
+function parseDate(raw: unknown): string | null {
+  const v = String(raw ?? "").trim();
+  if (!v) return "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+}
+
+function normalizeRole(raw: unknown): "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" {
+  const role = String(raw ?? "").trim().toUpperCase();
+  if (role === "ADMIN" || role === "LECTURER" || role === "PARENT") return role;
+  return "STUDENT";
+}
+
 export const calendarRouter = Router();
 
 // requireAuth is already applied globally in app.ts
@@ -36,8 +48,11 @@ calendarRouter.get("/calendar", async (req, res) => {
   try {
     const user = req.user!;
     const limit = parseLimit(req.query.limit, 50);
+    const date = parseDate(req.query.date);
+    if (date === null) return err(res, 400, "VALIDATION", "date must be YYYY-MM-DD");
 
     let targetUserId = user.id;
+    let targetRole: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" = normalizeRole(user.role);
 
     // Parents can view a linked child calendar by providing childId
     if (user.role === "PARENT") {
@@ -49,12 +64,17 @@ calendarRouter.get("/calendar", async (req, res) => {
       if (!ok) return err(res, 403, "FORBIDDEN", "Parent is not linked to this child");
 
       targetUserId = childId;
+      targetRole = "STUDENT";
     } else {
       // Non-parents can only see their own calendar.
       targetUserId = user.id;
     }
 
-    const entries = await pgCalendarRepo.listForUser(targetUserId, { limit });
+    const entries = await pgCalendarRepo.listForUser(targetUserId, {
+      limit,
+      date: date || undefined,
+      role: targetRole,
+    });
     return res.json({ value: entries, count: entries.length });
   } catch (e: any) {
     // TEMP DEBUG: remove after Render 500 diagnostics are complete.

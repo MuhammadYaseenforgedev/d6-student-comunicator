@@ -9,6 +9,8 @@ export type CalendarEntry = {
   startsAt: string;
   endsAt: string;
   createdAt: string;
+  channelId?: string | null;
+  source?: "CALENDAR_ENTRY" | "CHANNEL_EVENT";
 };
 
 type Row = {
@@ -20,6 +22,8 @@ type Row = {
   starts_at: string;
   ends_at: string;
   created_at: string;
+  channel_id: string | null;
+  source: "CALENDAR_ENTRY" | "CHANNEL_EVENT";
 };
 
 function parseLimit(raw: unknown, fallback = 50) {
@@ -29,17 +33,60 @@ function parseLimit(raw: unknown, fallback = 50) {
 }
 
 export const pgCalendarRepo = {
-  async listForUser(userId: string, opts?: { limit?: number }): Promise<CalendarEntry[]> {
+  async listForUser(
+    userId: string,
+    opts?: { limit?: number; date?: string; role?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" }
+  ): Promise<CalendarEntry[]> {
     const limit = parseLimit(opts?.limit, 50);
+    const date = String(opts?.date ?? "").trim() || null;
+    const role = String(opts?.role ?? "STUDENT").toUpperCase();
 
     const q = `
-      SELECT id, user_id, title, description, location, starts_at, ends_at, created_at
-      FROM calendar_entries
-      WHERE user_id = $1
+      WITH combined AS (
+        SELECT
+          ce.id,
+          ce.user_id::text AS user_id,
+          ce.title,
+          ce.description,
+          ce.location,
+          ce.starts_at,
+          ce.ends_at,
+          ce.created_at,
+          NULL::uuid AS channel_id,
+          'CALENDAR_ENTRY'::text AS source
+        FROM calendar_entries ce
+        WHERE ce.user_id = $1
+          AND ($3::date IS NULL OR ce.starts_at::date = $3::date)
+
+        UNION ALL
+
+        SELECT
+          e.id,
+          $1::text AS user_id,
+          e.title,
+          e.description,
+          e.location,
+          e.starts_at,
+          e.ends_at,
+          e.created_at,
+          e.channel_id,
+          'CHANNEL_EVENT'::text AS source
+        FROM events e
+        JOIN channels c ON c.id = e.channel_id
+        LEFT JOIN channel_members cm ON cm.channel_id = c.id AND cm.user_id = $1
+        WHERE (
+          $4::text IN ('ADMIN', 'LECTURER')
+          OR ($4::text = 'PARENT' AND COALESCE(c.is_private, false) = false)
+          OR ($4::text = 'STUDENT' AND (COALESCE(c.is_private, false) = false OR cm.user_id IS NOT NULL))
+        )
+          AND ($3::date IS NULL OR e.starts_at::date = $3::date)
+      )
+      SELECT id, user_id, title, description, location, starts_at, ends_at, created_at, channel_id, source
+      FROM combined
       ORDER BY starts_at ASC
       LIMIT $2
     `;
-    const res = await pool.query<Row>(q, [userId, limit]);
+    const res = await pool.query<Row>(q, [userId, limit, date, role]);
 
     return res.rows.map((r) => ({
       id: r.id,
@@ -50,6 +97,8 @@ export const pgCalendarRepo = {
       startsAt: r.starts_at,
       endsAt: r.ends_at,
       createdAt: r.created_at,
+      channelId: r.channel_id,
+      source: r.source,
     }));
   },
 
