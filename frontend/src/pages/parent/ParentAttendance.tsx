@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
 import PageHeader from "../../components/PageHeader";
-import { getMyAttendance, type AttendanceMeResponse } from "../../lib/attendanceApi";
-import { listMyChildren, type ParentChild } from "../../api/parent";
+import {
+  getParentAttendance,
+  listMyChildren,
+  type ParentAttendanceRecord,
+  type ParentChild,
+} from "../../api/parent";
+import { toInlineError } from "./errorText";
 
 function childIdentifier(child: ParentChild): string {
-  return child.id;
+  const v = child.childUserId ?? child.studentUserId ?? child.userId ?? child.id;
+  return typeof v === "string" ? v.trim() : "";
 }
 
 function childLabel(child: ParentChild): string {
@@ -23,25 +29,36 @@ function fromDaysBack(daysBack: number): string {
 
 export default function ParentAttendance() {
   const [children, setChildren] = useState<ParentChild[]>([]);
-  const [childId, setChildId] = useState("");
+  const [selectedChildId, setSelectedChildId] = useState("");
   const [from, setFrom] = useState(fromDaysBack(30));
   const [to, setTo] = useState(todayDate());
-  const [data, setData] = useState<AttendanceMeResponse | null>(null);
+  const [records, setRecords] = useState<ParentAttendanceRecord[]>([]);
+  const [loadingChildren, setLoadingChildren] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [childrenError, setChildrenError] = useState<string | null>(null);
+  const [attendanceError, setAttendanceError] = useState<string | null>(null);
+  const hasChildren = children.length > 0;
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadChildren() {
+      setLoadingChildren(true);
+      setChildrenError(null);
       try {
         const rows = await listMyChildren();
         if (cancelled) return;
         setChildren(rows);
-        const first = rows[0]?.id ?? "";
-        setChildId(first);
+        const first = rows[0] ? childIdentifier(rows[0]) : "";
+        setSelectedChildId(first);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load linked children");
+        if (!cancelled) {
+          setChildrenError(toInlineError(e, "Failed to load linked children"));
+          setChildren([]);
+          setSelectedChildId("");
+        }
+      } finally {
+        if (!cancelled) setLoadingChildren(false);
       }
     }
 
@@ -53,29 +70,39 @@ export default function ParentAttendance() {
 
   async function loadAttendance(targetChildId: string) {
     if (!targetChildId) {
-      setData(null);
+      setRecords([]);
+      setAttendanceError(null);
       return;
     }
     try {
       setLoading(true);
-      setError(null);
-      const out = await getMyAttendance({ childId: targetChildId, from, to });
-      setData(out);
+      setAttendanceError(null);
+      const out = await getParentAttendance(targetChildId, { from, to });
+      setRecords(Array.isArray(out) ? out : []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load attendance");
-      setData(null);
+      setAttendanceError(toInlineError(e, "Failed to load attendance"));
+      setRecords([]);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (!childId) return;
-    void loadAttendance(childId);
+    if (!selectedChildId) {
+      setRecords([]);
+      setAttendanceError(null);
+      return;
+    }
+    void loadAttendance(selectedChildId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [childId]);
+  }, [selectedChildId]);
 
-  const summary = data?.summary ?? { present: 0, absent: 0, late: 0, total: 0 };
+  const summary = {
+    present: records.filter((r) => r.status === "PRESENT").length,
+    absent: records.filter((r) => r.status === "ABSENT").length,
+    late: records.filter((r) => r.status === "LATE").length,
+    total: records.length,
+  };
 
   return (
     <div className="space-y-6">
@@ -87,13 +114,13 @@ export default function ParentAttendance() {
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <select
-            value={childId}
-            onChange={(e) => setChildId(e.target.value)}
+            value={selectedChildId}
+            onChange={(e) => setSelectedChildId(e.target.value)}
             className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-            disabled={children.length === 0}
+            disabled={loadingChildren || children.length === 0}
           >
             {children.length === 0 ? (
-              <option value="">No linked children</option>
+              <option value="">{loadingChildren ? "Loading linked children..." : "No linked children"}</option>
             ) : (
               children.map((child) => (
                 <option key={child.id} value={childIdentifier(child)}>
@@ -119,8 +146,8 @@ export default function ParentAttendance() {
 
           <button
             type="button"
-            onClick={() => void loadAttendance(childId)}
-            disabled={loading || !childId}
+            onClick={() => void loadAttendance(selectedChildId)}
+            disabled={loading || !selectedChildId}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
           >
             {loading ? "Loading..." : "Refresh"}
@@ -128,9 +155,21 @@ export default function ParentAttendance() {
         </div>
       </div>
 
-      {error && (
+      {childrenError && (
         <div className="rounded-xl border border-red-700/40 bg-red-950/30 p-3 text-sm text-red-200">
-          {error}
+          {childrenError}
+        </div>
+      )}
+
+      {!loadingChildren && !selectedChildId && (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300">
+          {hasChildren ? "Select a child to view this information." : "No linked children. Link a child first."}
+        </div>
+      )}
+
+      {attendanceError && (
+        <div className="rounded-xl border border-red-700/40 bg-red-950/30 p-3 text-sm text-red-200">
+          {attendanceError}
         </div>
       )}
 
@@ -144,10 +183,12 @@ export default function ParentAttendance() {
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
         <div className="text-lg font-semibold text-white">Attendance Records</div>
         <div className="mt-3 space-y-2">
-          {(data?.value ?? []).length === 0 ? (
+          {!selectedChildId ? (
+            <div className="text-sm text-slate-300">Select a child to view this information.</div>
+          ) : records.length === 0 ? (
             <div className="text-sm text-slate-300">No attendance records found.</div>
           ) : (
-            data!.value.map((row) => (
+            records.map((row) => (
               <div
                 key={`${row.sessionId}-${row.markedAt}`}
                 className="rounded-xl border border-slate-800 bg-slate-950/40 p-3"

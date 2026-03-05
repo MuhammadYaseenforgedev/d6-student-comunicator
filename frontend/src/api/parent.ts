@@ -110,6 +110,19 @@ export type FinanceSummary = {
   documents: FinanceDocument[];
 };
 
+export type ParentAttendanceRecord = {
+  sessionId: string;
+  date: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  moduleId: string;
+  moduleCode: string;
+  moduleName: string;
+  facultyName: string;
+  status: string;
+  markedAt: string;
+};
+
 const DEFAULT_FINANCE: FinanceSummary = {
   balance: 0,
   statements: 0,
@@ -295,6 +308,36 @@ function normalizeFinanceSummary(data: unknown): FinanceSummary {
   };
 }
 
+function normalizeParentAttendanceRecord(row: unknown, index: number): ParentAttendanceRecord {
+  if (!isObject(row)) {
+    return {
+      sessionId: `session-${index}`,
+      date: "",
+      startsAt: null,
+      endsAt: null,
+      moduleId: "",
+      moduleCode: "",
+      moduleName: "Unknown module",
+      facultyName: "",
+      status: "UNKNOWN",
+      markedAt: "",
+    };
+  }
+
+  return {
+    sessionId: toStringValue(row.sessionId ?? row.session_id, `session-${index}`),
+    date: toStringValue(row.date ?? row.attendanceDate, ""),
+    startsAt: typeof row.startsAt === "string" ? row.startsAt : typeof row.starts_at === "string" ? row.starts_at : null,
+    endsAt: typeof row.endsAt === "string" ? row.endsAt : typeof row.ends_at === "string" ? row.ends_at : null,
+    moduleId: toStringValue(row.moduleId ?? row.module_id, ""),
+    moduleCode: toStringValue(row.moduleCode ?? row.module_code, ""),
+    moduleName: toStringValue(row.moduleName ?? row.module_name, "Unknown module"),
+    facultyName: toStringValue(row.facultyName ?? row.faculty_name, ""),
+    status: toStringValue(row.status, "UNKNOWN"),
+    markedAt: toStringValue(row.markedAt ?? row.marked_at, ""),
+  };
+}
+
 export async function parentPortalCheck(): Promise<ParentPortalInfo> {
   const data = await apiGet<unknown>("/api/parent/parent");
   const source = unwrapObject(data);
@@ -405,14 +448,14 @@ export async function decideAdminLinkRequest(
 }
 
 export async function getResults(childId: string): Promise<Result[]> {
-  const data = await apiGet<unknown>(`/api/parent/parent/results?childId=${encodeURIComponent(childId)}`);
+  const data = await apiGet<unknown>(`/api/parent/results?childId=${encodeURIComponent(childId)}`);
   return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
 }
 
 export async function downloadResults(
   childId: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
-  return apiDownload(`/api/parent/parent/results/download?childId=${encodeURIComponent(childId)}`);
+  return apiDownload(`/api/parent/results/download?childId=${encodeURIComponent(childId)}`);
 }
 
 export async function listResultsForStaff(childId: string): Promise<Result[]> {
@@ -441,12 +484,25 @@ export async function deleteResultForStaff(id: string): Promise<void> {
 }
 
 export async function getFinance(childId: string): Promise<FinanceSummary> {
-  const data = await apiGet<unknown>(`/api/parent/parent/finance?childId=${encodeURIComponent(childId)}`);
+  const data = await apiGet<unknown>(`/api/parent/finance?childId=${encodeURIComponent(childId)}`);
   return normalizeFinanceSummary(data);
 }
 
 export async function downloadFinanceStatement(
   childId: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
-  return apiDownload(`/api/parent/parent/finance/statement?childId=${encodeURIComponent(childId)}`);
+  return apiDownload(`/api/parent/finance/statement?childId=${encodeURIComponent(childId)}`);
+}
+
+export async function getParentAttendance(
+  childId: string,
+  params?: { from?: string; to?: string }
+): Promise<ParentAttendanceRecord[]> {
+  const qs = new URLSearchParams();
+  qs.set("childId", childId);
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+
+  const data = await apiGet<unknown>(`/api/parent/attendance?${qs.toString()}`);
+  return unwrapList<unknown>(data).map((row, index) => normalizeParentAttendanceRecord(row, index));
 }

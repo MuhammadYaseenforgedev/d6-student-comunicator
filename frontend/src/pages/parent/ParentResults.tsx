@@ -4,7 +4,8 @@ import { downloadResults, getResults, listMyChildren, type ParentChild, type Res
 import { toInlineError } from "./errorText";
 
 function childIdentifier(child: ParentChild): string {
-  return (child.publicStudentId ?? child.email).trim();
+  const v = child.childUserId ?? child.studentUserId ?? child.userId ?? child.id;
+  return typeof v === "string" ? v.trim() : "";
 }
 
 function childLabel(child: ParentChild): string {
@@ -22,6 +23,27 @@ export default function ParentResults() {
   const [resultsError, setResultsError] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const hasChildren = children.length > 0;
+
+  async function loadResultsForChild(targetChildId: string) {
+    if (!targetChildId) {
+      setResults([]);
+      setResultsError(null);
+      setLoadingResults(false);
+      return;
+    }
+
+    setLoadingResults(true);
+    setResultsError(null);
+    try {
+      const rows = await getResults(targetChildId);
+      setResults(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setResultsError(toInlineError(e, "Failed to load results"));
+      setResults([]);
+    } finally {
+      setLoadingResults(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -137,6 +159,17 @@ export default function ParentResults() {
             )}
           </select>
 
+          <button
+            type="button"
+            onClick={() => {
+              void loadResultsForChild(selectedChildId);
+            }}
+            disabled={!selectedChildId || loadingResults}
+            className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Refresh
+          </button>
+
           {childrenError && (
             <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-2 text-sm text-red-200">
               {childrenError}
@@ -189,7 +222,7 @@ export default function ParentResults() {
 
         {!selectedChildId && !loadingChildren && hasChildren && (
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-            Select a child to load results.
+            Select a child to view this information.
           </div>
         )}
 

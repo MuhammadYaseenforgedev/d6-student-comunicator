@@ -10,7 +10,8 @@ import {
 import { toInlineError } from "./errorText";
 
 function childIdentifier(child: ParentChild): string {
-  return (child.publicStudentId ?? child.email).trim();
+  const v = child.childUserId ?? child.studentUserId ?? child.userId ?? child.id;
+  return typeof v === "string" ? v.trim() : "";
 }
 
 function childLabel(child: ParentChild): string {
@@ -28,6 +29,27 @@ export default function ParentFinance() {
   const [financeError, setFinanceError] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const hasChildren = children.length > 0;
+
+  async function loadFinanceForChild(targetChildId: string) {
+    if (!targetChildId) {
+      setFinance(null);
+      setFinanceError(null);
+      setLoadingFinance(false);
+      return;
+    }
+
+    setLoadingFinance(true);
+    setFinanceError(null);
+    try {
+      const data = await getFinance(targetChildId);
+      setFinance(data);
+    } catch (e) {
+      setFinanceError(toInlineError(e, "Failed to load finance"));
+      setFinance(null);
+    } finally {
+      setLoadingFinance(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +174,17 @@ export default function ParentFinance() {
             )}
           </select>
 
+          <button
+            type="button"
+            onClick={() => {
+              void loadFinanceForChild(selectedChildId);
+            }}
+            disabled={!selectedChildId || loadingFinance}
+            className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Refresh
+          </button>
+
           {childrenError && (
             <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-2 text-sm text-red-200">
               {childrenError}
@@ -181,7 +214,7 @@ export default function ParentFinance() {
             </div>
           ) : (
           <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-            Select a child to load finance.
+            Select a child to view this information.
           </div>
           )
         )}
@@ -243,9 +276,13 @@ export default function ParentFinance() {
         </div>
 
         <div className="mt-4 space-y-3">
-          {!finance || notifications.length === 0 ? (
+          {!selectedChildId ? (
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-              None found.
+              Select a child to view this information.
+            </div>
+          ) : !finance || notifications.length === 0 ? (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+              No finance records found.
             </div>
           ) : (
             notifications.map((n) => (
@@ -266,9 +303,13 @@ export default function ParentFinance() {
         </div>
 
         <div className="mt-4 space-y-3">
-          {!finance || documents.length === 0 ? (
+          {!selectedChildId ? (
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-              None found.
+              Select a child to view this information.
+            </div>
+          ) : !finance || documents.length === 0 ? (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+              No finance records found.
             </div>
           ) : (
             documents.map((d) => (

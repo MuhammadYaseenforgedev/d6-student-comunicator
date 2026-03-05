@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc -p tsconfig.build.json",
+    "seed:demo": "npm run build && node dist/scripts/seed-demo-users.js",
     "start": "node dist/server.js",
     "migrate": "node scripts/migrate.cjs",
     "seed:exec-demo": "npm run build && node scripts/seed_exec_demo.cjs",

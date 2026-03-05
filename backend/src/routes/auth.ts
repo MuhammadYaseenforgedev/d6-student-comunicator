@@ -32,7 +32,9 @@ function normEmail(v: unknown) {
 }
 
 function isProduction() {
-  return String(process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  const nodeEnv = String(process.env.NODE_ENV ?? "").toLowerCase();
+  const appEnv = String(process.env.APP_ENV ?? "").toLowerCase();
+  return nodeEnv === "production" || appEnv === "production";
 }
 
 function boolEnv(name: string, defaultValue: boolean) {
@@ -64,12 +66,6 @@ function authPolicy() {
 
 function shouldReturnDevCode() {
   return !isProduction() && String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
-}
-
-function shouldUseDemoOtpResponse(email: string) {
-  if (String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() !== "true") return false;
-  const normalized = normEmail(email);
-  return normalized.endsWith("@local.test") || normalized.startsWith("demo+");
 }
 
 class OtpDeliveryError extends Error {
@@ -449,15 +445,15 @@ authRouter.post("/request-otp", async (req, res) => {
   }
 
   try {
-    const useDemoOtpResponse = shouldUseDemoOtpResponse(email);
+    const includeDevOtp = shouldReturnDevCode();
     const out = await createOtp(email, purpose, ip, {
-      skipEmailDelivery: useDemoOtpResponse,
-      forceDevCode: useDemoOtpResponse,
+      forceDevCode: includeDevOtp,
     });
 
-    if (useDemoOtpResponse) {
+    if (includeDevOtp) {
       return res.json({
         ok: true,
+        expiresAt: out.expiresAt,
         devOtp: out.devCode,
       });
     }
@@ -465,7 +461,6 @@ authRouter.post("/request-otp", async (req, res) => {
     return res.json({
       ok: true,
       expiresAt: out.expiresAt,
-      devCode: out.devCode,
     });
   } catch (e: any) {
     // TEMP DEBUG CODE: remove after production OTP diagnostics are complete.

@@ -132,12 +132,27 @@ function buildResultsCsv(childId: string, rows: AssessmentResultRow[]): string {
 
 /**
  * Resolves a student by either:
+ * - user id (UUID)
  * - student number/public student ID
  * - email (legacy fallback)
  *
  * Returns the student's user id or null.
  */
 async function resolveStudentUserId(childId: string): Promise<string | null> {
+  if (isUuid(childId)) {
+    const byId = await pool.query<{ id: string }>(
+      `
+        SELECT id
+        FROM users
+        WHERE role = 'STUDENT'
+          AND id = $1
+        LIMIT 1
+      `,
+      [childId]
+    );
+    if ((byId.rowCount ?? 0) > 0) return byId.rows[0].id;
+  }
+
   const q = `
     SELECT id
     FROM users
@@ -534,7 +549,7 @@ parentRouter.delete("/children/:studentId", requireRole("PARENT"), async (req, r
  * -------------------------
  * GET /api/parent/results?childId=STU-1001
  */
-parentRouter.get("/parent/results", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/results", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const childId = String(req.query.childId ?? "").trim();
@@ -550,7 +565,7 @@ parentRouter.get("/parent/results", requireRole("PARENT"), async (req, res) => {
     const rows = await listAssessmentResultsForStudent(studentId);
     return res.json(rows);
   } catch (e: any) {
-    console.error("[parent] GET /parent/results error", e);
+    console.error("[parent] GET /results error", e);
     return err(res, 500, "INTERNAL", "Failed to load results");
   }
 });
@@ -627,7 +642,7 @@ parentRouter.get("/admin/parent/link-requests", requireRole("ADMIN"), async (req
  * GET /api/parent/results/download?childId=STU-1001
  * Download linked student's results (parent only).
  */
-parentRouter.get("/parent/results/download", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/results/download", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const childId = String(req.query.childId ?? "").trim();
@@ -652,8 +667,84 @@ parentRouter.get("/parent/results/download", requireRole("PARENT"), async (req, 
 
     return res.status(200).send(csv);
   } catch (e: any) {
-    console.error("[parent] GET /parent/results/download error", e);
+    console.error("[parent] GET /results/download error", e);
     return err(res, 500, "INTERNAL", "Failed to download results");
+  }
+});
+
+/**
+ * GET /api/parent/attendance?childId=<uuid>&from=YYYY-MM-DD&to=YYYY-MM-DD
+ */
+parentRouter.get("/attendance", requireRole("PARENT"), async (req, res) => {
+  try {
+    const parentId = req.user!.id;
+    const childId = String(req.query.childId ?? "").trim();
+    if (!childId) return err(res, 400, "VALIDATION", "childId query param is required");
+
+    const from = req.query.from ? parseDateOnly(req.query.from) : null;
+    const to = req.query.to ? parseDateOnly(req.query.to) : null;
+    if (req.query.from && !from) return err(res, 400, "VALIDATION", "from must be YYYY-MM-DD");
+    if (req.query.to && !to) return err(res, 400, "VALIDATION", "to must be YYYY-MM-DD");
+
+    const studentId = await resolveStudentUserId(childId);
+    if (!studentId) return err(res, 404, "NOT_FOUND", "Student not found");
+
+    const linked = await parentHasApprovedLink(parentId, studentId);
+    if (!linked) return err(res, 403, "FORBIDDEN", "Parent is not linked to this student");
+
+    const rows = await pool.query<{
+      session_id: string;
+      attendance_date: string;
+      starts_at: string | null;
+      ends_at: string | null;
+      module_id: string;
+      module_code: string;
+      module_name: string;
+      faculty_name: string;
+      status: string;
+      marked_at: string;
+    }>(
+      `
+        SELECT
+          s.id AS session_id,
+          s.attendance_date,
+          s.starts_at,
+          s.ends_at,
+          fm.id AS module_id,
+          fm.code AS module_code,
+          fm.name AS module_name,
+          f.name AS faculty_name,
+          ar.status,
+          ar.marked_at
+        FROM attendance_records ar
+        JOIN attendance_sessions s ON s.id = ar.session_id
+        JOIN faculty_modules fm ON fm.id = s.module_id
+        JOIN faculties f ON f.id = fm.faculty_id
+        WHERE ar.student_id = $1
+          AND ($2::date IS NULL OR s.attendance_date >= $2::date)
+          AND ($3::date IS NULL OR s.attendance_date <= $3::date)
+        ORDER BY s.attendance_date DESC, ar.marked_at DESC
+      `,
+      [studentId, from, to]
+    );
+
+    const value = rows.rows.map((r) => ({
+      sessionId: r.session_id,
+      date: r.attendance_date,
+      startsAt: r.starts_at,
+      endsAt: r.ends_at,
+      moduleId: r.module_id,
+      moduleCode: r.module_code,
+      moduleName: r.module_name,
+      facultyName: r.faculty_name,
+      status: r.status,
+      markedAt: r.marked_at,
+    }));
+
+    return res.json({ value, count: value.length });
+  } catch (e: any) {
+    console.error("[parent] GET /attendance error", e);
+    return err(res, 500, "INTERNAL", "Failed to load attendance");
   }
 });
 
@@ -979,7 +1070,7 @@ parentRouter.delete("/admin/results/:id", requireRole("ADMIN", "LECTURER"), asyn
  * - getSummary(userId)
  * - listTransactions(userId, opts)
  */
-parentRouter.get("/parent/finance", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/finance", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const childId = String(req.query.childId ?? "").trim();
@@ -1037,7 +1128,7 @@ parentRouter.get("/parent/finance", requireRole("PARENT"), async (req, res) => {
       notifications,
     });
   } catch (e: any) {
-    console.error("[parent] GET /parent/finance error", e);
+    console.error("[parent] GET /finance error", e);
     return err(res, 500, "INTERNAL", "Failed to load finance");
   }
 });
@@ -1048,7 +1139,7 @@ parentRouter.get("/parent/finance", requireRole("PARENT"), async (req, res) => {
  * -------------------------
  * GET /api/parent/finance/statement?childId=STU-1001
  */
-parentRouter.get("/parent/finance/statement", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/finance/statement", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const childId = String(req.query.childId ?? "").trim();
@@ -1097,7 +1188,7 @@ parentRouter.get("/parent/finance/statement", requireRole("PARENT"), async (req,
 
     return res.status(200).send(csv);
   } catch (e: any) {
-    console.error("[parent] GET /parent/finance/statement error", e);
+    console.error("[parent] GET /finance/statement error", e);
     return err(res, 500, "INTERNAL", "Failed to download finance statement");
   }
 });
