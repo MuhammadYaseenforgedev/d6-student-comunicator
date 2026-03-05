@@ -5,6 +5,19 @@ export type ParentChild = {
   email: string;
   role: "STUDENT";
   publicStudentId?: string | null;
+  studentNumber?: string | null;
+  userId?: string;
+  childUserId?: string;
+  studentUserId?: string;
+};
+
+export type LinkChildResult = {
+  created: boolean;
+  pending?: boolean;
+  message?: string;
+  child?: ParentChild;
+  childId?: string;
+  southAfricanId?: string | null;
 };
 
 export type ParentPortalInfo = {
@@ -139,7 +152,7 @@ function unwrapObject(data: unknown): Record<string, unknown> | null {
 function normalizeChild(row: unknown): ParentChild | null {
   if (!isObject(row)) return null;
 
-  const id = toStringValue(row.id).trim();
+  const id = toStringValue(row.childUserId ?? row.studentUserId ?? row.userId ?? row.id).trim();
   const email = toStringValue(row.email).trim();
   if (!id || !email) return null;
 
@@ -147,11 +160,24 @@ function normalizeChild(row: unknown): ParentChild | null {
   const role: "STUDENT" = roleRaw === "STUDENT" ? "STUDENT" : "STUDENT";
 
   let publicStudentId: string | null | undefined = undefined;
-  const ps = row.publicStudentId ?? row.public_student_id;
+  const ps = row.publicStudentId ?? row.public_student_id ?? row.studentNumber ?? row.student_number;
   if (typeof ps === "string") publicStudentId = ps.trim() || null;
   if (ps === null) publicStudentId = null;
 
-  return { id, email, role, publicStudentId };
+  const userId = toStringValue(row.userId, id).trim() || id;
+  const childUserId = toStringValue(row.childUserId, id).trim() || id;
+  const studentUserId = toStringValue(row.studentUserId, id).trim() || id;
+
+  return {
+    id,
+    email,
+    role,
+    publicStudentId,
+    studentNumber: publicStudentId ?? null,
+    userId,
+    childUserId,
+    studentUserId,
+  };
 }
 
 function normalizeLinkRequest(row: unknown): LinkRequest | null {
@@ -284,10 +310,41 @@ export async function parentPortalCheck(): Promise<ParentPortalInfo> {
 }
 
 export async function listMyChildren(): Promise<ParentChild[]> {
-  const data = await apiGet<unknown>("/api/parent/parent/children");
+  const data = await apiGet<unknown>("/api/parent/children");
   return unwrapList<unknown>(data)
     .map(normalizeChild)
     .filter((x): x is ParentChild => x !== null);
+}
+
+export async function linkChild(identifier: string): Promise<LinkChildResult> {
+  const cleaned = String(identifier ?? "").trim();
+  const data = await apiPost<unknown>("/api/parent/children", {
+    childId: cleaned,
+    studentNumber: cleaned,
+    publicStudentId: cleaned,
+    southAfricanId: cleaned,
+  });
+
+  const source = unwrapObject(data);
+  if (!source) {
+    return { created: false, message: "Unexpected response from server" };
+  }
+
+  const child = normalizeChild(source.child);
+
+  return {
+    created: Boolean(source.created),
+    pending: Boolean(source.pending),
+    message: toStringValue(source.message, ""),
+    child: child ?? undefined,
+    childId: toStringValue(source.childId, ""),
+    southAfricanId:
+      typeof source.southAfricanId === "string"
+        ? source.southAfricanId
+        : source.southAfricanId === null
+          ? null
+          : undefined,
+  };
 }
 
 export async function listLinkRequests(): Promise<LinkRequest[]> {

@@ -377,13 +377,13 @@ parentRouter.post("/admin/parent/link-requests/:id/decide", requireRole("ADMIN")
  */
 
 // GET /api/parent/children
-parentRouter.get("/parent/children", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/children", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
 
     const q = `
       SELECT
-        u.id,
+        u.id AS "studentUserId",
         u.email,
         u.public_student_id
       FROM parent_links pl
@@ -391,10 +391,15 @@ parentRouter.get("/parent/children", requireRole("PARENT"), async (req, res) => 
       WHERE pl.parent_user_id = $1
       ORDER BY lower(u.email) ASC
     `;
-    const r = await pool.query<{ id: string; email: string; public_student_id: string | null }>(q, [parentId]);
+    const r = await pool.query<{ studentUserId: string; email: string; public_student_id: string | null }>(q, [
+      parentId,
+    ]);
 
     const children = r.rows.map((x) => ({
-      id: x.id,
+      id: x.studentUserId,
+      userId: x.studentUserId,
+      childUserId: x.studentUserId,
+      studentUserId: x.studentUserId,
       email: x.email,
       role: "STUDENT" as const,
       publicStudentId: x.public_student_id,
@@ -408,16 +413,35 @@ parentRouter.get("/parent/children", requireRole("PARENT"), async (req, res) => 
 });
 
 // POST /api/parent/children { southAfricanId }
-parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) => {
+parentRouter.post("/children", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
 
-    const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId ?? req.body?.childId);
-    if (!southAfricanId || !isValidSouthAfricanId(southAfricanId)) {
-      return err(res, 400, "VALIDATION", "southAfricanId is required and must be exactly 13 digits");
+    const rawIdentifier = String(
+      req.body?.childId ??
+        req.body?.studentNumber ??
+        req.body?.publicStudentId ??
+        req.body?.southAfricanId ??
+        ""
+    ).trim();
+    if (!rawIdentifier) {
+      return err(
+        res,
+        400,
+        "VALIDATION",
+        "childId is required (student number/public student ID or South African ID)"
+      );
     }
 
-    const studentId = await resolveStudentUserIdBySouthAfricanId(southAfricanId);
+    const southAfricanId = normalizeSouthAfricanId(rawIdentifier);
+
+    let studentId: string | null = null;
+    if (isValidSouthAfricanId(southAfricanId)) {
+      studentId = await resolveStudentUserIdBySouthAfricanId(southAfricanId);
+    }
+    if (!studentId) {
+      studentId = await resolveStudentUserId(rawIdentifier);
+    }
     if (!studentId) return err(res, 404, "NOT_FOUND", "Student not found");
 
     // If parent cannot link directly, create a pending request instead
@@ -437,8 +461,8 @@ parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) =>
         created: false,
         pending: true,
         message: "Link request submitted. Await admin approval.",
-        childId: southAfricanId,
-        southAfricanId,
+        childId: rawIdentifier,
+        southAfricanId: isValidSouthAfricanId(southAfricanId) ? southAfricanId : null,
       });
     }
 
@@ -456,11 +480,15 @@ parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) =>
       [studentId]
     );
     const student = s.rows[0];
+    if (!student) return err(res, 404, "NOT_FOUND", "Student not found");
 
     return res.status(created ? 201 : 200).json({
       created,
       child: {
         id: student.id,
+        userId: student.id,
+        childUserId: student.id,
+        studentUserId: student.id,
         email: student.email,
         role: "STUDENT" as const,
         publicStudentId: student.public_student_id,
@@ -473,7 +501,7 @@ parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) =>
 });
 
 // DELETE /api/parent/children/:studentId
-parentRouter.delete("/parent/children/:studentId", requireRole("PARENT"), async (req, res) => {
+parentRouter.delete("/children/:studentId", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const studentId = String(req.params.studentId ?? "").trim();

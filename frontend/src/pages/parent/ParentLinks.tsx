@@ -1,112 +1,103 @@
 // src/pages/parent/ParentLinks.tsx
-// Parent -> request to link a child using South African ID.
-// Admin must approve before the child appears as "linked".
-
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import PageHeader from "../../components/PageHeader";
 import { getUser } from "../../lib/auth";
-import { createLinkRequest, listLinkRequests, type LinkRequest } from "../../api/parent";
+import { linkChild, listMyChildren, type ParentChild } from "../../api/parent";
 import { toInlineError } from "./errorText";
 
-type LinkStatus = "PENDING" | "APPROVED" | "REJECTED";
-
-function normalizeStatus(status: string): LinkStatus {
-  const s = status.toUpperCase();
-  if (s === "APPROVED") return "APPROVED";
-  if (s === "REJECTED") return "REJECTED";
-  return "PENDING";
+function childStudentLabel(child: ParentChild): string {
+  const id = child.publicStudentId ?? child.studentNumber;
+  return typeof id === "string" && id.trim() ? id.trim() : "Not set";
 }
 
 export default function ParentLinks() {
   const user = getUser();
   const parentEmail = user?.email?.trim().toLowerCase() || "not available";
 
-  const [southAfricanId, setSouthAfricanId] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [identifier, setIdentifier] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [loadingChildren, setLoadingChildren] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [requests, setRequests] = useState<LinkRequest[]>([]);
+  const [children, setChildren] = useState<ParentChild[]>([]);
 
-  async function loadRequests() {
-    setLoading(true);
-    setError(null);
+  async function loadChildren() {
+    setLoadingChildren(true);
     try {
-      const rows = await listLinkRequests();
-      setRequests(Array.isArray(rows) ? rows : []);
+      const rows = await listMyChildren();
+      setChildren(Array.isArray(rows) ? rows : []);
     } catch (e) {
-      setError(toInlineError(e, "Failed to load link requests"));
+      setError(toInlineError(e, "Failed to load linked children"));
     } finally {
-      setLoading(false);
+      setLoadingChildren(false);
     }
   }
 
   useEffect(() => {
-    void loadRequests();
+    void loadChildren();
   }, []);
 
-  const myRequests = useMemo(() => {
-    return [...requests].sort((a, b) => {
-      return String(b.requestedAt).localeCompare(String(a.requestedAt));
-    });
-  }, [requests]);
-
-  async function submit() {
+  async function onLinkChild() {
     setError(null);
     setSuccess(null);
 
-    const idTrim = southAfricanId.replace(/\D+/g, "");
-    if (!idTrim) {
-      setError("Enter the student's South African ID.");
-      return;
-    }
-    if (!/^\d{13}$/.test(idTrim)) {
-      setError("South African ID must be exactly 13 digits.");
+    const cleaned = identifier.trim();
+    if (!cleaned) {
+      setError("Enter a student number/public student ID (for example: STU-1001).");
       return;
     }
 
-    setBusy(true);
+    setLinking(true);
     try {
-      const created = await createLinkRequest(idTrim);
-      setSouthAfricanId("");
-      setSuccess(`Request ${created.status} for SA ID ${created.childId}`);
-      await loadRequests();
+      const result = await linkChild(cleaned);
+      setIdentifier("");
+
+      if (result.pending) {
+        setSuccess(result.message || `Link request submitted for ${cleaned}. Await admin approval.`);
+      } else if (result.child) {
+        setSuccess(`Linked ${result.child.email}.`);
+      } else if (result.message) {
+        setSuccess(result.message);
+      } else {
+        setSuccess("Child link processed.");
+      }
+
+      await loadChildren();
     } catch (e) {
-      setError(toInlineError(e, "Failed to submit link request"));
+      setError(toInlineError(e, "Failed to link child"));
     } finally {
-      setBusy(false);
+      setLinking(false);
     }
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Link a Child"
-        subtitle="Request linking using the student's South African ID. Admin approval is required."
-      />
+      <PageHeader title="Children" subtitle="Link a child and view your linked children." />
 
-      {/* Request form */}
+      {/* Link form */}
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-        <div className="text-lg font-semibold text-white">Request link</div>
+        <div className="text-lg font-semibold text-white">Link a child</div>
         <div className="mt-1 text-sm text-slate-400">
-          This is more secure than linking by email. The admin must approve the request.
+          Enter student number/public student ID (for example: STU-1001). South African ID is also supported.
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
           <input
-            value={southAfricanId}
-            onChange={(e) => setSouthAfricanId(e.target.value)}
-            placeholder="Enter student SA ID (13 digits)"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="STU-1001"
             className="w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600"
           />
 
           <button
             type="button"
-            onClick={submit}
-            disabled={busy}
+            onClick={() => {
+              void onLinkChild();
+            }}
+            disabled={linking}
             className="rounded-lg bg-blue-600 px-5 py-3 font-semibold hover:bg-blue-700 disabled:opacity-60"
           >
-            {busy ? "Submitting..." : "Submit request"}
+            {linking ? "Linking..." : "Link child"}
           </button>
         </div>
 
@@ -127,55 +118,39 @@ export default function ParentLinks() {
         </div>
       </div>
 
-      {/* Request status list */}
+      {/* Linked children list */}
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-        <div className="text-lg font-semibold text-white">Your requests</div>
-        <div className="mt-1 text-sm text-slate-400">
-          Pending requests will become "Approved" only after admin action.
-        </div>
+        <div className="text-lg font-semibold text-white">Linked children</div>
+        <div className="mt-1 text-sm text-slate-400">These children are available in Calendar, Results, and Finance.</div>
 
         <div className="mt-4 space-y-3">
-          {loading ? (
+          {loadingChildren ? (
             <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5 text-slate-300">
-              Loading requests...
+              Loading linked children...
             </div>
-          ) : myRequests.length === 0 ? (
+          ) : children.length === 0 ? (
             <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5 text-slate-300">
-              No link requests yet.
+              No linked children. Link a child first.
             </div>
           ) : (
-            myRequests.map((r) => (
-              <div key={r.id} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+            children.map((child) => (
+              <div key={child.id} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="text-white font-semibold">Student SA ID: {r.childId}</div>
-                    <div className="mt-1 text-xs text-slate-400">
-                      Requested: {new Date(r.requestedAt).toLocaleString()}
-                    </div>
+                    <div className="text-white font-semibold">{child.email}</div>
+                    <div className="mt-1 text-xs text-slate-300">Role: {child.role}</div>
+                    <div className="mt-1 text-xs text-slate-400">Student Number: {childStudentLabel(child)}</div>
                   </div>
 
-                  <StatusBadge status={normalizeStatus(r.status)} />
+                  <div className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1 text-xs font-semibold text-emerald-200">
+                    LINKED
+                  </div>
                 </div>
               </div>
             ))
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: LinkStatus }) {
-  const klass =
-    status === "APPROVED"
-      ? "border-green-700/40 bg-green-950/30 text-green-200"
-      : status === "REJECTED"
-      ? "border-red-700/40 bg-red-950/30 text-red-200"
-      : "border-yellow-700/40 bg-yellow-950/30 text-yellow-200";
-
-  return (
-    <div className={["rounded-full border px-3 py-1 text-xs font-semibold", klass].join(" ")}>
-      {status}
     </div>
   );
 }

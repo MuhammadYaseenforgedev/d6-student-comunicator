@@ -21,15 +21,23 @@ function childLabel(c: ParentChild) {
   return c.publicStudentId ? `${c.publicStudentId} (${c.email})` : c.email;
 }
 
+function childCalendarId(child: ParentChild): string {
+  const v = child.childUserId ?? child.studentUserId ?? child.userId ?? child.id;
+  return typeof v === "string" ? v.trim() : "";
+}
+
 export default function ParentCalendar() {
   const [children, setChildren] = useState<ParentChild[]>([]);
-  const [childId, setChildId] = useState<string>("");
+  const [selectedChildId, setSelectedChildId] = useState<string>("");
   const [loadingChildren, setLoadingChildren] = useState(false);
   const [childrenError, setChildrenError] = useState<string | null>(null);
   const hasChildren = children.length > 0;
 
   // Parent must pass student UUID to the calendar endpoint.
-  const { loading, error, grouped, reload, refresh } = useCalendarApi(childId || undefined);
+  const { loading, error, grouped, reload, refresh } = useCalendarApi(
+    undefined,
+    selectedChildId || undefined
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -41,12 +49,13 @@ export default function ParentCalendar() {
         const list = await listMyChildren();
         if (cancelled) return;
         setChildren(Array.isArray(list) ? list : []);
-        setChildId((prev) => prev || (list[0]?.id ?? ""));
+        const firstChildId = (Array.isArray(list) ? list : []).map(childCalendarId).find(Boolean) ?? "";
+        setSelectedChildId((prev) => prev || firstChildId);
       } catch (e) {
         if (!cancelled) {
           setChildrenError(toInlineError(e, "Failed to load children"));
           setChildren([]);
-          setChildId("");
+          setSelectedChildId("");
         }
       } finally {
         if (!cancelled) setLoadingChildren(false);
@@ -60,19 +69,25 @@ export default function ParentCalendar() {
   }, []);
 
   const selectedChildLabel = useMemo(() => {
-    const c = children.find((x) => x.id === childId);
-    return c ? childLabel(c) : "";
-  }, [children, childId]);
+    const c = children.find((x) => childCalendarId(x) === selectedChildId);
+    return c?.email ?? "";
+  }, [children, selectedChildId]);
 
-  const groupedTyped = (Array.isArray(grouped) ? grouped : []) as Grouped;
-  const calendarError = error ? toInlineError(error, "Failed to load calendar") : null;
+  const groupedTyped = useMemo(() => {
+    const value = (Array.isArray(grouped) ? grouped : []) as Grouped;
+    return value.map(([day, entries]) => [
+      day,
+      [...entries].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+    ]) as Grouped;
+  }, [grouped]);
+  const calendarError = typeof error === "string" && error.trim() ? error.trim() : null;
 
   return (
     <div>
       <PageHeader
         title="Calendar"
         subtitle={
-          childId
+          selectedChildId
             ? `Viewing ${selectedChildLabel}'s calendar (view-only).`
             : "Select a child to view their calendar (view-only)."
         }
@@ -85,7 +100,7 @@ export default function ParentCalendar() {
                 if (runRefresh) void runRefresh();
               }}
               className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50"
-              disabled={!childId}
+              disabled={!selectedChildId}
             >
               Refresh
             </button>
@@ -99,8 +114,8 @@ export default function ParentCalendar() {
 
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
           <select
-            value={childId}
-            onChange={(e) => setChildId(e.target.value)}
+            value={selectedChildId}
+            onChange={(e) => setSelectedChildId(e.target.value)}
             className="w-full rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50 sm:max-w-md"
             disabled={loadingChildren || !hasChildren}
           >
@@ -110,7 +125,7 @@ export default function ParentCalendar() {
               </option>
             ) : (
               children.map((c) => (
-                <option key={c.id} value={c.id}>
+                <option key={c.id} value={childCalendarId(c)}>
                   {childLabel(c)} ({c.role})
                 </option>
               ))
@@ -143,11 +158,9 @@ export default function ParentCalendar() {
           <span className="text-xs text-slate-400">{loading ? "Loading..." : ""}</span>
         </div>
 
-        {!childId ? (
+        {!selectedChildId ? (
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-            {hasChildren
-              ? "Select a child to load their calendar."
-              : "No linked children found. Link a child first to view calendar."}
+            {hasChildren ? "Select a child to load their calendar." : "No linked children. Link a child first."}
           </div>
         ) : groupedTyped.length === 0 && !loading ? (
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
