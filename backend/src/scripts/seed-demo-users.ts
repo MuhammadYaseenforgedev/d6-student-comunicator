@@ -21,9 +21,13 @@ const DEMO_PASSWORD = "DemoPass123";
 
 const DEMO_USERS: DemoUserSpec[] = [
   { email: "demo+admin@local.test", role: "ADMIN" },
+  { email: "demo+admin@co.za", role: "ADMIN" },
   { email: "demo+parent@local.test", role: "PARENT" },
+  { email: "demo+parent@co.za", role: "PARENT" },
   { email: "demo+lecturer@local.test", role: "LECTURER" },
-  { email: "demo+student1@local.test", role: "STUDENT", studentNumber: "STU-1001" },
+  { email: "demo+lecturer@co.za", role: "LECTURER" },
+  { email: "demo+student1@local.test", role: "STUDENT", studentNumber: "20231771" },
+  { email: "demo+student1@co.za", role: "STUDENT", studentNumber: "20231771" },
 ];
 
 function normalizeEmail(v: string): string {

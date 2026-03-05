@@ -146,12 +146,16 @@ export default function LoginPage2() {
       email: string;
       password: string;
       otp?: string;
-      studentNumber: string;
+      studentNumber?: string;
     } = {
       email: eNorm,
       password: pw,
-      studentNumber: normalizeStudentNumber(studentNumberInput),
     };
+
+    const studentNumberNorm = normalizeStudentNumber(studentNumberInput);
+    if (studentNumberNorm) {
+      payload.studentNumber = studentNumberNorm;
+    }
 
     if (otpCode.trim()) {
       payload.otp = otpCode.trim();

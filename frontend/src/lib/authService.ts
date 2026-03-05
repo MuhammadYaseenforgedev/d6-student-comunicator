@@ -24,7 +24,7 @@ export type MeProfile = {
 };
 
 type RequestOtpInput = { email: string; purpose: "LOGIN" | "REGISTER" };
-type LoginInput = { email: string; password: string; otp?: string; studentNumber: string };
+type LoginInput = { email: string; password: string; otp?: string; studentNumber?: string };
 type RegisterInput = {
   email: string;
   password: string;
