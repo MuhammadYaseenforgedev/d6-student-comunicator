@@ -50,6 +50,12 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
   return Math.floor(n);
 }
 
+function parseBoolean(raw: string | undefined, fallback: boolean): boolean {
+  const v = String(raw ?? "").trim().toLowerCase();
+  if (!v) return fallback;
+  return v === "true" || v === "1" || v === "yes" || v === "y";
+}
+
 function parseDatabaseUrl(raw: string): ParsedDatabaseUrl {
   try {
     const url = new URL(raw);
@@ -74,6 +80,12 @@ function parseDatabaseUrl(raw: string): ParsedDatabaseUrl {
 const DATABASE_URL = String(process.env.DATABASE_URL ?? "").trim();
 const dbFromUrl = DATABASE_URL ? parseDatabaseUrl(DATABASE_URL) : null;
 const DB_PASSWORD = String(process.env.DB_PASSWORD ?? "").trim() || dbFromUrl?.password || "";
+const SMTP_HOST = String(process.env.SMTP_HOST ?? "").trim() || undefined;
+const SMTP_PORT = parsePositiveInt(process.env.SMTP_PORT, 587);
+const SMTP_SECURE = parseBoolean(process.env.SMTP_SECURE, false);
+const SMTP_USER = String(process.env.SMTP_USER ?? "").trim() || undefined;
+const SMTP_PASS = String(process.env.SMTP_PASS ?? "").trim() || undefined;
+const SMTP_FROM = String(process.env.SMTP_FROM ?? "").trim() || undefined;
 
 if (!DATABASE_URL && !DB_PASSWORD) {
   required("DB_PASSWORD");
@@ -90,4 +102,12 @@ export const env = {
   DB_USER: process.env.DB_USER ?? dbFromUrl?.user ?? "postgres",
   DB_PASSWORD,
   DB_NAME: process.env.DB_NAME ?? dbFromUrl?.database ?? "d6_student_communicator",
+
+  // SMTP
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_SECURE,
+  SMTP_USER,
+  SMTP_PASS,
+  SMTP_FROM,
 };

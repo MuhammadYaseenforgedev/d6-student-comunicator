@@ -6,6 +6,7 @@ import { pool } from "../config/db";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/rbac";
 import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
+import { isSmtpConfigured, sendOtpEmail as sendOtpEmailViaSmtp } from "../lib/mailer";
 
 export const authRouter = Router();
 
@@ -75,75 +76,6 @@ class OtpDeliveryError extends Error {
     super(message);
     this.name = "OtpDeliveryError";
     this.status = status;
-  }
-}
-
-type OtpEmailProviderConfig = {
-  provider: "resend";
-  apiKey: string;
-  fromEmail: string;
-  replyTo?: string;
-};
-
-function getOtpEmailProviderConfig(): OtpEmailProviderConfig | null {
-  const provider = String(process.env.OTP_EMAIL_PROVIDER ?? "resend").trim().toLowerCase();
-  const apiKey = String(process.env.RESEND_API_KEY ?? "").trim();
-  const fromEmail = String(process.env.OTP_EMAIL_FROM ?? "").trim();
-  const replyTo = String(process.env.OTP_EMAIL_REPLY_TO ?? "").trim();
-
-  if (!provider || provider !== "resend") return null;
-  if (!apiKey || !fromEmail) return null;
-
-  return {
-    provider: "resend",
-    apiKey,
-    fromEmail,
-    ...(replyTo ? { replyTo } : {}),
-  };
-}
-
-function otpPurposeLabel(purpose: "LOGIN" | "REGISTER"): string {
-  return purpose === "REGISTER" ? "registration" : "login";
-}
-
-async function sendOtpEmail(
-  email: string,
-  purpose: "LOGIN" | "REGISTER",
-  code: string,
-  expiresAt: string
-): Promise<void> {
-  const provider = getOtpEmailProviderConfig();
-  if (!provider) {
-    throw new OtpDeliveryError(503, "Email provider not configured");
-  }
-
-  const subject = `Your D6 ${otpPurposeLabel(purpose)} OTP code`;
-  const html = [
-    "<p>Your one-time password (OTP) code is:</p>",
-    `<p style="font-size:28px;font-weight:700;letter-spacing:4px;">${code}</p>`,
-    `<p>This code expires at ${expiresAt}.</p>`,
-    "<p>If you did not request this code, you can ignore this email.</p>",
-  ].join("");
-
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${provider.apiKey}`,
-    },
-    body: JSON.stringify({
-      from: provider.fromEmail,
-      to: [email],
-      subject,
-      html,
-      ...(provider.replyTo ? { reply_to: provider.replyTo } : {}),
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error("[auth] OTP email send failed", { status: res.status, body });
-    throw new OtpDeliveryError(503, "Failed to send OTP email");
   }
 }
 
@@ -316,8 +248,16 @@ async function createOtp(
 
   if (isProduction() && !skipEmailDelivery) {
     try {
-      await sendOtpEmail(email, purpose, code, expiresAt);
+      if (!isSmtpConfigured()) {
+        throw new OtpDeliveryError(503, "OTP email service is not configured");
+      }
+      await sendOtpEmailViaSmtp({ to: email, code, expiresAt });
     } catch (e) {
+      if (!(e instanceof OtpDeliveryError)) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.error("[auth] OTP email send failed", { email, purpose, message });
+        e = new OtpDeliveryError(503, "Failed to send OTP email");
+      }
       await pool.query(
         `
           DELETE FROM email_otps
