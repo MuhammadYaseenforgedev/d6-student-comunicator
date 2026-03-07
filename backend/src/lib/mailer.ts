@@ -36,6 +36,13 @@ function getTransporter(): Transporter {
   }
 
   if (!transporter) {
+    console.info("[mailer] Creating SMTP transporter", {
+      host: env.SMTP_HOST ?? null,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE,
+      hasUser: Boolean(env.SMTP_USER),
+    });
+
     transporter = nodemailer.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
@@ -84,6 +91,23 @@ export async function sendOtpEmail(params: SendOtpEmailParams): Promise<void> {
       html,
     });
   } catch (e) {
+    const err = e as {
+      message?: string;
+      code?: string;
+      response?: string;
+      responseCode?: number;
+      command?: string;
+      stack?: string;
+    };
+    console.error("[mailer] sendMail failed", {
+      to,
+      message: err?.message ?? String(e),
+      code: err?.code ?? null,
+      responseCode: typeof err?.responseCode === "number" ? err.responseCode : null,
+      response: typeof err?.response === "string" ? err.response : null,
+      command: typeof err?.command === "string" ? err.command : null,
+      stack: err?.stack,
+    });
     throw new Error("Failed to send OTP email", { cause: e });
   }
 }

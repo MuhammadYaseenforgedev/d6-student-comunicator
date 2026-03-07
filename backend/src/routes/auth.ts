@@ -247,15 +247,31 @@ async function createOtp(
   const skipEmailDelivery = Boolean(options?.skipEmailDelivery);
 
   if (isProduction() && !skipEmailDelivery) {
+    const smtpConfigured = isSmtpConfigured();
+    console.info("[otp][request-otp] SMTP send begin", {
+      email,
+      purpose,
+      smtpConfigured,
+      production: true,
+    });
+
     try {
-      if (!isSmtpConfigured()) {
+      if (!smtpConfigured) {
         throw new OtpDeliveryError(503, "OTP email service is not configured");
       }
       await sendOtpEmailViaSmtp({ to: email, code, expiresAt });
+      console.info("[otp][request-otp] SMTP send success", { email, purpose });
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const stack = e instanceof Error ? e.stack : undefined;
+      console.error("[otp][request-otp] SMTP send failed", {
+        email,
+        purpose,
+        message,
+        stack,
+      });
+
       if (!(e instanceof OtpDeliveryError)) {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error("[auth] OTP email send failed", { email, purpose, message });
         e = new OtpDeliveryError(503, "Failed to send OTP email");
       }
       await pool.query(
@@ -351,6 +367,14 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
 authRouter.post("/request-otp", async (req, res) => {
   const email = normEmail(req.body?.email);
   const purpose = parsePurpose(req.body?.purpose);
+  const production = isProduction();
+  const smtpConfigured = isSmtpConfigured();
+  console.info("[otp][request-otp] start", {
+    email,
+    purpose: purpose ?? null,
+    production,
+    smtpConfigured,
+  });
 
   if (!email || !purpose) {
     return res.status(400).json({
