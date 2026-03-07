@@ -219,32 +219,58 @@ async function createOtp(
   requestIp: string,
   options?: { skipEmailDelivery?: boolean; forceDevCode?: boolean }
 ) {
+  console.info("[otp][createOtp] enter", { email, purpose, requestIp });
+  console.info("[otp][createOtp] rate-limit checks passed", { email, purpose });
+
   const { ttlMinutes } = otpConfig();
+  let code = "";
+  let codeHash = "";
+  let expiresAt = "";
 
-  await pool.query(
-    `
-      UPDATE email_otps
-      SET consumed_at = now()
-      WHERE lower(email) = lower($1)
-        AND purpose = $2
-        AND consumed_at IS NULL
-    `,
-    [email, purpose]
-  );
+  try {
+    await pool.query(
+      `
+        UPDATE email_otps
+        SET consumed_at = now()
+        WHERE lower(email) = lower($1)
+          AND purpose = $2
+          AND consumed_at IS NULL
+      `,
+      [email, purpose]
+    );
 
-  const code = generateOtpCode();
-  const codeHash = await bcrypt.hash(code, 10);
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+    code = generateOtpCode();
+    codeHash = await bcrypt.hash(code, 10);
+    expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+    console.info("[otp][createOtp] code generated", { email, purpose, expiresAt });
 
-  await pool.query(
-    `
-      INSERT INTO email_otps (email, purpose, code_hash, expires_at, request_ip)
-      VALUES ($1, $2, $3, $4::timestamptz, $5)
-    `,
-    [email, purpose, codeHash, expiresAt, requestIp]
-  );
+    await pool.query(
+      `
+        INSERT INTO email_otps (email, purpose, code_hash, expires_at, request_ip)
+        VALUES ($1, $2, $3, $4::timestamptz, $5)
+      `,
+      [email, purpose, codeHash, expiresAt, requestIp]
+    );
+    console.info("[otp][createOtp] otp stored", { email, purpose });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error("[otp][createOtp] failed before SMTP send", {
+      email,
+      purpose,
+      message,
+      stack,
+    });
+    throw err;
+  }
 
   const skipEmailDelivery = Boolean(options?.skipEmailDelivery);
+  console.info("[otp][createOtp] before delivery branch", {
+    email,
+    purpose,
+    production: isProduction(),
+    skipEmailDelivery,
+  });
 
   if (isProduction() && !skipEmailDelivery) {
     const smtpConfigured = isSmtpConfigured();
