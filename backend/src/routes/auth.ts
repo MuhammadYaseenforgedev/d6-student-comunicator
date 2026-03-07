@@ -261,9 +261,9 @@ async function createOtp(
       }
       await sendOtpEmailViaSmtp({ to: email, code, expiresAt });
       console.info("[otp][request-otp] SMTP send success", { email, purpose });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      const stack = e instanceof Error ? e.stack : undefined;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : undefined;
       console.error("[otp][request-otp] SMTP send failed", {
         email,
         purpose,
@@ -271,8 +271,9 @@ async function createOtp(
         stack,
       });
 
-      if (!(e instanceof OtpDeliveryError)) {
-        e = new OtpDeliveryError(503, "Failed to send OTP email");
+      let error = err;
+      if (!(error instanceof OtpDeliveryError)) {
+        error = new OtpDeliveryError(503, "Failed to send OTP email");
       }
       await pool.query(
         `
@@ -283,7 +284,7 @@ async function createOtp(
         `,
         [email, purpose, codeHash]
       );
-      throw e;
+      throw error;
     }
   } else {
     console.log(`[OTP][${purpose}] email=${email} ip=${requestIp} code=${code} (expires ${expiresAt})`);
