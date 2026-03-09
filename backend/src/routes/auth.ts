@@ -223,11 +223,13 @@ async function createOtp(
   console.info("[otp][createOtp] rate-limit checks passed", { email, purpose });
 
   const { ttlMinutes } = otpConfig();
+  let checkpoint = "init";
   let code = "";
   let codeHash = "";
   let expiresAt = "";
 
   try {
+    checkpoint = "consume_previous_otp";
     await pool.query(
       `
         UPDATE email_otps
@@ -239,11 +241,13 @@ async function createOtp(
       [email, purpose]
     );
 
+    checkpoint = "generate_code_hash";
     code = generateOtpCode();
     codeHash = await bcrypt.hash(code, 10);
     expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
     console.info("[otp][createOtp] code generated", { email, purpose, expiresAt });
 
+    checkpoint = "store_otp";
     await pool.query(
       `
         INSERT INTO email_otps (email, purpose, code_hash, expires_at, request_ip)
@@ -258,6 +262,7 @@ async function createOtp(
     console.error("[otp][createOtp] failed before SMTP send", {
       email,
       purpose,
+      checkpoint,
       message,
       stack,
     });
