@@ -52,6 +52,10 @@ function getTransporter(): Transporter {
         pass: env.SMTP_PASS,
       },
     });
+    transporter
+      .verify()
+      .then(() => console.log("[SMTP] connection OK"))
+      .catch((err) => console.error("[SMTP] connection FAILED", err));
   }
 
   return transporter;
