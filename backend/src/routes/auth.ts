@@ -245,6 +245,11 @@ async function createOtp(
     code = generateOtpCode();
     codeHash = await bcrypt.hash(code, 10);
     expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+    console.log("[OTP_DEBUG]", {
+      email,
+      code,
+      expiresAt,
+    });
     console.info("[otp][createOtp] code generated", { email, purpose, expiresAt });
 
     checkpoint = "store_otp";
@@ -321,7 +326,11 @@ async function createOtp(
     console.log(`[OTP][${purpose}] email=${email} ip=${requestIp} code=${code} (expires ${expiresAt})`);
   }
 
-  return { expiresAt, devCode: options?.forceDevCode ? code : shouldReturnDevCode() ? code : undefined };
+  return {
+    code,
+    expiresAt,
+    devCode: options?.forceDevCode ? code : shouldReturnDevCode() ? code : undefined,
+  };
 }
 
 /* ===============================
@@ -445,11 +454,14 @@ authRouter.post("/request-otp", async (req, res) => {
     const out = await createOtp(email, purpose, ip, {
       forceDevCode: includeDevOtp,
     });
+    // TEMP DEBUG: expose OTP in response; remove after SMTP delivery is fixed.
+    const debugOtp = out.code;
 
     if (includeDevOtp) {
       return res.json({
         ok: true,
         expiresAt: out.expiresAt,
+        debugOtp,
         devOtp: out.devCode,
       });
     }
@@ -457,6 +469,7 @@ authRouter.post("/request-otp", async (req, res) => {
     return res.json({
       ok: true,
       expiresAt: out.expiresAt,
+      debugOtp,
     });
   } catch (e: any) {
     // TEMP DEBUG CODE: remove after production OTP diagnostics are complete.
