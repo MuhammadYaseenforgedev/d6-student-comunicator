@@ -10,11 +10,28 @@ function stableRateLimitKey(req: Request): string {
   return key || "unknown-ip";
 }
 
+function isProductionEnv(): boolean {
+  const nodeEnv = String(process.env.NODE_ENV ?? "").toLowerCase();
+  const appEnv = String(process.env.APP_ENV ?? "").toLowerCase();
+  return nodeEnv === "production" || appEnv === "production";
+}
+
+function isLocalLoopbackIp(ip: string): boolean {
+  const normalized = String(ip ?? "").trim().toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "::1" || normalized === "::ffff:127.0.0.1";
+}
+
+function shouldSkipRateLimit(req: Request): boolean {
+  if (isProductionEnv()) return false;
+  return isLocalLoopbackIp(stableRateLimitKey(req));
+}
+
 function createLimiter(windowMs: number, max: number) {
   return rateLimit({
     windowMs,
     max,
     keyGenerator: (req) => stableRateLimitKey(req),
+    skip: (req) => shouldSkipRateLimit(req),
     standardHeaders: true,
     legacyHeaders: false,
     message: TOO_MANY_REQUESTS_MESSAGE,

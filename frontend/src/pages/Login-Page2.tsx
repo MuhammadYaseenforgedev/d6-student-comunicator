@@ -131,11 +131,11 @@ export default function LoginPage2() {
     setInfo(null);
 
     const data = await requestOtpApi({ email: eNorm, purpose });
-    const devOtp = String(data?.devOtp ?? data?.devCode ?? "").trim();
+    const devOtp = String(data?.devOtp ?? data?.devCode ?? data?.debugOtp ?? "").trim();
 
     if (devOtp) {
       setOtp(devOtp);
-      setInfo(`OTP generated (devOtp auto-filled). Expires: ${data.expiresAt ?? "soon"}`);
+      setInfo(`OTP generated (auto-filled). Expires: ${data.expiresAt ?? "soon"}`);
     } else {
       setInfo("OTP requested. Check backend terminal for the OTP code (dev) or your email (prod).");
     }
