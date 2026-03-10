@@ -131,7 +131,7 @@ export default function LoginPage2() {
     setInfo(null);
 
     const data = await requestOtpApi({ email: eNorm, purpose });
-    const devOtp = String(data?.devOtp ?? data?.devCode ?? data?.debugOtp ?? "").trim();
+    const devOtp = String(data?.devOtp ?? data?.devCode ?? "").trim();
 
     if (devOtp) {
       setOtp(devOtp);

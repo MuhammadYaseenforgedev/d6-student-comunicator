@@ -12,7 +12,7 @@ export type AuthUserDTO = {
 
 export type LoginResponse = { token: string; user?: AuthUserDTO };
 export type RegisterResponse = { token?: string; user?: AuthUserDTO; message?: string };
-export type OtpResponse = { ok: boolean; expiresAt?: string; devOtp?: string; devCode?: string; debugOtp?: string };
+export type OtpResponse = { ok: boolean; expiresAt?: string; devOtp?: string; devCode?: string };
 
 export type MeProfile = {
   id: string;

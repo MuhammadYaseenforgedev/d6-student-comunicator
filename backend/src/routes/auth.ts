@@ -306,12 +306,20 @@ async function createOtp(
         message,
         stack,
       });
-      // TEMP DEBUG: keep OTP and return it in API response even when SMTP delivery fails.
-      return {
-        code,
-        expiresAt,
-        devCode: options?.forceDevCode ? code : shouldReturnDevCode() ? code : undefined,
-      };
+      let error = err;
+      if (!(error instanceof OtpDeliveryError)) {
+        error = new OtpDeliveryError(503, "Failed to send OTP email");
+      }
+      await pool.query(
+        `
+          DELETE FROM email_otps
+          WHERE lower(email) = lower($1)
+            AND purpose = $2
+            AND code_hash = $3
+        `,
+        [email, purpose, codeHash]
+      );
+      throw error;
     }
   } else {
     console.log(`[OTP][${purpose}] email=${email} ip=${requestIp} code=${code} (expires ${expiresAt})`);
@@ -445,14 +453,11 @@ authRouter.post("/request-otp", async (req, res) => {
     const out = await createOtp(email, purpose, ip, {
       forceDevCode: includeDevOtp,
     });
-    // TEMP DEBUG: expose OTP in response; remove after SMTP delivery is fixed.
-    const debugOtp = out.code;
 
     if (includeDevOtp) {
       return res.json({
         ok: true,
         expiresAt: out.expiresAt,
-        debugOtp,
         devOtp: out.devCode,
       });
     }
@@ -460,7 +465,6 @@ authRouter.post("/request-otp", async (req, res) => {
     return res.json({
       ok: true,
       expiresAt: out.expiresAt,
-      debugOtp,
     });
   } catch (e: any) {
     // TEMP DEBUG CODE: remove after production OTP diagnostics are complete.
