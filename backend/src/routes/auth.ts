@@ -306,21 +306,12 @@ async function createOtp(
         message,
         stack,
       });
-
-      let error = err;
-      if (!(error instanceof OtpDeliveryError)) {
-        error = new OtpDeliveryError(503, "Failed to send OTP email");
-      }
-      await pool.query(
-        `
-          DELETE FROM email_otps
-          WHERE lower(email) = lower($1)
-            AND purpose = $2
-            AND code_hash = $3
-        `,
-        [email, purpose, codeHash]
-      );
-      throw error;
+      // TEMP DEBUG: keep OTP and return it in API response even when SMTP delivery fails.
+      return {
+        code,
+        expiresAt,
+        devCode: options?.forceDevCode ? code : shouldReturnDevCode() ? code : undefined,
+      };
     }
   } else {
     console.log(`[OTP][${purpose}] email=${email} ip=${requestIp} code=${code} (expires ${expiresAt})`);
