@@ -245,11 +245,6 @@ async function createOtp(
     code = generateOtpCode();
     codeHash = await bcrypt.hash(code, 10);
     expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
-    console.log("[OTP_DEBUG]", {
-      email,
-      code,
-      expiresAt,
-    });
     console.info("[otp][createOtp] code generated", { email, purpose, expiresAt });
 
     checkpoint = "store_otp";
@@ -467,13 +462,6 @@ authRouter.post("/request-otp", async (req, res) => {
       expiresAt: out.expiresAt,
     });
   } catch (e: any) {
-    // TEMP DEBUG CODE: remove after production OTP diagnostics are complete.
-    console.error("[OTP_DEBUG] POST /request-otp failure", {
-      email,
-      stack: e?.stack,
-      err: e,
-    });
-
     if (e instanceof OtpDeliveryError) {
       return res.status(e.status).json({
         error: { code: "EMAIL_PROVIDER", message: e.message },
