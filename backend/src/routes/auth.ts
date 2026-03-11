@@ -743,15 +743,6 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   const otp = String(req.body?.otp ?? "").trim();
   const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
 
-  // TEMP AUTH DEBUG CODE: remove after production login diagnostics are complete.
-  console.log(
-    "[AUTH_DEBUG] policy requireOtp=%s allowPasswordLogin=%s otpProvided=%s",
-    requireOtp,
-    allowPasswordLogin,
-    Boolean(otp)
-  );
-  console.log("[AUTH_DEBUG] normalized_email=%s", email);
-
   if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
   }
@@ -765,20 +756,9 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
 
   const result = await pool.query(`SELECT * FROM users WHERE lower(email)=lower($1) LIMIT 1`, [email]);
   const userRow = result.rows[0];
-  console.log("[AUTH_DEBUG] user_found=%s", Boolean(userRow));
   if (!userRow) return res.status(401).json({ error: { code: "AUTH", message: "Invalid credentials" } });
 
-  const passwordHash = String(userRow.password_hash ?? "");
-  const passwordHashPrefix = passwordHash.slice(0, 4);
-  console.log(
-    "[AUTH_DEBUG] user_role=%s password_hash_length=%d password_hash_prefix=%s",
-    String(userRow.role ?? ""),
-    passwordHash.length,
-    passwordHashPrefix
-  );
-
   const match = await bcrypt.compare(password, userRow.password_hash);
-  console.log("[AUTH_DEBUG] bcrypt_compare_match=%s", match);
   if (!match) return res.status(401).json({ error: { code: "AUTH", message: "Invalid credentials" } });
 
   // If OTP is provided, verify it
