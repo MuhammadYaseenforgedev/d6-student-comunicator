@@ -58,9 +58,9 @@ function boolEnv(name: string, defaultValue: boolean) {
 function authPolicy() {
   const prod = isProduction();
 
-  const requireOtp = boolEnv("AUTH_REQUIRE_OTP", prod ? true : false);
-  const allowPasswordLogin = boolEnv("AUTH_ALLOW_PASSWORD_LOGIN", prod ? false : true);
-  const allowPasswordRegister = boolEnv("AUTH_ALLOW_PASSWORD_REGISTER", prod ? false : false);
+  const requireOtp = prod ? true : boolEnv("AUTH_REQUIRE_OTP", false);
+  const allowPasswordLogin = prod ? false : boolEnv("AUTH_ALLOW_PASSWORD_LOGIN", true);
+  const allowPasswordRegister = prod ? false : boolEnv("AUTH_ALLOW_PASSWORD_REGISTER", false);
 
   return { requireOtp, allowPasswordLogin, allowPasswordRegister };
 }
@@ -706,7 +706,7 @@ authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
 =================================*/
 authRouter.post("/login", loginLimiter, async (req, res) => {
   // TEMP: DEMO BYPASS (REMOVE BEFORE REAL RELEASE)
-  if (process.env.DEMO_BYPASS_LOGIN === "true") {
+  if (!isProduction() && process.env.DEMO_BYPASS_LOGIN === "true") {
     const email = String(req.body?.email ?? "").trim().toLowerCase();
 
     const fallbackRole: Role = email.includes("+admin")
