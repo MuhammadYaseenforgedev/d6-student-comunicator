@@ -4,7 +4,7 @@
 // 1) Request OTP: POST /api/auth/request-otp
 // 2) Register: POST /api/auth/register with otp
 //    - STUDENT requires southAfricanId + studentNumber
-// 3) Login: POST /api/auth/login with optional otp
+// 3) Login: POST /api/auth/login with password + otp in production
 //    - STUDENT requires studentNumber
 //
 // Stores token + user in localStorage via setAuth so RequireAuth routing works.
@@ -32,6 +32,7 @@ const API_SECONDARY = String(import.meta.env.VITE_API_URL_SECONDARY ?? "").trim(
 const API_TARGET = String(import.meta.env.VITE_API_TARGET ?? "primary").trim().toLowerCase();
 const API_BASE = API_TARGET === "secondary" && API_SECONDARY ? API_SECONDARY : API_PRIMARY;
 const IS_PROD_BUILD = Boolean(import.meta.env.PROD);
+const LOGIN_REQUIRES_OTP = IS_PROD_BUILD;
 const ENV_CONFIG_ERROR = !API_BASE
   ? "Environment misconfigured: VITE_API_URL is missing. Contact support."
   : null;
@@ -256,6 +257,9 @@ export default function LoginPage2() {
     if (mode === "register" && !otp.trim()) {
       return setError("OTP is required for registration. Click 'Request OTP' first, then enter the code.");
     }
+    if (mode === "login" && LOGIN_REQUIRES_OTP && !otp.trim()) {
+      return setError("OTP is required for production login. Click 'Request OTP' first, then enter the code.");
+    }
 
     try {
       setBusy(true);
@@ -297,9 +301,10 @@ export default function LoginPage2() {
   }
 
   const canRequestOtp = !ENV_CONFIG_ERROR && !!email.trim() && !busy;
+  const hasOtp = !!otp.trim();
   const canSubmit =
     !ENV_CONFIG_ERROR &&
-    (mode === "login" || !!otp.trim()) &&
+    ((mode === "login" && (!LOGIN_REQUIRES_OTP || hasOtp)) || (mode === "register" && hasOtp)) &&
     !busy &&
     (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
     (!roleNeedsStudentIdentity ||
@@ -565,9 +570,17 @@ export default function LoginPage2() {
                   Request OTP
                 </button>
               </div>
-              <p className="mt-2 text-xs text-white/55">
-                Login can be submitted without OTP. If the backend requires OTP, request one, then retry.
-              </p>
+              {mode === "login" ? (
+                <p className="mt-2 text-xs text-white/55">
+                  {LOGIN_REQUIRES_OTP
+                    ? "Production sign-in requires password + OTP. Request OTP, then enter the 6-digit code."
+                    : "Request OTP if this environment requires it."}
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-white/55">
+                  Registration requires OTP. Request OTP, then enter the 6-digit code.
+                </p>
+              )}
             </div>
 
             <button

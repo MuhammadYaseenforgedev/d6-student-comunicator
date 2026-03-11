@@ -1,15 +1,13 @@
 // src/lib/authApi.ts
-// API client for OTP auth + registration.
+// DEPRECATED / UNUSED:
+// This legacy client targets old OTP-challenge endpoints (/auth/login/otp/* and /auth/register/otp/*)
+// that are not implemented by the current backend.
 //
-// Requirements (real-world):
-// - Login requires: email + password + OTP (OTP sent to email)
-// - Register requires: campusId + email + password + OTP (OTP sent to email)
-// - No React hooks in this file (this is not React land)
-// - No "any"
-// - Strong error handling for user-friendly messages
+// Active auth flow is implemented in src/lib/authService.ts using:
+// - POST /api/auth/request-otp
+// - POST /api/auth/login
 //
-// Environment requirement:
-// - VITE_API_URL must be set.
+// Keep this file only as temporary reference; do not import it for production auth.
 
 import type { AuthUser, UserRole } from "./auth";
 
