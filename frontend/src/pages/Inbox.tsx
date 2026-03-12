@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
 import { threadsApi, type DirectoryUser, type Thread } from "../lib/threadsApi";
+import { fetchTeamsLinks, type TeamsLink } from "../lib/teamsLinksApi";
 
 export default function Inbox() {
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ export default function Inbox() {
   const [loading, setLoading] = useState(false);
   const [recipients, setRecipients] = useState<DirectoryUser[]>([]);
   const [loadingRecipients, setLoadingRecipients] = useState(false);
+  const [teamsLinks, setTeamsLinks] = useState<TeamsLink[]>([]);
 
   // New thread UI state
   const [newEmail, setNewEmail] = useState("");
@@ -79,6 +81,28 @@ export default function Inbox() {
   useEffect(() => {
     void loadRecipients();
   }, [loadRecipients]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTeamsLinks() {
+      try {
+        const res = await fetchTeamsLinks();
+        if (!cancelled) {
+          setTeamsLinks(Array.isArray(res.value) ? res.value : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setTeamsLinks([]);
+        }
+      }
+    }
+
+    void loadTeamsLinks();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Helper: get the "other participant" email
   const threadTitle = useCallback(
@@ -155,56 +179,79 @@ export default function Inbox() {
       )}
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[420px_1fr]">
-        {/* New message */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-          <div className="text-lg font-semibold text-white">New Message</div>
-          <div className="mt-1 text-sm text-slate-400">
-            {isParent
-              ? "Start a new conversation with a lecturer or admin."
-              : "Start a new conversation by entering the other participant's email."}
-          </div>
-
-          <div className="mt-4 space-y-3">
-            <div>
-              <label className="block text-sm text-slate-300">Participant email</label>
-              {isParent ? (
-                <select
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  disabled={loadingRecipients || recipients.length === 0}
-                  className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
-                >
-                  {recipients.length === 0 ? (
-                    <option value="">
-                      {loadingRecipients ? "Loading recipients..." : "No lecturer/admin recipients found"}
-                    </option>
-                  ) : (
-                    recipients.map((r) => (
-                      <option key={r.id} value={r.email}>
-                        {r.email} ({r.role})
-                      </option>
-                    ))
-                  )}
-                </select>
-              ) : (
-                <input
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="student1@forge.local"
-                  className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              )}
+        <div className="space-y-6">
+          {/* New message */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
+            <div className="text-lg font-semibold text-white">New Message</div>
+            <div className="mt-1 text-sm text-slate-400">
+              {isParent
+                ? "Start a new conversation with a lecturer or admin."
+                : "Start a new conversation by entering the other participant's email."}
             </div>
 
-            <button
-              type="button"
-              onClick={startNewConversation}
-              disabled={busy || (isParent && (loadingRecipients || recipients.length === 0))}
-              className="w-full rounded-lg bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-60"
-            >
-              {busy ? "Creating..." : "Start"}
-            </button>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-sm text-slate-300">Participant email</label>
+                {isParent ? (
+                  <select
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    disabled={loadingRecipients || recipients.length === 0}
+                    className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
+                  >
+                    {recipients.length === 0 ? (
+                      <option value="">
+                        {loadingRecipients ? "Loading recipients..." : "No lecturer/admin recipients found"}
+                      </option>
+                    ) : (
+                      recipients.map((r) => (
+                        <option key={r.id} value={r.email}>
+                          {r.email} ({r.role})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                ) : (
+                  <input
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="student1@forge.local"
+                    className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={startNewConversation}
+                disabled={busy || (isParent && (loadingRecipients || recipients.length === 0))}
+                className="w-full rounded-lg bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-60"
+              >
+                {busy ? "Creating..." : "Start"}
+              </button>
+            </div>
           </div>
+
+          {teamsLinks.length > 0 && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
+              <div className="text-lg font-semibold text-white">Microsoft Teams</div>
+              <div className="mt-1 text-sm text-slate-400">Open your role-specific Teams workspace.</div>
+
+              <div className="mt-4 space-y-2">
+                {teamsLinks.map((link) => (
+                  <a
+                    key={link.key}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-100 transition hover:bg-slate-900/50"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Thread list */}

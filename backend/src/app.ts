@@ -21,6 +21,7 @@ import { userRouter } from "./routes/users";
 import { meRouter } from "./routes/me";
 import { attendanceRouter } from "./routes/attendance";
 import { demoRouter } from "./routes/demo";
+import { teamsLinksRouter } from "./routes/teamsLinks";
 
 function normalizeOrigin(origin: string): string {
   return String(origin).trim().replace(/\/+$/, "");
@@ -127,6 +128,7 @@ export function createApp() {
 
   app.use("/api/uploads", uploadRouter);
   app.use("/api/users", userRouter);
+  app.use("/api/integrations", teamsLinksRouter);
 
   app.use("/api/parent", parentRouter);
   app.use("/api/threads", threadRouter);
