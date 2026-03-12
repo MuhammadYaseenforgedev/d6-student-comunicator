@@ -1,49 +1,126 @@
 // src/components/AppFooter.tsx
-// Proportional enterprise footer.
-// Uses the Forge footer image as a subtle background layer, not a huge banner.
+// Global application footer.
+// Responsibilities:
+// - Show contact information
+// - Provide social media links
+// - Match the new light, minimal, professional aesthetic
 
-import footerImg from "../assets/forge-footer.jpg";
+import {
+  Facebook,
+  Instagram,
+  Linkedin,
+  Twitter,
+  MapPin,
+  Phone,
+  Mail,
+} from "lucide-react";
 
 export default function AppFooter() {
   return (
-    <footer className="border-t border-white/10 bg-slate-950/30">
+    <footer className="bg-transparent">
       <div className="mx-auto max-w-7xl px-4 py-6">
-        <div className="relative overflow-hidden rounded-2xl border border-white/10">
-          {/* Background image kept subtle */}
-          <img
-            src={footerImg}
-            alt="Forge Academy footer"
-            className="absolute inset-0 h-full w-full object-cover opacity-25"
-          />
+        <div className="glass-panel p-0">
+          <div className="grid gap-12 px-10 py-10 md:grid-cols-2">
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">
+                  Contact Details
+                </h3>
+              </div>
 
-          {/* Overlays to prevent “zoomed banner” look */}
-          <div className="absolute inset-0 bg-slate-950/70" />
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-900/70 to-slate-950" />
+              <div className="space-y-3 text-sm text-black">
+                <a
+                  href="https://maps.app.goo.gl/pxxgunzzqpLs7N1j8?g_st=aw"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start gap-2 rounded-xl p-2 -m-2 transition duration-200 hover:bg-[#4EC2F3]/8 hover:text-purple-700"
+                  title="Open Forge Academy location in Google Maps"
+                >
+                  <MapPin size={16} className="mt-0.5 text-[#794DFA]" />
+                  <span>
+                    Building 6, Clearwater Office Park
+                    <br />
+                    Millenium Blvd, Strubens Valley
+                    <br />
+                    Roodepoort, 1735
+                  </span>
+                </a>
 
-          {/* Content */}
-          <div className="relative z-10 grid gap-6 p-6 md:grid-cols-2">
-            <div>
-              <div className="text-base font-semibold text-white">Forge Academy</div>
-              <div className="mt-2 space-y-1 text-sm text-slate-300">
-                <div>Northlands Retail Park</div>
-                <div>210 Epsom Ave, Randburg</div>
-                <div>+27 10 880 3795</div>
-                <div>hello@forgeacademy.co.za</div>
+                <div className="flex items-center gap-2">
+                  <Phone size={16} className="text-[#4EC2F3]" />
+                  <a
+                    href="tel:+27108803795"
+                    className="transition duration-200 hover:text-purple-700"
+                  >
+                    +27 10 880 3795
+                  </a>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Mail size={16} className="text-[#4EC2F3]" />
+                  <a
+                    href="mailto:hello@forgeacademy.co.za"
+                    className="transition duration-200 hover:text-purple-700"
+                  >
+                    hello@forgeacademy.co.za
+                  </a>
+                </div>
               </div>
             </div>
 
-            <div className="flex flex-col items-start md:items-end justify-between">
-              <div className="text-sm text-slate-300">Join us on the journey</div>
-
-              <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-300">
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Facebook</span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Instagram</span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">LinkedIn</span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Twitter</span>
+            <div className="flex flex-col items-start justify-center md:items-end">
+              <div className="text-sm uppercase tracking-[0.25em] text-black">
+                Join Us on the Journey
               </div>
 
-              <div className="mt-4 text-xs text-slate-400">
-                © 2026 Forge Academy. All rights reserved.
+              <div className="mt-5 flex gap-5">
+                <a
+                  href="https://www.facebook.com/ForgeAcademySA"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Forge Academy Facebook"
+                  aria-label="Forge Academy Facebook"
+                  className="icon-button"
+                >
+                  <Facebook size={18} />
+                </a>
+
+                <a
+                  href="https://www.instagram.com/forge_academy/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Forge Academy Instagram"
+                  aria-label="Forge Academy Instagram"
+                  className="icon-button"
+                >
+                  <Instagram size={18} />
+                </a>
+
+                <a
+                  href="https://www.linkedin.com/company/forgeacademy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Forge Academy LinkedIn"
+                  aria-label="Forge Academy LinkedIn"
+                  className="icon-button"
+                >
+                  <Linkedin size={18} />
+                </a>
+
+                <a
+                  href="https://x.com/forgeacademyza"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Forge Academy Twitter"
+                  aria-label="Forge Academy Twitter"
+                  className="icon-button"
+                >
+                  <Twitter size={18} />
+                </a>
+              </div>
+
+              <div className="mt-8 text-xs text-black">
+                © {new Date().getFullYear()} Forge Academy. All rights reserved.
               </div>
             </div>
           </div>

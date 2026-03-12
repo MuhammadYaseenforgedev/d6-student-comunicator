@@ -53,7 +53,9 @@ export default function ParentLinks() {
       setIdentifier("");
 
       if (result.pending) {
-        setSuccess(result.message || `Link request submitted for ${cleaned}. Await admin approval.`);
+        setSuccess(
+          result.message || `Link request submitted for ${cleaned}. Await admin approval.`
+        );
       } else if (result.child) {
         setSuccess(`Linked ${result.child.email}.`);
       } else if (result.message) {
@@ -72,12 +74,14 @@ export default function ParentLinks() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Children" subtitle="Link a child and view your linked children." />
+      <PageHeader
+        title="Children"
+        subtitle="Link a child and view your linked children."
+      />
 
-      {/* Link form */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-        <div className="text-lg font-semibold text-white">Link a child</div>
-        <div className="mt-1 text-sm text-slate-400">
+      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
+        <div className="text-lg font-semibold text-slate-900">Link a child</div>
+        <div className="mt-1 text-sm text-slate-600">
           Enter student number/public student ID (for example: STU-1001). South African ID is also supported.
         </div>
 
@@ -86,7 +90,9 @@ export default function ParentLinks() {
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
             placeholder="STU-1001"
-            className="w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600"
+            className="w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+            aria-label="Student identifier"
+            title="Student identifier"
           />
 
           <button
@@ -95,54 +101,60 @@ export default function ParentLinks() {
               void onLinkChild();
             }}
             disabled={linking}
-            className="rounded-lg bg-blue-600 px-5 py-3 font-semibold hover:bg-blue-700 disabled:opacity-60"
+            className="btn-primary px-5 py-3 font-semibold disabled:opacity-60"
           >
             {linking ? "Linking..." : "Link child"}
           </button>
         </div>
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-700/40 bg-red-950/30 p-3 text-sm text-red-200">
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mt-4 rounded-xl border border-emerald-700/40 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
             {success}
           </div>
         )}
 
         <div className="mt-3 text-xs text-slate-500">
-          Signed in as: <span className="text-slate-200">{parentEmail}</span>
+          Signed in as: <span className="text-slate-900">{parentEmail}</span>
         </div>
       </div>
 
-      {/* Linked children list */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-        <div className="text-lg font-semibold text-white">Linked children</div>
-        <div className="mt-1 text-sm text-slate-400">These children are available in Calendar, Results, and Finance.</div>
+      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
+        <div className="text-lg font-semibold text-slate-900">Linked children</div>
+        <div className="mt-1 text-sm text-slate-600">
+          These children are available in Calendar, Results, and Finance.
+        </div>
 
         <div className="mt-4 space-y-3">
           {loadingChildren ? (
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5 text-slate-300">
+            <div className="rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-5 text-slate-700">
               Loading linked children...
             </div>
           ) : children.length === 0 ? (
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5 text-slate-300">
+            <div className="rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-5 text-slate-700">
               No linked children. Link a child first.
             </div>
           ) : (
             children.map((child) => (
-              <div key={child.id} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <div
+                key={child.id}
+                className="rounded-2xl border border-[#e2d8ff] bg-white p-4 shadow-[0_8px_20px_rgba(121,77,250,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#cbb8ff]"
+              >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="text-white font-semibold">{child.email}</div>
-                    <div className="mt-1 text-xs text-slate-300">Role: {child.role}</div>
-                    <div className="mt-1 text-xs text-slate-400">Student Number: {childStudentLabel(child)}</div>
+                    <div className="font-semibold text-slate-900">{child.email}</div>
+                    <div className="mt-1 text-xs text-slate-600">Role: {child.role}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Student Number: {childStudentLabel(child)}
+                    </div>
                   </div>
 
-                  <div className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1 text-xs font-semibold text-emerald-200">
+                  <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                     LINKED
                   </div>
                 </div>

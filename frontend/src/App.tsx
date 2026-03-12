@@ -1,13 +1,16 @@
 // src/App.tsx
-// Global router + global enterprise layout.
-// - Forge background image on ALL pages (login + protected routes)
-// - Footer visible on ALL pages
-// - Footer is proportional (app-like, not a huge website banner)
+// Global router and application layout.
+// Responsibilities:
+// - Apply the global light background
+// - Render all routes
+// - Keep footer visible on all pages
+// - Provide a clean, minimal, professional visual base
 
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import LoginPage from "./pages/Login-Page2";
 import AppShell from "./components/AppShell";
+import AppFooter from "./components/AppFooter";
 import RequireAuth from "./components/RequireAuth";
 import RequireRole from "./components/RequireRole";
 
@@ -33,11 +36,8 @@ import ParentResults from "./pages/parent/ParentResults";
 import ParentCalendar from "./pages/parent/ParentCalendar";
 import ParentLinks from "./pages/parent/ParentLinks";
 import ParentAttendance from "./pages/parent/ParentAttendance";
-import { getUser } from "./lib/auth";
 
-// Images (ensure these exist in src/assets)
-import forgeFooter from "./assets/forge-footer.jpg";
-import forgeBg from "./assets/forge-bg.png";
+import { getUser } from "./lib/auth";
 
 function AppIndex() {
   const user = getUser();
@@ -48,17 +48,18 @@ function AppIndex() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col text-white relative">
-        {/* Global background image */}
-        <div className="pointer-events-none absolute inset-0">
-          <img src={forgeBg} alt="Forge background" className="h-full w-full object-cover" />
-          {/* Darken and tint so content stays readable */}
-          <div className="absolute inset-0 bg-slate-950/75" />
-          <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-purple-500/10 to-slate-950/40" />
+      <div className="relative flex min-h-screen flex-col overflow-hidden text-black">
+        {/* Global light background */}
+        <div className="pointer-events-none absolute inset-0 z-0">
+          <div className="absolute inset-0 bg-[#F2F3F5]" />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#ffffff] via-[#F2F3F5] to-[#E5E7EB]" />
+          <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-[#4EC2F3]/10 blur-3xl" />
+          <div className="absolute top-32 right-[-80px] h-96 w-96 rounded-full bg-[#794DFA]/8 blur-3xl" />
+          <div className="absolute bottom-[-120px] left-1/3 h-80 w-80 rounded-full bg-[#7EF3E3]/10 blur-3xl" />
         </div>
 
         {/* Main routed content */}
-        <div className="relative flex-1">
+        <div className="relative z-10 flex-1">
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<LoginPage />} />
@@ -67,7 +68,11 @@ export default function App() {
               <Route path="/app" element={<AppShell />}>
                 <Route index element={<AppIndex />} />
 
-                <Route element={<RequireRole roles={["STUDENT", "LECTURER", "ADMIN"]} />}>
+                <Route
+                  element={
+                    <RequireRole roles={["STUDENT", "LECTURER", "ADMIN"]} />
+                  }
+                >
                   <Route path="modules" element={<Modules />} />
                   <Route path="faculty" element={<Faculty />} />
                   <Route path="clubs" element={<Clubs />} />
@@ -76,7 +81,13 @@ export default function App() {
                   <Route path="attendance" element={<Attendance />} />
                 </Route>
 
-                <Route element={<RequireRole roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]} />}>
+                <Route
+                  element={
+                    <RequireRole
+                      roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]}
+                    />
+                  }
+                >
                   <Route path="messages" element={<Inbox />} />
                   <Route path="messages/:id" element={<ThreadPage />} />
                 </Route>
@@ -89,7 +100,10 @@ export default function App() {
                 </Route>
 
                 <Route element={<RequireRole roles={["ADMIN"]} />}>
-                  <Route path="admin/parent-links" element={<AdminParentLinks />} />
+                  <Route
+                    path="admin/parent-links"
+                    element={<AdminParentLinks />}
+                  />
                 </Route>
 
                 <Route element={<RequireRole roles={["PARENT"]} />}>
@@ -105,32 +119,17 @@ export default function App() {
               </Route>
             </Route>
 
-            <Route path="*" element={<div className="p-6">Not found</div>} />
+            <Route
+              path="*"
+              element={<div className="p-6 text-black">Not found</div>}
+            />
           </Routes>
         </div>
 
-        {/* Global footer (enterprise) */}
-        <footer className="relative z-50 px-4 pb-4">
-          <div className="mx-auto w-full max-w-7xl">
-            <div className="relative h-[5cm] overflow-hidden rounded-2xl border border-white/10 bg-slate-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
-              {/* No cropping */}
-              <img
-                src={forgeFooter}
-                alt="Forge Academy footer banner"
-                className="h-full w-full object-contain"
-                draggable={false}
-              />
-
-              {/* Blend into background (subtle fade + polish) */}
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-transparent" />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-slate-950/15 via-transparent to-slate-950/15" />
-            </div>
-
-            <div className="mt-3 text-center text-xs text-white/60">
-              (c) {new Date().getFullYear()} Forge Academy. All rights reserved.
-            </div>
-          </div>
-        </footer>
+        {/* Global footer */}
+        <div className="relative z-20 mt-10">
+          <AppFooter />
+        </div>
       </div>
     </BrowserRouter>
   );

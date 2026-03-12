@@ -1,10 +1,17 @@
 // src/pages/parent/ParentPortalLayout.tsx
+// Parent portal layout wrapper.
+// Responsibilities:
+// - Render the shared Parent Portal page header
+// - Render portal navigation tabs
+// - Render the active parent portal child route via <Outlet />
+// - Use purple blocks to match the updated application theme
+
 import { NavLink, Outlet } from "react-router-dom";
 import PageHeader from "../../components/PageHeader";
 
 /**
- * ✅ Parent portal "tabs" wrapper.
- * Now includes "Children" tab (linking by child ID + admin approval).
+ * Parent portal wrapper.
+ * Includes parent-specific navigation tabs.
  */
 export default function ParentPortalLayout() {
   return (
@@ -14,8 +21,8 @@ export default function ParentPortalLayout() {
         subtitle="Overview, finance, results, calendar, and linking (Week 3+)."
       />
 
-      {/* Tabs */}
-      <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/30 p-2">
+      {/* Tabs container */}
+      <div className="mt-6 rounded-3xl border border-[#6C44FD] bg-[#794DFA] p-2 text-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
           <Tab to="/app/parent" end label="Overview" />
           <Tab to="/app/parent/finance" label="Finance" />
@@ -35,19 +42,28 @@ export default function ParentPortalLayout() {
 }
 
 /**
- * Small reusable tab component (so styling stays consistent).
+ * Reusable parent portal tab.
+ * Active tabs use a deeper purple block.
  */
-function Tab({ to, label, end }: { to: string; label: string; end?: boolean }) {
+function Tab({
+  to,
+  label,
+  end,
+}: {
+  to: string;
+  label: string;
+  end?: boolean;
+}) {
   return (
     <NavLink
       to={to}
       end={end}
       className={({ isActive }) =>
         [
-          "rounded-xl border px-3 py-2 text-sm font-semibold transition text-center",
+          "rounded-2xl border px-3 py-2 text-center text-sm font-semibold transition",
           isActive
-            ? "bg-slate-800/70 border-slate-700 text-white"
-            : "bg-transparent border-slate-800 text-slate-300 hover:bg-slate-900/60 hover:text-white",
+            ? "border-[#794DFA] bg-[#6C44FD] text-white"
+            : "border-white/25 bg-transparent text-white hover:bg-[#6C44FD] hover:text-white",
         ].join(" ")
       }
     >

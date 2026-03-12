@@ -1,6 +1,12 @@
 // src/pages/parent/ParentResults.tsx
 import { useEffect, useState } from "react";
-import { downloadResults, getResults, listMyChildren, type ParentChild, type Result } from "../../api/parent";
+import {
+  downloadResults,
+  getResults,
+  listMyChildren,
+  type ParentChild,
+  type Result,
+} from "../../api/parent";
 import { toInlineError } from "./errorText";
 
 function childIdentifier(child: ParentChild): string {
@@ -9,7 +15,9 @@ function childIdentifier(child: ParentChild): string {
 }
 
 function childLabel(child: ParentChild): string {
-  return child.publicStudentId ? `${child.publicStudentId} (${child.email})` : child.email;
+  return child.publicStudentId
+    ? `${child.publicStudentId} (${child.email})`
+    : child.email;
 }
 
 export default function ParentResults() {
@@ -56,7 +64,8 @@ export default function ParentResults() {
         if (cancelled) return;
 
         setChildren(Array.isArray(list) ? list : []);
-        const first = (Array.isArray(list) ? list : []).map(childIdentifier).find(Boolean) ?? "";
+        const first =
+          (Array.isArray(list) ? list : []).map(childIdentifier).find(Boolean) ?? "";
         setSelectedChildId(first);
       } catch (e) {
         if (!cancelled) {
@@ -119,7 +128,8 @@ export default function ParentResults() {
       try {
         const a = document.createElement("a");
         a.href = url;
-        a.download = fileName || `results-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          fileName || `results-${new Date().toISOString().slice(0, 10)}.csv`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -135,20 +145,27 @@ export default function ParentResults() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-        <div className="text-lg font-semibold text-white">Child</div>
-        <div className="mt-1 text-sm text-slate-400">Select a linked child to view results.</div>
+      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
+        <div className="text-lg font-semibold text-slate-900">Child</div>
+        <div className="mt-1 text-sm text-slate-600">
+          Select a linked child to view results.
+        </div>
 
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <select
+            id="parent-results-child"
             value={selectedChildId}
             onChange={(e) => setSelectedChildId(e.target.value)}
-            className="w-full rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50 sm:max-w-md"
+            className="w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15 sm:max-w-md"
             disabled={loadingChildren || children.length === 0}
+            aria-label="Select child for results"
+            title="Select child for results"
           >
             {children.length === 0 ? (
               <option value="">
-                {loadingChildren ? "Loading linked children..." : "No linked children found"}
+                {loadingChildren
+                  ? "Loading linked children..."
+                  : "No linked children found"}
               </option>
             ) : (
               children.map((c) => (
@@ -165,24 +182,24 @@ export default function ParentResults() {
               void loadResultsForChild(selectedChildId);
             }}
             disabled={!selectedChildId || loadingResults}
-            className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm hover:bg-slate-900/50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-secondary px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
           >
             Refresh
           </button>
 
           {childrenError && (
-            <div className="rounded-xl border border-red-500/30 bg-red-950/30 p-2 text-sm text-red-200">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-2 text-sm text-red-700">
               {childrenError}
             </div>
           )}
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
+      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-lg font-semibold text-white">Assessment Results</div>
-            <div className="mt-1 text-sm text-slate-400">
+            <div className="text-lg font-semibold text-slate-900">Assessment Results</div>
+            <div className="mt-1 text-sm text-slate-600">
               Parents can view marks, but cannot edit anything.
             </div>
           </div>
@@ -193,11 +210,21 @@ export default function ParentResults() {
             disabled={!selectedChildId || loadingResults || downloading}
             aria-label="Download results"
             title="Download results"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-900/70 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-secondary inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M12 3v12" strokeLinecap="round" />
-              <path d="m7 10 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="m7 10 5 5 5-5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
               <path d="M4 21h16" strokeLinecap="round" />
             </svg>
             <span>{downloading ? "Downloading..." : "Download"}</span>
@@ -205,35 +232,35 @@ export default function ParentResults() {
         </div>
 
         {downloadError && (
-          <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {downloadError}
           </div>
         )}
 
-        <div className="mt-1 text-sm text-slate-400">
+        <div className="mt-1 text-sm text-slate-600">
           Download results as a CSV for the selected child.
         </div>
 
         {!loadingChildren && !hasChildren && (
-          <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+          <div className="mt-5 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
             No linked children found. Link a child first to view results.
           </div>
         )}
 
         {!selectedChildId && !loadingChildren && hasChildren && (
-          <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+          <div className="mt-5 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
             Select a child to view this information.
           </div>
         )}
 
         {loadingResults && (
-          <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+          <div className="mt-5 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
             Loading results...
           </div>
         )}
 
         {resultsError && (
-          <div className="mt-5 rounded-2xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">
+          <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {resultsError}
           </div>
         )}
@@ -241,7 +268,7 @@ export default function ParentResults() {
         {!loadingResults && !resultsError && selectedChildId && (
           <div className="mt-5 space-y-3">
             {results.length === 0 ? (
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+              <div className="rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
                 No results found.
               </div>
             ) : (
@@ -251,22 +278,29 @@ export default function ParentResults() {
                 return (
                   <div
                     key={r.id}
-                    className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4"
+                    className="rounded-2xl border border-[#e2d8ff] bg-white p-4 shadow-[0_8px_20px_rgba(121,77,250,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#cbb8ff]"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="font-semibold text-white">{r.subject}</div>
-                        <div className="mt-1 text-xs text-slate-400">
-                          Date: {r.date ? new Date(r.date).toLocaleDateString() : "Unknown"}
+                        <div className="font-semibold text-slate-900">{r.subject}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          Date:{" "}
+                          {r.date
+                            ? new Date(r.date).toLocaleDateString()
+                            : "Unknown"}
                         </div>
                       </div>
 
                       <div className="text-right">
-                        <div className="font-semibold text-white">
+                        <div className="font-semibold text-slate-900">
                           {r.score}/{max} ({pct}%)
                         </div>
-                        <div className="mt-1 text-xs text-slate-400">
-                          {pct >= 75 ? "Excellent" : pct >= 50 ? "Pass" : "At risk"}
+                        <div className="mt-1 text-xs text-slate-500">
+                          {pct >= 75
+                            ? "Excellent"
+                            : pct >= 50
+                            ? "Pass"
+                            : "At risk"}
                         </div>
                       </div>
                     </div>
@@ -278,9 +312,9 @@ export default function ParentResults() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-        <div className="text-lg font-semibold text-white">Exam Dates</div>
-        <div className="mt-2 text-sm text-slate-400">
+      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
+        <div className="text-lg font-semibold text-slate-900">Exam Dates</div>
+        <div className="mt-2 text-sm text-slate-600">
           Upcoming exam schedule will appear here when published.
         </div>
       </div>

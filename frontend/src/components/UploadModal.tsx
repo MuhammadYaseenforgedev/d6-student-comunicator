@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import type { UploadScope } from "../lib/types";
 
 type Props = {
@@ -8,24 +8,31 @@ type Props = {
   onUpload: (file: File) => Promise<void>;
 };
 
-export default function UploadModal({ open, onClose, scope, onUpload }: Props) {
+export default function UploadModal({
+  open,
+  onClose,
+  scope,
+  onUpload,
+}: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const title = useMemo(() => {
-    return scope === "LECTURER_MATERIAL" ? "Upload Lecturer File" : "Submit Student File";
+    return scope === "LECTURER_MATERIAL"
+      ? "Upload Lecturer File"
+      : "Submit Student File";
   }, [scope]);
 
   const helper = useMemo(() => {
     return scope === "LECTURER_MATERIAL"
       ? "Visible to students and lecturers."
-      : "Visible to lecturers (and admin). Students can still see their own submissions.";
+      : "Visible to lecturers and admin. Students can still see their own submissions.";
   }, [scope]);
 
   if (!open) return null;
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
 
@@ -51,10 +58,13 @@ export default function UploadModal({ open, onClose, scope, onUpload }: Props) {
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl">
         <div className="flex items-center justify-between">
           <div className="text-lg font-semibold">{title}</div>
+
           <button
             onClick={onClose}
             type="button"
             className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm hover:bg-slate-50"
+            title="Close upload modal"
+            aria-label="Close upload modal"
           >
             Close
           </button>
@@ -70,15 +80,30 @@ export default function UploadModal({ open, onClose, scope, onUpload }: Props) {
 
         <form onSubmit={submit} className="mt-4 space-y-3">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <label
+              htmlFor="upload-modal-file"
+              className="block text-sm font-medium text-slate-700"
+            >
+              Choose file
+            </label>
+
             <input
+              id="upload-modal-file"
+              name="uploadFile"
               type="file"
-              className="w-full text-sm"
+              className="mt-2 w-full text-sm"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              aria-label="Choose file to upload"
+              title="Choose file to upload"
             />
+
             <div className="mt-2 text-xs text-slate-500">
               {file ? (
                 <>
-                  Selected: <span className="font-medium text-slate-700">{file.name}</span>{" "}
+                  Selected:{" "}
+                  <span className="font-medium text-slate-700">
+                    {file.name}
+                  </span>{" "}
                   ({Math.round(file.size / 1024)} KB)
                 </>
               ) : (
@@ -91,6 +116,8 @@ export default function UploadModal({ open, onClose, scope, onUpload }: Props) {
             disabled={busy || !file}
             type="submit"
             className="w-full rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            title="Upload selected file"
+            aria-label="Upload selected file"
           >
             {busy ? "Uploading..." : "Upload"}
           </button>

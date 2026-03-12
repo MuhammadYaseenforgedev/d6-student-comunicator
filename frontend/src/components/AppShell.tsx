@@ -1,21 +1,36 @@
 // src/components/AppShell.tsx
+// Main authenticated application shell.
+// Responsibilities:
+// - Render the global sidebar
+// - Render the current page content via <Outlet />
+// - Show role-aware navigation
+// - Display logged-in user summary
+// - Keep visual styling consistent with the app-wide light theme
+
 import { useEffect, useMemo, useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import {
+  Link,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { clearAuth, getUser } from "../lib/auth";
 import AppErrorBoundary from "./AppErrorBoundary";
 import { fetchMeProfile, type MeProfile } from "../lib/authService";
 
-function Item({ to, label }: { to: string; label: string }) {
+function Item({
+  to,
+  label,
+}: {
+  to: string;
+  label: string;
+}) {
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
-        [
-          "block rounded-lg px-3 py-2 text-sm border transition",
-          isActive
-            ? "bg-white/10 border-white/15 text-white"
-            : "bg-transparent border-transparent text-white/75 hover:bg-white/5 hover:border-white/10 hover:text-white",
-        ].join(" ")
+        ["nav-item", isActive ? "nav-item-active" : "nav-item-idle"].join(" ")
       }
     >
       {label}
@@ -27,20 +42,24 @@ export default function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = getUser();
+
   const isParent = user?.role === "PARENT";
   const isStudent = user?.role === "STUDENT";
-  const calendarTo = user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
+
+  const calendarTo =
+    user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
   const homeTo = isParent ? "/app/parent" : "/app";
+
   const userId = user?.id ?? "";
   const userRole = user?.role ?? "";
+
   const [profile, setProfile] = useState<MeProfile | null>(null);
 
   useEffect(() => {
-    if (userRole !== "STUDENT" || !userId) {
-      return;
-    }
+    if (userRole !== "STUDENT" || !userId) return;
 
     let cancelled = false;
+
     void fetchMeProfile()
       .then((p) => {
         if (!cancelled) setProfile(p);
@@ -59,9 +78,11 @@ export default function AppShell() {
 
   const studentDisplayName = useMemo(() => {
     if (!isStudent) return "";
+
     const first = profile?.firstName?.trim() ?? "";
     const last = profile?.lastName?.trim() ?? "";
     const combined = `${first} ${last}`.trim();
+
     if (combined) return combined;
     return user?.email ?? "Student";
   }, [isStudent, profile?.firstName, profile?.lastName, user?.email]);
@@ -71,9 +92,9 @@ export default function AppShell() {
     return profile?.courseName?.trim() || "Course not assigned";
   }, [isStudent, profile?.courseName]);
 
-    const title =
-      location.pathname.includes("/calendar")
-        ? "Calendar"
+  const title =
+    location.pathname.includes("/calendar")
+      ? "Calendar"
       : location.pathname.includes("/admin/parent-links")
       ? "Parent Link Approvals"
       : location.pathname.includes("/manage-results")
@@ -106,33 +127,27 @@ export default function AppShell() {
   return (
     <div className="min-h-[calc(100vh-220px)]">
       <div className="mx-auto max-w-7xl px-4 py-6">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[270px_1fr]">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-[290px_1fr]">
           {/* Sidebar */}
-          <aside className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950/35 backdrop-blur-xl p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
-            {/* Subtle brand accent */}
-            <div className="pointer-events-none absolute inset-0 opacity-60">
-              <div className="absolute -top-24 -left-24 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
-              <div className="absolute -bottom-28 -right-28 h-80 w-80 rounded-full bg-purple-500/10 blur-3xl" />
+          <aside className="glass-panel-premium relative overflow-hidden p-4">
+            <div className="pointer-events-none absolute inset-0 opacity-100">
+              <div className="absolute -left-16 -top-16 h-48 w-48 rounded-full bg-[#4EC2F3]/10 blur-3xl" />
+              <div className="absolute -bottom-16 -right-12 h-52 w-52 rounded-full bg-[#794DFA]/10 blur-3xl" />
             </div>
 
             <div className="relative">
-              <Link to="/app" className="block">
-                <div className="text-xl font-bold">
-                  <span className="bg-gradient-to-r from-cyan-300 to-purple-300 bg-clip-text text-transparent">
-                    D6 Communicator
-                  </span>
-                </div>
-                <div className="text-xs text-white/60 mt-1">
-                  Auth, Messaging, Uploads, Calendar, Parent Portal
+              <Link to={homeTo} className="block">
+                <div className="text-2xl font-bold tracking-tight">
+                  <span className="app-title-gradient">Forge Communicator</span>
                 </div>
               </Link>
 
-              <div className="mt-5 space-y-1">
+              <div className="mt-6 space-y-1.5">
                 <Item to={homeTo} label="Home" />
 
                 {isParent ? (
                   <>
-                    <div className="my-3 h-px bg-white/10" />
+                    <div className="divider-soft my-3" />
                     <Item to="/app/parent" label="Overview" />
                     <Item to="/app/parent/results" label="Results" />
                     <Item to="/app/parent/finance" label="Finance" />
@@ -149,7 +164,7 @@ export default function AppShell() {
                     <Item to="/app/clubs" label="Clubs" />
                     <Item to="/app/emergency" label="Emergency" />
 
-                    <div className="my-3 h-px bg-white/10" />
+                    <div className="divider-soft my-3" />
 
                     <Item to="/app/uploads" label="Uploads" />
                     <Item to="/app/messages" label="Messages" />
@@ -159,20 +174,36 @@ export default function AppShell() {
                     {(user?.role === "ADMIN" || user?.role === "LECTURER") && (
                       <Item to="/app/manage-results" label="Manage Results" />
                     )}
-                    {user?.role === "ADMIN" && <Item to="/app/admin/parent-links" label="Parent Link Approvals" />}
+
+                    {user?.role === "ADMIN" && (
+                      <Item
+                        to="/app/admin/parent-links"
+                        label="Parent Link Approvals"
+                      />
+                    )}
                   </>
                 )}
               </div>
 
-              <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-3">
-                <div className="text-xs text-white/60">Signed in as</div>
-                <div className="text-sm font-semibold truncate">{user?.email ?? "Unknown"}</div>
-                <div className="text-xs text-white/60">Role: {user?.role ?? "Unknown"}</div>
+              <div className="mt-6 rounded-3xl border border-[#DADDE2] bg-[#F8FAFC] p-4">
+                <div className="text-xs uppercase tracking-[0.2em] text-black">
+                  Signed in as
+                </div>
+
+                <div className="mt-2 truncate text-sm font-semibold text-black">
+                  {user?.email ?? "Unknown"}
+                </div>
+
+                <div className="mt-1 text-xs text-black">
+                  Role: {user?.role ?? "Unknown"}
+                </div>
 
                 <button
                   onClick={logout}
                   type="button"
-                  className="mt-3 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 transition"
+                  className="btn-secondary mt-4 w-full"
+                  title="Log out of the application"
+                  aria-label="Log out of the application"
                 >
                   Logout
                 </button>
@@ -180,27 +211,44 @@ export default function AppShell() {
             </div>
           </aside>
 
-          {/* Main */}
-          <main className="rounded-2xl border border-white/10 bg-slate-950/25 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
-            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-              <div>
-                <div className="text-lg font-semibold">{title}</div>
-                <div className="text-xs text-white/60">{location.pathname}</div>
-                {isStudent && (
-                  <div className="mt-2">
-                    <div className="text-sm font-semibold text-cyan-200">{studentDisplayName}</div>
-                    <div className="text-xs text-white/70">{studentCourse}</div>
-                  </div>
-                )}
-              </div>
+          {/* Main content area */}
+          <main className="glass-panel relative overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 opacity-100">
+              <div className="absolute left-0 top-0 h-32 w-32 rounded-full bg-[#4EC2F3]/8 blur-3xl" />
+              <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-[#7EF3E3]/10 blur-3xl" />
+            </div>
 
-              <div className="hidden md:flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.6)]" />
-                <div className="text-xs text-white/60">Frontend active</div>
+            <div className="relative border-b border-[#DADDE2] px-5 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-xl font-semibold tracking-tight text-slate-900">
+                    {title}
+                  </div>
+
+                  <div className="mt-1 text-xs text-black">
+                    {location.pathname}
+                  </div>
+
+                  {isStudent && (
+                    <div className="mt-3 rounded-2xl border border-[#DADDE2] bg-[#F8FAFC] px-3 py-2">
+                      <div className="text-sm font-semibold text-slate-900">
+                        {studentDisplayName}
+                      </div>
+                      <div className="text-xs text-black">
+                        {studentCourse}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="hidden items-center gap-2 md:flex">
+                  <div className="status-dot" />
+                  <div className="text-xs text-black">Live</div>
+                </div>
               </div>
             </div>
 
-            <div className="p-6">
+            <div className="relative p-6">
               <AppErrorBoundary>
                 <Outlet />
               </AppErrorBoundary>
