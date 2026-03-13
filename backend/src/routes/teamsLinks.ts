@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireAuth } from "../middleware/auth";
 
 type Role = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
 type TeamsRole = Exclude<Role, "PARENT">;
@@ -10,11 +11,12 @@ type TeamsLink = {
 };
 
 const teamsLinksRouter = Router();
+teamsLinksRouter.use(requireAuth);
 
 const ROLE_LINK_CONFIG: Record<TeamsRole, { envName: string; label: string }> = {
-  ADMIN: { envName: "TEAMS_LINK_ADMIN", label: "Open Admin Teams" },
-  LECTURER: { envName: "TEAMS_LINK_LECTURER", label: "Open Lecturer Teams" },
-  STUDENT: { envName: "TEAMS_LINK_STUDENT", label: "Open Student Teams" },
+  ADMIN: { envName: "TEAMS_LINK_ADMIN", label: "Open Staff Teams" },
+  LECTURER: { envName: "TEAMS_LINK_LECTURER", label: "Open Lecturer Workspace" },
+  STUDENT: { envName: "TEAMS_LINK_STUDENT", label: "Open Class Teams" },
 };
 
 function toRole(v: unknown): Role | null {
@@ -38,7 +40,7 @@ function readTeamsLink(name: string): string | null {
 }
 
 teamsLinksRouter.get("/teams-links", (req, res) => {
-  const role = toRole(req.user?.role);
+  const role = toRole(req.user!.role);
   if (!role) {
     return res.status(403).json({ error: { code: "FORBIDDEN", message: "Invalid role" } });
   }
