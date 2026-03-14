@@ -3,6 +3,10 @@ import crypto from "crypto";
 import { pool } from "../config/db";
 import { requireRole } from "../middleware/rbac";
 import { repos } from "../persistence";
+import {
+  createParentLinkDecisionNotification,
+  createResultNotifications,
+} from "../lib/notifications";
 
 export const parentRouter = Router();
 
@@ -377,6 +381,15 @@ parentRouter.post("/admin/parent/link-requests/:id/decide", requireRole("ADMIN")
         [row.parent_user_id, row.student_user_id]
       );
     }
+
+    await createParentLinkDecisionNotification({
+      requestId: id,
+      parentId: row.parent_user_id,
+      studentId: row.student_user_id,
+      decision: decision as "APPROVED" | "REJECTED",
+    }).catch((e) => {
+      console.error("[parent] parent-link notification fan-out failed", e);
+    });
 
     return res.json({ ok: true, status: decision });
   } catch (e: any) {
@@ -962,6 +975,18 @@ parentRouter.post("/admin/results", requireRole("ADMIN", "LECTURER"), async (req
       [newId(), studentId, subject, score, outOf, date]
     );
 
+    await createResultNotifications({
+      resultId: created.rows[0].id,
+      studentId,
+      subject: created.rows[0].subject,
+      score: created.rows[0].score,
+      outOf: created.rows[0].outOf,
+      date: created.rows[0].date,
+      action: "PUBLISHED",
+    }).catch((e) => {
+      console.error("[parent] result notification fan-out failed", e);
+    });
+
     return res.status(201).json(created.rows[0]);
   } catch (e: any) {
     console.error("[parent] POST /admin/results error", e);
@@ -985,8 +1010,19 @@ parentRouter.post("/admin/results/:id/update", requireRole("ADMIN", "LECTURER"),
       return err(res, 400, "VALIDATION", "Provide at least one field: subject, score, outOf, date");
     }
 
-    const current = await pool.query<{ score: number; out_of: number }>(
-      `SELECT score, out_of FROM assessment_results WHERE id = $1 LIMIT 1`,
+    const current = await pool.query<{
+      student_user_id: string;
+      subject: string;
+      score: number;
+      out_of: number;
+      assessed_at: string;
+    }>(
+      `
+        SELECT student_user_id, subject, score, out_of, assessed_at
+        FROM assessment_results
+        WHERE id = $1
+        LIMIT 1
+      `,
       [id]
     );
     if ((current.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Result not found");
@@ -1036,7 +1072,20 @@ parentRouter.post("/admin/results/:id/update", requireRole("ADMIN", "LECTURER"),
       [id, subject, score, outOf, date]
     );
 
-    return res.json(updated.rows[0]);
+    const updatedRow = updated.rows[0];
+    await createResultNotifications({
+      resultId: updatedRow.id,
+      studentId: currentRow.student_user_id,
+      subject: updatedRow.subject,
+      score: updatedRow.score,
+      outOf: updatedRow.outOf,
+      date: updatedRow.date,
+      action: "UPDATED",
+    }).catch((e) => {
+      console.error("[parent] result update notification fan-out failed", e);
+    });
+
+    return res.json(updatedRow);
   } catch (e: any) {
     console.error("[parent] POST /admin/results/:id/update error", e);
     return err(res, 500, "INTERNAL", "Failed to update result");

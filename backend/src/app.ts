@@ -22,6 +22,7 @@ import { meRouter } from "./routes/me";
 import { attendanceRouter } from "./routes/attendance";
 import { demoRouter } from "./routes/demo";
 import { teamsLinksRouter } from "./routes/teamsLinks";
+import { notificationRouter } from "./routes/notifications";
 
 function normalizeOrigin(origin: string): string {
   return String(origin).trim().replace(/\/+$/, "");
@@ -134,6 +135,7 @@ export function createApp() {
   app.use("/api/threads", threadRouter);
   app.use("/api", calendarRouter);
   app.use("/api", financeRouter);
+  app.use("/api/notifications", notificationRouter);
 
   // =========================
   // Not Found

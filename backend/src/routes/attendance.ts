@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "../config/db";
 import { requireRole } from "../middleware/rbac";
+import { createAttendanceNotifications } from "../lib/notifications";
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE";
 const VALID_ATTENDANCE_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE"];
@@ -619,6 +620,15 @@ attendanceRouter.post("/attendance/sessions/:id/mark", requireRole("LECTURER", "
       }
 
       await client.query("COMMIT");
+      await createAttendanceNotifications({
+        sessionId,
+        marks: out.map((row) => ({
+          studentId: row.studentId,
+          status: row.status,
+        })),
+      }).catch((e) => {
+        console.error("[attendance] notification fan-out failed", e);
+      });
       return res.json({ ok: true, count: out.length, value: out });
     } catch (e) {
       await client.query("ROLLBACK");

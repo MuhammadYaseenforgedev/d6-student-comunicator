@@ -25,6 +25,7 @@ import Calendar from "./pages/Calendar";
 import ManageResults from "./pages/ManageResults";
 import AdminParentLinks from "./pages/AdminParentLinks";
 import Attendance from "./pages/Attendance";
+import Notifications from "./pages/Notifications";
 
 import ParentPortalLayout from "./pages/parent/ParentPortalLayout";
 import ParentOverview from "./pages/parent/ParentOverview";
@@ -79,6 +80,7 @@ export default function App() {
                 <Route element={<RequireRole roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]} />}>
                   <Route path="messages" element={<Inbox />} />
                   <Route path="messages/:id" element={<ThreadPage />} />
+                  <Route path="notifications" element={<Notifications />} />
                 </Route>
 
                 <Route path="uploads" element={<Uploads />} />

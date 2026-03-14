@@ -65,8 +65,15 @@ function authPolicy() {
   return { requireOtp, allowPasswordLogin, allowPasswordRegister };
 }
 
-function shouldReturnDevCode() {
-  return !isProduction() && String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
+function isDemoOtpEmail(email: string): boolean {
+  return /^demo\+.+@local\.test$/i.test(email);
+}
+
+function shouldReturnDevCode(email?: string) {
+  const enabled = String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
+  if (!enabled) return false;
+  if (!isProduction()) return true;
+  return typeof email === "string" ? isDemoOtpEmail(email) : false;
 }
 
 class OtpDeliveryError extends Error {
@@ -323,7 +330,7 @@ async function createOtp(
   return {
     code,
     expiresAt,
-    devCode: options?.forceDevCode ? code : shouldReturnDevCode() ? code : undefined,
+    devCode: options?.forceDevCode ? code : shouldReturnDevCode(email) ? code : undefined,
   };
 }
 
@@ -444,8 +451,9 @@ authRouter.post("/request-otp", async (req, res) => {
   }
 
   try {
-    const includeDevOtp = shouldReturnDevCode();
+    const includeDevOtp = shouldReturnDevCode(email);
     const out = await createOtp(email, purpose, ip, {
+      skipEmailDelivery: includeDevOtp,
       forceDevCode: includeDevOtp,
     });
 

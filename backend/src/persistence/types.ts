@@ -103,6 +103,60 @@ export type FinanceTransaction = {
 };
 
 /* =========
+   Notifications
+   ========= */
+
+export type NotificationCategory =
+  | "MESSAGE"
+  | "ANNOUNCEMENT"
+  | "EMERGENCY"
+  | "ATTENDANCE"
+  | "RESULT"
+  | "FINANCE"
+  | "PARENT_LINK";
+
+export type Notification = {
+  id: string;
+  userId: string;
+  category: NotificationCategory;
+  type: string;
+  title: string;
+  body: string;
+  meta: Record<string, unknown>;
+  sourceKey: string | null;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type CreateNotificationInput = {
+  userId: string;
+  category: NotificationCategory;
+  type: string;
+  title: string;
+  body?: string;
+  meta?: Record<string, unknown>;
+  sourceKey?: string | null;
+};
+
+export type NotificationListOptions = {
+  limit?: number;
+  before?: string;
+  unreadOnly?: boolean;
+  categories?: NotificationCategory[];
+};
+
+export type NotificationListResult = {
+  items: Notification[];
+  nextBefore: string | null;
+};
+
+export type NotificationSummary = {
+  totalUnread: number;
+  counts: Partial<Record<NotificationCategory, number>>;
+};
+
+/* =========
    Inputs
    ========= */
 
@@ -262,6 +316,15 @@ export type FinanceRepo = {
   ): Promise<FinanceTransaction[]>;
 };
 
+export type NotificationRepo = {
+  listForUser(userId: string, opts?: NotificationListOptions): Promise<NotificationListResult>;
+  getUnreadSummary(userId: string): Promise<NotificationSummary>;
+  createMany(inputs: CreateNotificationInput[]): Promise<void>;
+  upsert(input: CreateNotificationInput & { sourceKey: string }): Promise<Notification>;
+  markRead(userId: string, notificationId: string): Promise<boolean>;
+  markAllRead(userId: string, categories?: NotificationCategory[]): Promise<number>;
+};
+
 /* =========
    Repos object shape
    ========= */
@@ -276,4 +339,5 @@ export type Repos = {
   threads: ThreadRepo;
   calendar: CalendarRepo;
   finance: FinanceRepo;
+  notifications: NotificationRepo;
 };

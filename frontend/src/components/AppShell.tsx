@@ -4,8 +4,14 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { clearAuth, getUser } from "../lib/auth";
 import AppErrorBoundary from "./AppErrorBoundary";
 import { fetchMeProfile, type MeProfile } from "../lib/authService";
+import { useNotificationSummary } from "../hooks/useNotificationSummary";
 
-function Item({ to, label }: { to: string; label: string }) {
+function formatBadgeCount(value: number): string {
+  if (value > 99) return "99+";
+  return String(value);
+}
+
+function Item({ to, label, badge }: { to: string; label: string; badge?: number }) {
   return (
     <NavLink
       to={to}
@@ -18,7 +24,14 @@ function Item({ to, label }: { to: string; label: string }) {
         ].join(" ")
       }
     >
-      {label}
+      <span className="flex items-center justify-between gap-3">
+        <span>{label}</span>
+        {Number(badge ?? 0) > 0 && (
+          <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[11px] font-semibold text-cyan-100">
+            {formatBadgeCount(Number(badge))}
+          </span>
+        )}
+      </span>
     </NavLink>
   );
 }
@@ -34,6 +47,7 @@ export default function AppShell() {
   const userId = user?.id ?? "";
   const userRole = user?.role ?? "";
   const [profile, setProfile] = useState<MeProfile | null>(null);
+  const { summary: notificationSummary } = useNotificationSummary();
 
   useEffect(() => {
     if (userRole !== "STUDENT" || !userId) {
@@ -81,7 +95,9 @@ export default function AppShell() {
       : location.pathname.includes("/uploads")
       ? "Uploads"
       : location.pathname.includes("/attendance")
-      ? "Attendance"
+       ? "Attendance"
+      : location.pathname.includes("/notifications")
+      ? "Notifications"
       : location.pathname.includes("/modules")
       ? "Modules"
       : location.pathname.includes("/faculty")
@@ -97,6 +113,15 @@ export default function AppShell() {
       : location.pathname.includes("/c/")
       ? "Channel"
       : "Home";
+
+  const counts = notificationSummary.counts ?? {};
+  const totalUnread = Number(notificationSummary.totalUnread ?? 0);
+  const messageBadge = Number(counts.MESSAGE ?? 0);
+  const emergencyBadge = Number(counts.EMERGENCY ?? 0);
+  const attendanceBadge = Number(counts.ATTENDANCE ?? 0);
+  const resultBadge = Number(counts.RESULT ?? 0);
+  const financeBadge = Number(counts.FINANCE ?? 0);
+  const parentLinkBadge = Number(counts.PARENT_LINK ?? 0);
 
   function logout() {
     clearAuth();
@@ -129,35 +154,36 @@ export default function AppShell() {
 
               <div className="mt-5 space-y-1">
                 <Item to={homeTo} label="Home" />
+                <Item to="/app/notifications" label="Notifications" badge={totalUnread} />
 
                 {isParent ? (
                   <>
                     <div className="my-3 h-px bg-white/10" />
                     <Item to="/app/parent" label="Overview" />
-                    <Item to="/app/parent/results" label="Results" />
-                    <Item to="/app/parent/finance" label="Finance" />
+                    <Item to="/app/parent/results" label="Results" badge={resultBadge} />
+                    <Item to="/app/parent/finance" label="Finance" badge={financeBadge} />
                     <Item to={calendarTo} label="Calendar" />
-                    <Item to="/app/parent/attendance" label="Attendance" />
-                    <Item to="/app/parent/children" label="Links" />
+                    <Item to="/app/parent/attendance" label="Attendance" badge={attendanceBadge} />
+                    <Item to="/app/parent/children" label="Links" badge={parentLinkBadge} />
                     <Item to="/app/uploads" label="Uploads" />
-                    <Item to="/app/messages" label="Messages" />
+                    <Item to="/app/messages" label="Messages" badge={messageBadge} />
                   </>
                 ) : (
                   <>
                     <Item to="/app/modules" label="Modules" />
                     <Item to="/app/faculty" label="Faculty" />
                     <Item to="/app/clubs" label="Clubs" />
-                    <Item to="/app/emergency" label="Emergency" />
+                    <Item to="/app/emergency" label="Emergency" badge={emergencyBadge} />
 
                     <div className="my-3 h-px bg-white/10" />
 
                     <Item to="/app/uploads" label="Uploads" />
-                    <Item to="/app/messages" label="Messages" />
+                    <Item to="/app/messages" label="Messages" badge={messageBadge} />
                     <Item to={calendarTo} label="Calendar" />
-                    <Item to="/app/attendance" label="Attendance" />
+                    <Item to="/app/attendance" label="Attendance" badge={attendanceBadge} />
 
                     {(user?.role === "ADMIN" || user?.role === "LECTURER") && (
-                      <Item to="/app/manage-results" label="Manage Results" />
+                      <Item to="/app/manage-results" label="Manage Results" badge={resultBadge} />
                     )}
                     {user?.role === "ADMIN" && <Item to="/app/admin/parent-links" label="Parent Link Approvals" />}
                   </>
@@ -196,7 +222,9 @@ export default function AppShell() {
 
               <div className="hidden md:flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.6)]" />
-                <div className="text-xs text-white/60">Frontend active</div>
+                <div className="text-xs text-white/60">
+                  {totalUnread > 0 ? `${formatBadgeCount(totalUnread)} unread notification(s)` : "Frontend active"}
+                </div>
               </div>
             </div>
 
