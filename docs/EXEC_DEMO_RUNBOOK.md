@@ -7,6 +7,7 @@
 
 ### Render (backend service)
 - `NODE_ENV=production`
+- `APP_ENV=production`
 - `DATABASE_URL=<neon-connection-string>`
 - `JWT_SECRET=<strong-random-secret>`
 - `CORS_ORIGIN=https://<your-vercel-production-domain>`
@@ -16,7 +17,7 @@
 - `AUTH_ALLOW_PASSWORD_LOGIN=false`
 - `AUTH_ALLOW_PASSWORD_REGISTER=false`
 - `AUTH_STAFF_REGISTER_PASSWORD=<staff-registration-password>`
-- `OTP_RETURN_DEV_CODE=false`
+- `ALLOW_DEMO_OTP_BYPASS=false`
 - `OTP_EMAIL_PROVIDER=resend`
 - `RESEND_API_KEY=<resend-api-key>`
 - `OTP_EMAIL_FROM=<verified-sender@your-domain>`
@@ -52,7 +53,7 @@ Frontend deploy settings:
 
 ### OTP login behavior
 - `POST /api/auth/request-otp` returns `200` when provider is configured.
-- In production, response does not include `devCode`.
+- In production, response does not include `devOtp`.
 - If provider keys are missing, `/api/auth/request-otp` returns `503` with `Email provider not configured`.
 
 ### Role login checks

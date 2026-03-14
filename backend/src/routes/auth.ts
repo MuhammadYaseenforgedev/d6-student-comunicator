@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import crypto from "crypto";
 import { pool } from "../config/db";
+import { env } from "../config/env";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/rbac";
 import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
@@ -33,9 +34,7 @@ function normEmail(v: unknown) {
 }
 
 function isProduction() {
-  const nodeEnv = String(process.env.NODE_ENV ?? "").toLowerCase();
-  const appEnv = String(process.env.APP_ENV ?? "").toLowerCase();
-  return nodeEnv === "production" || appEnv === "production";
+  return env.APP_ENV === "production";
 }
 
 function boolEnv(name: string, defaultValue: boolean) {
@@ -65,15 +64,25 @@ function authPolicy() {
   return { requireOtp, allowPasswordLogin, allowPasswordRegister };
 }
 
-function isDemoOtpEmail(email: string): boolean {
-  return /^demo\+.+@local\.test$/i.test(email);
+function shouldUseDemoOtpBypass(email: string): boolean {
+  const normalizedEmail = normEmail(email);
+  if (!normalizedEmail) return false;
+  if (!env.ALLOW_DEMO_OTP_BYPASS) return false;
+  if (env.APP_ENV === "production") return false;
+
+  const allowedEnvs = new Set(env.DEMO_OTP_ALLOWED_ENVS);
+  if (!allowedEnvs.has(env.APP_ENV)) return false;
+
+  const allowlist = new Set(env.DEMO_OTP_ALLOWLIST);
+  return allowlist.has(normalizedEmail);
 }
 
-function shouldReturnDevCode(email?: string) {
-  const enabled = String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
-  if (!enabled) return false;
-  if (!isProduction()) return true;
-  return typeof email === "string" ? isDemoOtpEmail(email) : false;
+function logDemoBypassUsage(kind: "request-otp", email: string) {
+  console.warn("[auth] Demo auth bypass used", {
+    kind,
+    email: normEmail(email),
+    appEnv: env.APP_ENV,
+  });
 }
 
 class OtpDeliveryError extends Error {
@@ -284,7 +293,9 @@ async function createOtp(
     skipEmailDelivery,
   });
 
-  if (isProduction() && !skipEmailDelivery) {
+  if (skipEmailDelivery) {
+    // Demo bypass intentionally suppresses email delivery and never logs OTP values.
+  } else if (isProduction()) {
     const smtpConfigured = isSmtpConfigured();
     console.info("[otp][request-otp] SMTP send begin", {
       email,
@@ -330,7 +341,7 @@ async function createOtp(
   return {
     code,
     expiresAt,
-    devCode: options?.forceDevCode ? code : shouldReturnDevCode(email) ? code : undefined,
+    devCode: options?.forceDevCode ? code : undefined,
   };
 }
 
@@ -451,7 +462,10 @@ authRouter.post("/request-otp", async (req, res) => {
   }
 
   try {
-    const includeDevOtp = shouldReturnDevCode(email);
+    const includeDevOtp = shouldUseDemoOtpBypass(email);
+    if (includeDevOtp) {
+      logDemoBypassUsage("request-otp", email);
+    }
     const out = await createOtp(email, purpose, ip, {
       skipEmailDelivery: includeDevOtp,
       forceDevCode: includeDevOtp,
@@ -713,37 +727,6 @@ authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
    - Password-only login: { email, password } when allowed (dev speed)
 =================================*/
 authRouter.post("/login", loginLimiter, async (req, res) => {
-  // TEMP: DEMO BYPASS (REMOVE BEFORE REAL RELEASE)
-  if (!isProduction() && process.env.DEMO_BYPASS_LOGIN === "true") {
-    const email = String(req.body?.email ?? "").trim().toLowerCase();
-
-    const fallbackRole: Role = email.includes("+admin")
-      ? "ADMIN"
-      : email.includes("+lecturer")
-        ? "LECTURER"
-        : email.includes("+student")
-          ? "STUDENT"
-          : email.includes("+parent")
-            ? "PARENT"
-            : "STUDENT";
-
-    const userResult = await pool.query<{ id: string; email: string; role: string }>(
-      "SELECT id, email, role FROM public.users WHERE lower(email)=lower($1) LIMIT 1",
-      [email]
-    );
-    const userRow = userResult.rows[0];
-
-    if (!userRow) {
-      return res.status(401).json({ error: { code: "AUTH", message: "User not seeded" } });
-    }
-
-    const dbRole = String(userRow.role ?? "").toUpperCase();
-    const role: Role = VALID_ROLES.includes(dbRole as Role) ? (dbRole as Role) : fallbackRole;
-
-    const token = signToken({ id: userRow.id, email: userRow.email, role });
-    return res.json({ token, user: { email: userRow.email, role } });
-  }
-
   const { requireOtp, allowPasswordLogin } = authPolicy();
 
   const email = normEmail(req.body?.email);

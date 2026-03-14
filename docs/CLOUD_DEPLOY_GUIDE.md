@@ -33,6 +33,7 @@ Set backend environment variables (Render -> Environment):
 
 ```env
 NODE_ENV=production
+APP_ENV=production
 PORT=4000
 
 DATABASE_URL=postgresql://<user>:<password>@<host>/<db>?sslmode=require
@@ -46,7 +47,7 @@ AUTH_ALLOW_PASSWORD_REGISTER=false
 AUTH_STAFF_REGISTER_PASSWORD=staff_secret
 
 THREADS_MODE=D6
-OTP_RETURN_DEV_CODE=false
+ALLOW_DEMO_OTP_BYPASS=false
 OTP_TTL_MINUTES=10
 OTP_MAX_ATTEMPTS=5
 OTP_EMAIL_WINDOW_MINUTES=10
