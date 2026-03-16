@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs";
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { pool } from "../config/db";
@@ -43,6 +44,10 @@ function isUuid(v: string): boolean {
 function toRole(v: unknown): Role | null {
   const role = String(v ?? "").trim().toUpperCase();
   return VALID_ROLES.includes(role as Role) ? (role as Role) : null;
+}
+
+function normalizeStudentNumber(v: unknown): string {
+  return String(v ?? "").trim().toUpperCase();
 }
 
 function parseRoleFilters(rawRole: unknown, rawRoles: unknown): Role[] {
@@ -203,6 +208,115 @@ userRouter.delete("/admin/accounts/:id", requireRole("ADMIN"), async (req: Reque
   } catch (e: unknown) {
     console.error("[users] DELETE /users/admin/accounts/:id error", e);
     return err(res, 500, "INTERNAL", "Failed to delete account");
+  }
+});
+
+userRouter.patch("/admin/accounts/:id", requireRole("ADMIN"), async (req: Request, res: Response) => {
+  try {
+    const targetId = String(req.params.id ?? "").trim();
+    if (!isUuid(targetId)) {
+      return err(res, 400, "VALIDATION", "id must be a UUID");
+    }
+
+    const hasPassword = Object.prototype.hasOwnProperty.call(req.body ?? {}, "password");
+    const hasStudentNumber = Object.prototype.hasOwnProperty.call(req.body ?? {}, "studentNumber");
+    if (!hasPassword && !hasStudentNumber) {
+      return err(res, 400, "VALIDATION", "At least one editable field is required");
+    }
+
+    const target = await pool.query<AdminAccountRow>(
+      `
+        SELECT
+          id,
+          email,
+          role,
+          first_name,
+          last_name,
+          course_name,
+          public_student_id,
+          can_link_children,
+          created_at
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [targetId]
+    );
+
+    if ((target.rowCount ?? 0) === 0) {
+      return err(res, 404, "NOT_FOUND", "User not found");
+    }
+
+    const updates: string[] = [];
+    const params: unknown[] = [];
+
+    if (hasPassword) {
+      const nextPassword = String(req.body?.password ?? "");
+      if (!nextPassword.trim()) {
+        return err(res, 400, "VALIDATION", "password cannot be empty");
+      }
+      const passwordHash = await bcrypt.hash(nextPassword, 10);
+      params.push(passwordHash);
+      updates.push(`password_hash = $${params.length}`);
+    }
+
+    if (hasStudentNumber) {
+      if (target.rows[0].role !== "STUDENT") {
+        return err(res, 400, "VALIDATION", "studentNumber can only be edited for student accounts");
+      }
+      const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
+      if (!studentNumber) {
+        return err(res, 400, "VALIDATION", "studentNumber is required for student accounts");
+      }
+      if (studentNumber.length > 64) {
+        return err(res, 400, "VALIDATION", "studentNumber must be 64 characters or fewer");
+      }
+      params.push(studentNumber);
+      updates.push(`public_student_id = $${params.length}`);
+    }
+
+    params.push(targetId);
+
+    const updated = await pool.query<AdminAccountRow>(
+      `
+        UPDATE users
+        SET ${updates.join(", ")}
+        WHERE id = $${params.length}
+        RETURNING
+          id,
+          email,
+          role,
+          first_name,
+          last_name,
+          course_name,
+          public_student_id,
+          can_link_children,
+          created_at
+      `,
+      params
+    );
+
+    const row = updated.rows[0];
+    return res.json({
+      ok: true,
+      user: {
+        id: row.id,
+        email: row.email,
+        role: row.role,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        courseName: row.course_name,
+        studentNumber: row.public_student_id,
+        canLinkChildren: row.can_link_children,
+        createdAt: row.created_at,
+      },
+    });
+  } catch (e: any) {
+    if (String(e?.code ?? "") === "23505") {
+      return err(res, 400, "VALIDATION", "Student number already exists");
+    }
+    console.error("[users] PATCH /users/admin/accounts/:id error", e);
+    return err(res, 500, "INTERNAL", "Failed to update account");
   }
 });
 

@@ -36,3 +36,13 @@ export async function deleteAdminAccount(userId: string) {
     `/users/admin/accounts/${encodeURIComponent(userId)}`
   );
 }
+
+export async function updateAdminAccount(
+  userId: string,
+  input: {
+    password?: string;
+    studentNumber?: string;
+  }
+) {
+  return apiClient.patch<{ ok: boolean; user: AdminAccount }>(`/users/admin/accounts/${encodeURIComponent(userId)}`, input);
+}

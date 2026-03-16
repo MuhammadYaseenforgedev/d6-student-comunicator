@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../app";
 import { pool } from "../config/db";
@@ -14,6 +15,8 @@ describe("Admin account management", () => {
   let adminToken = "";
   let lecturerToken = "";
   let adminId = "";
+  let studentId = "";
+  let lecturerId = "";
 
   beforeAll(async () => {
     const admin = await createUser("ADMIN", `${unique}_admin@co.za`);
@@ -22,6 +25,8 @@ describe("Admin account management", () => {
     const parent = await createUser("PARENT", `${unique}_parent@co.za`);
 
     adminId = admin.id;
+    lecturerId = lecturer.id;
+    studentId = student.id;
     adminToken = signJwt(admin);
     lecturerToken = signJwt(lecturer);
 
@@ -81,6 +86,15 @@ describe("Admin account management", () => {
     expect([401, 403]).toContain(res.status);
   });
 
+  test("non-admin cannot update admin-managed account fields", async () => {
+    const res = await request(app)
+      .patch(`/api/users/admin/accounts/${studentId}`)
+      .set(auth(lecturerToken))
+      .send({ studentNumber: `${unique.toUpperCase()}_BLOCKED` });
+
+    expect([401, 403]).toContain(res.status);
+  });
+
   test("admin cannot delete the current account", async () => {
     const res = await request(app)
       .delete(`/api/users/admin/accounts/${adminId}`)
@@ -101,5 +115,43 @@ describe("Admin account management", () => {
 
     const db = await pool.query(`SELECT 1 FROM users WHERE id = $1 LIMIT 1`, [target.id]);
     expect(db.rowCount ?? 0).toBe(0);
+  });
+
+  test("admin can update a student's student number", async () => {
+    const nextStudentNumber = `${unique.toUpperCase()}_STU_EDITED`;
+
+    const res = await request(app)
+      .patch(`/api/users/admin/accounts/${studentId}`)
+      .set(auth(adminToken))
+      .send({ studentNumber: nextStudentNumber });
+
+    expect(res.status).toBe(200);
+    expect(Boolean(res.body?.ok)).toBe(true);
+    expect(String(res.body?.user?.studentNumber ?? "")).toBe(nextStudentNumber);
+
+    const db = await pool.query<{ public_student_id: string | null }>(
+      `SELECT public_student_id FROM users WHERE id = $1 LIMIT 1`,
+      [studentId]
+    );
+    expect(String(db.rows[0]?.public_student_id ?? "")).toBe(nextStudentNumber);
+  });
+
+  test("admin can reset another account password", async () => {
+    const nextPassword = "ResetPass123!";
+
+    const res = await request(app)
+      .patch(`/api/users/admin/accounts/${lecturerId}`)
+      .set(auth(adminToken))
+      .send({ password: nextPassword });
+
+    expect(res.status).toBe(200);
+    expect(Boolean(res.body?.ok)).toBe(true);
+
+    const db = await pool.query<{ password_hash: string }>(
+      `SELECT password_hash FROM users WHERE id = $1 LIMIT 1`,
+      [lecturerId]
+    );
+    const matches = await bcrypt.compare(nextPassword, String(db.rows[0]?.password_hash ?? ""));
+    expect(matches).toBe(true);
   });
 });

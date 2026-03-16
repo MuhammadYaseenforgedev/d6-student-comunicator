@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
-import { deleteAdminAccount, listAdminAccounts, type AdminAccount, type AdminAccountRole } from "../lib/userAdminApi";
+import {
+  deleteAdminAccount,
+  listAdminAccounts,
+  updateAdminAccount,
+  type AdminAccount,
+  type AdminAccountRole,
+} from "../lib/userAdminApi";
 
 type RoleFilter = "ALL" | AdminAccountRole;
 
@@ -27,12 +33,16 @@ function displayName(account: AdminAccount): string {
 
 function secondaryMeta(account: AdminAccount): string {
   if (account.role === "STUDENT") {
-    return account.studentNumber?.trim() || account.courseName?.trim() || "Student account";
+    return account.courseName?.trim() || "Student account";
   }
   if (account.role === "PARENT") {
     return account.canLinkChildren ? "Parent can link children" : "Parent account";
   }
   return account.courseName?.trim() || account.email;
+}
+
+function normalizeStudentNumber(value: string | null | undefined): string {
+  return String(value ?? "").trim().toUpperCase();
 }
 
 function formatTimestamp(raw: string): string {
@@ -58,6 +68,11 @@ export default function AdminUsers() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editStudentNumber, setEditStudentNumber] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -118,11 +133,69 @@ export default function AdminUsers() {
     }
   }
 
+  function beginEdit(account: AdminAccount) {
+    setEditingId(account.id);
+    setEditStudentNumber(account.studentNumber ?? "");
+    setEditPassword("");
+    setShowPassword(false);
+    setError(null);
+    setInfo(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditStudentNumber("");
+    setEditPassword("");
+    setShowPassword(false);
+  }
+
+  async function onSave(account: AdminAccount) {
+    const nextPassword = editPassword;
+    const nextStudentNumber = normalizeStudentNumber(editStudentNumber);
+    const currentStudentNumber = normalizeStudentNumber(account.studentNumber);
+    const payload: { password?: string; studentNumber?: string } = {};
+
+    if (account.role === "STUDENT" && nextStudentNumber !== currentStudentNumber && !nextStudentNumber) {
+      setError("Student number is required for student accounts.");
+      return;
+    }
+
+    if (nextPassword.trim()) {
+      payload.password = nextPassword;
+    }
+    if (account.role === "STUDENT" && nextStudentNumber !== currentStudentNumber) {
+      payload.studentNumber = nextStudentNumber;
+    }
+
+    if (!payload.password && !payload.studentNumber) {
+      setError("Change the student number or enter a new password first.");
+      return;
+    }
+
+    try {
+      setSavingId(account.id);
+      setError(null);
+      setInfo(null);
+      await updateAdminAccount(account.id, payload);
+      await loadAccounts();
+
+      const changed: string[] = [];
+      if (payload.studentNumber) changed.push("student number");
+      if (payload.password) changed.push("password");
+      setInfo(`Updated ${account.email}${changed.length ? ` (${changed.join(" and ")})` : ""}.`);
+      cancelEdit();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update account");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Accounts"
-        subtitle="View all registered admins, lecturers, students, and parents. Admins can remove accounts here."
+        subtitle="View all registered accounts, reset passwords, edit student numbers, and remove accounts."
         actions={
           <button
             type="button"
@@ -197,6 +270,10 @@ export default function AdminUsers() {
             {info}
           </div>
         )}
+        <div className="rounded-xl border border-amber-700/30 bg-amber-950/20 p-3 text-sm text-amber-100">
+          Current passwords cannot be displayed. They are stored securely as hashes. Use the edit action to set a new
+          password for an account.
+        </div>
       </div>
 
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
@@ -237,20 +314,107 @@ export default function AdminUsers() {
                       </div>
                       <div className="text-sm text-slate-300">{account.email}</div>
                       <div className="text-xs text-slate-400">{secondaryMeta(account)}</div>
+                      {account.role === "STUDENT" && (
+                        <div className="text-xs text-slate-300">
+                          Student number: {account.studentNumber?.trim() || "Not set"}
+                        </div>
+                      )}
                       <div className="text-xs text-slate-500">Created {formatTimestamp(account.createdAt)}</div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void onDelete(account);
-                      }}
-                      disabled={busyId === account.id || isCurrentUser}
-                      className="rounded-lg border border-red-700/40 bg-red-950/30 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-950/50 disabled:opacity-60"
-                    >
-                      {busyId === account.id ? "Deleting..." : "Delete account"}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editingId === account.id) {
+                            cancelEdit();
+                            return;
+                          }
+                          beginEdit(account);
+                        }}
+                        disabled={busyId === account.id || savingId === account.id}
+                        className="rounded-lg border border-cyan-700/40 bg-cyan-950/30 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-950/50 disabled:opacity-60"
+                      >
+                        {editingId === account.id ? "Close editor" : "Edit account"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void onDelete(account);
+                        }}
+                        disabled={busyId === account.id || savingId === account.id || isCurrentUser}
+                        className="rounded-lg border border-red-700/40 bg-red-950/30 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-950/50 disabled:opacity-60"
+                      >
+                        {busyId === account.id ? "Deleting..." : "Delete account"}
+                      </button>
+                    </div>
                   </div>
+
+                  {editingId === account.id && (
+                    <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        {account.role === "STUDENT" ? (
+                          <label className="space-y-2">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              Student number
+                            </div>
+                            <input
+                              value={editStudentNumber}
+                              onChange={(e) => setEditStudentNumber(e.target.value.toUpperCase())}
+                              placeholder="Student number"
+                              className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+                            />
+                          </label>
+                        ) : (
+                          <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-400">
+                            Student number editing is only available for student accounts.
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Set new password
+                          </div>
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            value={editPassword}
+                            onChange={(e) => setEditPassword(e.target.value)}
+                            placeholder="Leave blank to keep current password"
+                            className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((current) => !current)}
+                            className="text-xs font-semibold text-cyan-200 hover:text-cyan-100"
+                          >
+                            {showPassword ? "Hide password" : "Show password"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void onSave(account);
+                          }}
+                          disabled={savingId === account.id}
+                          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          {savingId === account.id ? "Saving..." : "Save changes"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          disabled={savingId === account.id}
+                          className="rounded-lg border border-slate-700 bg-slate-900/40 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-900/70 disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })
