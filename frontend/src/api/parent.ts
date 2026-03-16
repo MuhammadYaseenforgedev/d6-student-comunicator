@@ -90,22 +90,27 @@ export type FinanceNotification = {
   title: string;
   body: string;
   severity: string;
+  createdAt?: string | null;
 };
 
 export type FinanceDocument = {
   id: string;
   kind: string;
   type: string;
+  title?: string;
   amount: number;
   occurredAt: string;
   description: string | null;
+  documentUrl?: string | null;
 };
 
 export type FinanceSummary = {
   balance: number;
+  currency?: string;
   statements: number;
   lastPayment: string | null;
   status: string;
+  statusNote?: string | null;
   notifications: FinanceNotification[];
   documents: FinanceDocument[];
 };
@@ -269,8 +274,9 @@ function normalizeFinanceNotification(row: unknown, index: number): FinanceNotif
   const title = toStringValue(row.title, "");
   const body = toStringValue(row.body, "");
   const severity = toStringValue(row.severity, "info");
+  const createdAt = typeof row.createdAt === "string" ? row.createdAt : null;
 
-  return { id, title, body, severity };
+  return { id, title, body, severity, createdAt };
 }
 
 function normalizeFinanceDocument(row: unknown, index: number): FinanceDocument | null {
@@ -279,12 +285,14 @@ function normalizeFinanceDocument(row: unknown, index: number): FinanceDocument 
   const id = toStringValue(row.id).trim() || `document-${index}`;
   const kind = toStringValue(row.kind, "TRANSACTION");
   const type = toStringValue(row.type, kind || "TRANSACTION");
+  const title = toStringValue(row.title, type || "Document");
   const amount = toNumberValue(row.amount, 0);
   const occurredAt = toStringValue(row.occurredAt, "");
   const descriptionRaw = row.description;
   const description = typeof descriptionRaw === "string" ? descriptionRaw : null;
+  const documentUrl = typeof row.documentUrl === "string" ? row.documentUrl : null;
 
-  return { id, kind, type, amount, occurredAt, description };
+  return { id, kind, type, title, amount, occurredAt, description, documentUrl };
 }
 
 function normalizeFinanceSummary(data: unknown): FinanceSummary {
@@ -296,9 +304,11 @@ function normalizeFinanceSummary(data: unknown): FinanceSummary {
 
   return {
     balance: toNumberValue(source.balance, DEFAULT_FINANCE.balance),
+    currency: toStringValue(source.currency, "ZAR"),
     statements: toNumberValue(source.statements, DEFAULT_FINANCE.statements),
     lastPayment: typeof source.lastPayment === "string" ? source.lastPayment : null,
     status: toStringValue(source.status, DEFAULT_FINANCE.status),
+    statusNote: typeof source.statusNote === "string" ? source.statusNote : source.statusNote === null ? null : undefined,
     notifications: notificationsRaw
       .map((n, i) => normalizeFinanceNotification(n, i))
       .filter((n): n is FinanceNotification => n !== null),

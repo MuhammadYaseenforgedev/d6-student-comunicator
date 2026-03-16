@@ -1134,46 +1134,79 @@ parentRouter.get("/finance", requireRole("PARENT"), async (req, res) => {
     // Make sure finance account exists for the student
     await repos.finance.ensureAccount(studentId);
 
-    const summary = await repos.finance.getSummary(studentId);
-    const tx = await repos.finance.listTransactions(studentId, { limit: 50 });
+    const [summary, tx, financeDocuments, financeNotifications] = await Promise.all([
+      repos.finance.getSummary(studentId),
+      repos.finance.listTransactions(studentId, { limit: 50 }),
+      repos.finance.listDocuments(studentId, { limit: 25 }),
+      repos.finance.listNotifications(studentId, { limit: 25 }),
+    ]);
 
     // Heuristic: last payment is typically a negative amount (money received)
     const lastPayment = tx.find((t) => t.amountCents < 0) ?? null;
 
     const balance = summary.balanceCents / 100;
-    const status = summary.balanceCents > 0 ? "OVERDUE" : "OK";
+    const status = summary.accountStatus;
 
     const notifications =
-      status === "OVERDUE"
-        ? [
-            {
-              id: "overdue",
-              title: "Account overdue",
-              body: `Outstanding balance: R ${balance.toFixed(2)}`,
-              severity: "warning",
-            },
-          ]
-        : [{ id: "ok", title: "Account up to date", body: "No outstanding balance.", severity: "info" }];
+      financeNotifications.length > 0
+        ? financeNotifications.map((entry) => ({
+            id: entry.id,
+            title: entry.title,
+            body: entry.body,
+            severity: entry.severity.toLowerCase(),
+            createdAt: entry.createdAt,
+          }))
+        : status === "OVERDUE"
+          ? [
+              {
+                id: "overdue",
+                title: "Account overdue",
+                body: `Outstanding balance: R ${balance.toFixed(2)}`,
+                severity: "warning",
+              },
+            ]
+          : [{ id: "ok", title: "Account up to date", body: "No outstanding balance.", severity: "info" }];
 
-    const statementsCount = tx.filter((t) => /statement/i.test(t.description)).length;
+    const statementsCount =
+      financeDocuments.filter((entry) => entry.type === "STATEMENT").length +
+      tx.filter((t) => /statement/i.test(t.description)).length;
+
+    const documents = [
+      ...financeDocuments.map((entry) => ({
+        id: entry.id,
+        kind: entry.type,
+        type: entry.type,
+        title: entry.title,
+        amount: entry.amountCents == null ? 0 : entry.amountCents / 100,
+        occurredAt: entry.issuedAt,
+        description: entry.description ?? null,
+        documentUrl: entry.documentUrl ?? null,
+      })),
+      ...tx.slice(0, 12).map((t) => {
+        const kind = /statement/i.test(t.description) ? "STATEMENT" : "TRANSACTION";
+        return {
+          id: t.id,
+          kind,
+          type: kind,
+          title: kind === "STATEMENT" ? "Statement transaction" : "Finance transaction",
+          amount: t.amountCents / 100,
+          occurredAt: t.occurredAt,
+          description: t.description ?? null,
+          documentUrl: null,
+        };
+      }),
+    ]
+      .sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt)))
+      .slice(0, 20);
 
     return res.json({
       balance,
       statements: statementsCount,
       lastPayment: lastPayment?.occurredAt ?? null,
       status,
-      documents: tx.slice(0, 12).map((t) => {
-        const kind = /statement/i.test(t.description) ? "STATEMENT" : "TRANSACTION";
-        return {
-          id: t.id,
-          // frontend may be expecting "type", so we provide it too
-          kind,
-          type: kind,
-          amount: t.amountCents / 100,
-          occurredAt: t.occurredAt,
-          description: t.description ?? null,
-        };
-      }),
+      statusNote: summary.statusNote,
+      currency: summary.currency,
+      documents,
       notifications,
     });
   } catch (e: any) {

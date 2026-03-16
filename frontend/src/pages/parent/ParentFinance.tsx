@@ -233,12 +233,18 @@ export default function ParentFinance() {
 
         {finance && !loadingFinance && !financeError && (
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Stat label="Balance" value={`R ${finance.balance.toFixed(2)}`} />
+            <Stat label="Balance" value={`${finance.currency ?? "ZAR"} ${finance.balance.toFixed(2)}`} />
             <Stat label="Statements" value={`${finance.statements}`} />
             <Stat
               label="Last payment"
               value={finance.lastPayment ? new Date(finance.lastPayment).toLocaleDateString() : "N/A"}
             />
+          </div>
+        )}
+
+        {finance?.statusNote && !loadingFinance && !financeError && (
+          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+            {finance.statusNote}
           </div>
         )}
 
@@ -289,7 +295,10 @@ export default function ParentFinance() {
               <div key={n.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                 <div className="text-sm font-semibold text-white">{n.title}</div>
                 <div className="mt-1 text-sm text-slate-300">{n.body}</div>
-                <div className="mt-2 text-xs uppercase tracking-wide text-slate-400">{n.severity}</div>
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs uppercase tracking-wide text-slate-400">
+                  <span>{n.severity}</span>
+                  {n.createdAt && <span>{new Date(n.createdAt).toLocaleString()}</span>}
+                </div>
               </div>
             ))
           )}
@@ -316,15 +325,26 @@ export default function ParentFinance() {
               <div key={d.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-white">{d.type}</div>
+                    <div className="text-sm font-semibold text-white">{d.title ?? d.type}</div>
+                    <div className="mt-1 text-[11px] uppercase tracking-wide text-slate-400">{d.type}</div>
                     <div className="mt-1 text-xs text-slate-400">
                       {d.occurredAt ? new Date(d.occurredAt).toLocaleString() : "Unknown date"}
                     </div>
                     {d.description && <div className="mt-2 text-sm text-slate-300">{d.description}</div>}
+                    {d.documentUrl && (
+                      <a
+                        href={d.documentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-flex text-xs font-semibold text-cyan-200 hover:text-cyan-100"
+                      >
+                        Open document
+                      </a>
+                    )}
                   </div>
 
                   <div className="text-right text-sm font-semibold text-white">
-                    R {d.amount.toFixed(2)}
+                    {finance?.currency ?? "ZAR"} {d.amount.toFixed(2)}
                   </div>
                 </div>
               </div>

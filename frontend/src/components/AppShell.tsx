@@ -88,6 +88,8 @@ export default function AppShell() {
     const title =
       location.pathname.includes("/calendar")
         ? "Calendar"
+      : location.pathname.includes("/admin/finance")
+      ? "Finance"
       : location.pathname.includes("/admin/users")
       ? "Accounts"
       : location.pathname.includes("/admin/parent-links")
@@ -184,11 +186,12 @@ export default function AppShell() {
                     <Item to={calendarTo} label="Calendar" />
                     <Item to="/app/attendance" label="Attendance" badge={attendanceBadge} />
 
-                    {(user?.role === "ADMIN" || user?.role === "LECTURER") && (
-                      <Item to="/app/manage-results" label="Manage Results" badge={resultBadge} />
-                    )}
-                    {user?.role === "ADMIN" && <Item to="/app/admin/users" label="Accounts" />}
-                    {user?.role === "ADMIN" && <Item to="/app/admin/parent-links" label="Parent Link Approvals" />}
+                     {(user?.role === "ADMIN" || user?.role === "LECTURER") && (
+                       <Item to="/app/manage-results" label="Manage Results" badge={resultBadge} />
+                     )}
+                     {user?.role === "ADMIN" && <Item to="/app/admin/finance" label="Finance" badge={financeBadge} />}
+                     {user?.role === "ADMIN" && <Item to="/app/admin/users" label="Accounts" />}
+                     {user?.role === "ADMIN" && <Item to="/app/admin/parent-links" label="Parent Link Approvals" />}
                   </>
                 )}
               </div>

@@ -92,6 +92,8 @@ export type FinanceSummary = {
   userId: string;
   balanceCents: number;
   currency: string;
+  accountStatus: string;
+  statusNote: string | null;
   updatedAt: string;
 };
 
@@ -102,6 +104,30 @@ export type FinanceTransaction = {
   currency: string;
   description: string;
   occurredAt: string;
+  createdAt: string;
+};
+
+export type FinanceDocument = {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  description: string | null;
+  amountCents: number | null;
+  currency: string;
+  issuedAt: string;
+  documentUrl: string | null;
+  createdBy: string | null;
+  createdAt: string;
+};
+
+export type FinanceStatusNotification = {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  severity: string;
+  createdBy: string | null;
   createdAt: string;
 };
 
@@ -314,10 +340,52 @@ export type CalendarRepo = {
 export type FinanceRepo = {
   ensureAccount(userId: string): Promise<void>;
   getSummary(userId: string): Promise<FinanceSummary>;
+  updateAccount(
+    userId: string,
+    input: {
+      balanceCents?: number;
+      currency?: string;
+      accountStatus?: string;
+      statusNote?: string | null;
+    }
+  ): Promise<FinanceSummary>;
   listTransactions(
     userId: string,
     opts?: { limit?: number; before?: string }
   ): Promise<FinanceTransaction[]>;
+  createTransaction(
+    userId: string,
+    input: {
+      amountCents: number;
+      currency?: string;
+      description: string;
+      occurredAt?: string;
+    }
+  ): Promise<FinanceTransaction>;
+  listDocuments(userId: string, opts?: { limit?: number }): Promise<FinanceDocument[]>;
+  createDocument(
+    userId: string,
+    input: {
+      type: string;
+      title: string;
+      description?: string | null;
+      amountCents?: number | null;
+      currency?: string;
+      issuedAt?: string;
+      documentUrl?: string | null;
+      createdBy?: string | null;
+    }
+  ): Promise<FinanceDocument>;
+  listNotifications(userId: string, opts?: { limit?: number }): Promise<FinanceStatusNotification[]>;
+  createNotification(
+    userId: string,
+    input: {
+      title: string;
+      body: string;
+      severity?: string;
+      createdBy?: string | null;
+    }
+  ): Promise<FinanceStatusNotification>;
 };
 
 export type NotificationRepo = {
