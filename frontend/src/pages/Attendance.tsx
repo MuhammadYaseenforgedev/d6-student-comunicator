@@ -80,7 +80,7 @@ export default function AttendancePage() {
   const role = roleLabel(user?.role ?? "");
 
   if (role === "LECTURER" || role === "ADMIN") {
-    return <LecturerAttendanceView role={role} />;
+    return <LecturerAttendanceView role={role} currentUserId={user?.id ?? ""} />;
   }
 
   if (role === "PARENT") {
@@ -90,7 +90,13 @@ export default function AttendancePage() {
   return <StudentAttendanceView />;
 }
 
-function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
+function LecturerAttendanceView({
+  role,
+  currentUserId,
+}: {
+  role: "LECTURER" | "ADMIN";
+  currentUserId: string;
+}) {
   const [modules, setModules] = useState<AttendanceModule[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [moduleStudents, setModuleStudents] = useState<AttendanceModuleStudent[]>([]);
@@ -178,9 +184,7 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
   async function loadDirectoryUsers() {
     const [studentsRes, lecturersRes] = await Promise.all([
       listAttendanceDirectoryUsers({ roles: ["STUDENT"], limit: 100 }),
-      role === "ADMIN"
-        ? listAttendanceDirectoryUsers({ roles: ["LECTURER"], limit: 100 })
-        : Promise.resolve([]),
+      listAttendanceDirectoryUsers({ roles: ["LECTURER"], limit: 100 }),
     ]);
     setCandidateStudents(sortDirectoryUsers(studentsRes));
     setCandidateLecturers(sortDirectoryUsers(lecturersRes));
@@ -230,20 +234,22 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
   }, [sessionId]);
 
   useEffect(() => {
-    if (role !== "ADMIN") return;
     if (!candidateLecturers.length) {
       setLecturerId("");
       return;
     }
-    const assignedLecturerId = selectedModule?.lecturers[0]?.id ?? "";
-    if (assignedLecturerId) {
-      setLecturerId(assignedLecturerId);
-      return;
-    }
-    setLecturerId((current) =>
-      candidateLecturers.some((lecturer) => lecturer.id === current) ? current : candidateLecturers[0].id
-    );
-  }, [candidateLecturers, role, selectedModule]);
+    const preferredLecturerId =
+      role === "LECTURER" && candidateLecturers.some((lecturer) => lecturer.id === currentUserId)
+        ? currentUserId
+        : selectedModule?.lecturers.find((lecturer) =>
+            candidateLecturers.some((candidate) => candidate.id === lecturer.id)
+          )?.id ?? "";
+
+    setLecturerId((current) => {
+      if (preferredLecturerId) return preferredLecturerId;
+      return candidateLecturers.some((lecturer) => lecturer.id === current) ? current : candidateLecturers[0].id;
+    });
+  }, [candidateLecturers, currentUserId, role, selectedModule]);
 
   useEffect(() => {
     if (!availableStudents.length) {
@@ -256,7 +262,6 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
   }, [availableStudents]);
 
   useEffect(() => {
-    if (role !== "ADMIN") return;
     if (!availableLecturers.length) {
       setSelectedLecturerId("");
       return;
@@ -264,14 +269,14 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
     setSelectedLecturerId((current) =>
       availableLecturers.some((lecturer) => lecturer.id === current) ? current : availableLecturers[0].id
     );
-  }, [availableLecturers, role]);
+  }, [availableLecturers]);
 
   async function createSession() {
     if (!moduleId) {
       setError("Select a module first.");
       return;
     }
-    if (role === "ADMIN" && !lecturerId) {
+    if (!lecturerId) {
       setError("Select a lecturer for this session.");
       return;
     }
@@ -286,7 +291,7 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
         date,
         startsAt: startsAt || undefined,
         endsAt: endsAt || undefined,
-        lecturerId: role === "ADMIN" ? lecturerId : undefined,
+        lecturerId,
       });
 
       setInfo(`Session created for ${created.date}.`);
@@ -443,12 +448,10 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
           <div className="text-lg font-semibold text-white">Create Session</div>
-          {role === "ADMIN" && (
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300">
-              Admin module selection is global. If the module you need does not exist yet, create it below and pick
-              any lecturer directly from the full lecturer list.
-            </div>
-          )}
+          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300">
+            Staff module selection is global. If the module you need does not exist yet, create it below and pick any
+            lecturer directly from the full lecturer list.
+          </div>
 
           <Field label="Module">
             <select
@@ -468,26 +471,24 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
             </select>
           </Field>
 
-          {role === "ADMIN" && (
-            <Field label="Lecturer">
-              <select
-                value={lecturerId}
-                onChange={(e) => setLecturerId(e.target.value)}
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-              >
-                {candidateLecturers.length ? (
-                  candidateLecturers.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.email}
-                      {assignedLecturerIds.has(l.id) ? " - assigned to module" : " - will be linked on create"}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">No lecturers available</option>
-                )}
-              </select>
-            </Field>
-          )}
+          <Field label="Lecturer">
+            <select
+              value={lecturerId}
+              onChange={(e) => setLecturerId(e.target.value)}
+              className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            >
+              {candidateLecturers.length ? (
+                candidateLecturers.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.email}
+                    {assignedLecturerIds.has(l.id) ? " - assigned to module" : " - will be linked on create"}
+                  </option>
+                ))
+              ) : (
+                <option value="">No lecturers available</option>
+              )}
+            </select>
+          </Field>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Date">
@@ -612,123 +613,119 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
         </div>
       </div>
 
-      {role === "ADMIN" && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
-          <div>
-            <div className="text-lg font-semibold text-white">Module Setup</div>
-            <div className="mt-1 text-sm text-slate-400">
-              Create attendance modules here so they appear in the global module picker immediately.
-            </div>
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+        <div>
+          <div className="text-lg font-semibold text-white">Module Setup</div>
+          <div className="mt-1 text-sm text-slate-400">
+            Create attendance modules here so they appear in the global module picker immediately.
           </div>
-
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            <Field label="Faculty name">
-              <input
-                value={newFacultyName}
-                onChange={(e) => setNewFacultyName(e.target.value)}
-                placeholder="Faculty of Science"
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-              />
-            </Field>
-            <Field label="Module code">
-              <input
-                value={newModuleCode}
-                onChange={(e) => setNewModuleCode(e.target.value.toUpperCase())}
-                placeholder="CS102"
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-              />
-            </Field>
-            <Field label="Module name">
-              <input
-                value={newModuleName}
-                onChange={(e) => setNewModuleName(e.target.value)}
-                placeholder="Data Structures"
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-              />
-            </Field>
-          </div>
-
-          <button
-            type="button"
-            onClick={createModule}
-            disabled={busy}
-            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-60"
-          >
-            {busy ? "Saving..." : "Create module"}
-          </button>
         </div>
-      )}
+
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <Field label="Faculty name">
+            <input
+              value={newFacultyName}
+              onChange={(e) => setNewFacultyName(e.target.value)}
+              placeholder="Faculty of Science"
+              className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            />
+          </Field>
+          <Field label="Module code">
+            <input
+              value={newModuleCode}
+              onChange={(e) => setNewModuleCode(e.target.value.toUpperCase())}
+              placeholder="CS102"
+              className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            />
+          </Field>
+          <Field label="Module name">
+            <input
+              value={newModuleName}
+              onChange={(e) => setNewModuleName(e.target.value)}
+              placeholder="Data Structures"
+              className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            />
+          </Field>
+        </div>
+
+        <button
+          type="button"
+          onClick={createModule}
+          disabled={busy}
+          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-60"
+        >
+          {busy ? "Saving..." : "Create module"}
+        </button>
+      </div>
 
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
         <div>
           <div className="text-lg font-semibold text-white">Module Membership</div>
           <div className="mt-1 text-sm text-slate-400">
             Students must be linked to a module before they can see or join its attendance sessions. Their session
-            check-in time appears in the roster for lecturer or admin marking.
+            check-in time appears in the roster for staff marking.
           </div>
         </div>
 
-        <div className={`grid grid-cols-1 gap-6 ${role === "ADMIN" ? "xl:grid-cols-2" : ""}`}>
-          {role === "ADMIN" && (
-            <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
-              <div className="text-sm font-semibold text-white">Assigned lecturers</div>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="text-sm font-semibold text-white">Assigned lecturers</div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-                <select
-                  value={selectedLecturerId}
-                  onChange={(e) => setSelectedLecturerId(e.target.value)}
-                  disabled={busy || !moduleId || availableLecturers.length === 0}
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-                >
-                  {availableLecturers.length === 0 ? (
-                    <option value="">No additional lecturers available</option>
-                  ) : (
-                    availableLecturers.map((lecturer) => (
-                      <option key={lecturer.id} value={lecturer.id}>
-                        {lecturer.email}
-                      </option>
-                    ))
-                  )}
-                </select>
-
-                <button
-                  type="button"
-                  onClick={addLecturerToModule}
-                  disabled={busy || !moduleId || !selectedLecturerId}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                >
-                  Add lecturer
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                {(selectedModule?.lecturers ?? []).length === 0 ? (
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-3 text-sm text-slate-300">
-                    No lecturers assigned to this module yet.
-                  </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+              <select
+                value={selectedLecturerId}
+                onChange={(e) => setSelectedLecturerId(e.target.value)}
+                disabled={busy || !moduleId || availableLecturers.length === 0}
+                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              >
+                {availableLecturers.length === 0 ? (
+                  <option value="">No additional lecturers available</option>
                 ) : (
-                  selectedModule!.lecturers.map((lecturer) => (
-                    <div
-                      key={lecturer.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 p-3"
-                    >
-                      <div className="text-sm text-slate-200">{lecturer.email}</div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void removeLecturerFromModule(lecturer.id);
-                        }}
-                        disabled={busy}
-                        className="rounded-lg border border-red-700/40 bg-red-950/30 px-3 py-1 text-xs font-semibold text-red-200 hover:bg-red-950/50 disabled:opacity-60"
-                      >
-                        Remove
-                      </button>
-                    </div>
+                  availableLecturers.map((lecturer) => (
+                    <option key={lecturer.id} value={lecturer.id}>
+                      {lecturer.email}
+                    </option>
                   ))
                 )}
-              </div>
+              </select>
+
+              <button
+                type="button"
+                onClick={addLecturerToModule}
+                disabled={busy || !moduleId || !selectedLecturerId}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                Add lecturer
+              </button>
             </div>
-          )}
+
+            <div className="space-y-2">
+              {(selectedModule?.lecturers ?? []).length === 0 ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-3 text-sm text-slate-300">
+                  No lecturers assigned to this module yet.
+                </div>
+              ) : (
+                selectedModule!.lecturers.map((lecturer) => (
+                  <div
+                    key={lecturer.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 p-3"
+                  >
+                    <div className="text-sm text-slate-200">{lecturer.email}</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void removeLecturerFromModule(lecturer.id);
+                      }}
+                      disabled={busy}
+                      className="rounded-lg border border-red-700/40 bg-red-950/30 px-3 py-1 text-xs font-semibold text-red-200 hover:bg-red-950/50 disabled:opacity-60"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
           <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
             <div className="text-sm font-semibold text-white">Enrolled students</div>

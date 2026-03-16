@@ -83,11 +83,8 @@ async function getAttendanceSessionContext(sessionId: string): Promise<Attendanc
   return (r.rowCount ?? 0) > 0 ? r.rows[0] : null;
 }
 
-async function canStaffAccessSession(user: { id: string; role: AuthRole }, session: AttendanceSessionContext): Promise<boolean> {
-  if (user.role === "ADMIN") return true;
-  if (user.role !== "LECTURER") return false;
-  if (session.lecturer_id !== user.id) return false;
-  return isLecturerAssignedToModule(user.id, session.module_id);
+async function canStaffAccessSession(user: { id: string; role: AuthRole }): Promise<boolean> {
+  return user.role === "ADMIN" || user.role === "LECTURER";
 }
 
 async function ensureParentCanAccessChild(parentId: string, childId: string): Promise<boolean> {
@@ -104,8 +101,8 @@ async function ensureParentCanAccessChild(parentId: string, childId: string): Pr
 
 export const attendanceRouter = Router();
 
-// Create module/faculty records (minimal admin utility for attendance setup).
-attendanceRouter.post("/attendance/modules", requireRole("ADMIN"), async (req, res) => {
+// Create module/faculty records for attendance setup.
+attendanceRouter.post("/attendance/modules", requireRole("ADMIN", "LECTURER"), async (req, res) => {
   try {
     const code = String(req.body?.code ?? "").trim().toUpperCase();
     const name = String(req.body?.name ?? "").trim();
@@ -164,7 +161,7 @@ attendanceRouter.post("/attendance/modules", requireRole("ADMIN"), async (req, r
 });
 
 // Assign lecturer to module.
-attendanceRouter.post("/attendance/modules/:moduleId/lecturers", requireRole("ADMIN"), async (req, res) => {
+attendanceRouter.post("/attendance/modules/:moduleId/lecturers", requireRole("ADMIN", "LECTURER"), async (req, res) => {
   try {
     const moduleId = String(req.params.moduleId ?? "").trim();
     const lecturerId = String(req.body?.lecturerId ?? "").trim();
@@ -208,7 +205,6 @@ attendanceRouter.post("/attendance/modules/:moduleId/lecturers", requireRole("AD
 // Enroll student to module and expose auto-linked lecturers for attendance/messaging workflows.
 attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("ADMIN", "LECTURER"), async (req, res) => {
   try {
-    const user = req.user!;
     const moduleId = String(req.params.moduleId ?? "").trim();
     const studentId = String(req.body?.studentId ?? "").trim();
 
@@ -217,11 +213,6 @@ attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("
 
     const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
-
-    if (user.role === "LECTURER") {
-      const assigned = await isLecturerAssignedToModule(user.id, moduleId);
-      if (!assigned) return err(res, 403, "FORBIDDEN", "Lecturer is not assigned to this module");
-    }
 
     const student = await pool.query(
       `
@@ -271,7 +262,6 @@ attendanceRouter.delete(
   requireRole("ADMIN", "LECTURER"),
   async (req, res) => {
     try {
-      const user = req.user!;
       const moduleId = String(req.params.moduleId ?? "").trim();
       const studentId = String(req.params.studentId ?? "").trim();
 
@@ -280,11 +270,6 @@ attendanceRouter.delete(
 
       const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
       if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
-
-      if (user.role === "LECTURER") {
-        const assigned = await isLecturerAssignedToModule(user.id, moduleId);
-        if (!assigned) return err(res, 403, "FORBIDDEN", "Lecturer is not assigned to this module");
-      }
 
       const deleted = await pool.query(
         `
@@ -309,7 +294,7 @@ attendanceRouter.delete(
 
 attendanceRouter.delete(
   "/attendance/modules/:moduleId/lecturers/:lecturerId",
-  requireRole("ADMIN"),
+  requireRole("ADMIN", "LECTURER"),
   async (req, res) => {
     try {
       const moduleId = String(req.params.moduleId ?? "").trim();
@@ -343,20 +328,11 @@ attendanceRouter.delete(
 attendanceRouter.get("/attendance/modules", requireRole("LECTURER", "ADMIN", "STUDENT"), async (req, res) => {
   try {
     const user = req.user!;
-    const isLecturer = user.role === "LECTURER";
     const isStudent = user.role === "STUDENT";
 
     const params: unknown[] = [];
     const where: string[] = [];
-    if (isLecturer) {
-      params.push(user.id);
-      where.push(`EXISTS (
-        SELECT 1
-        FROM lecturer_module_assignments lma2
-        WHERE lma2.module_id = fm.id
-          AND lma2.lecturer_id = $${params.length}
-      )`);
-    } else if (isStudent) {
+    if (isStudent) {
       params.push(user.id);
       where.push(`EXISTS (
         SELECT 1
@@ -420,17 +396,11 @@ attendanceRouter.get("/attendance/modules", requireRole("LECTURER", "ADMIN", "ST
 // List students enrolled in one module.
 attendanceRouter.get("/attendance/modules/:moduleId/students", requireRole("LECTURER", "ADMIN"), async (req, res) => {
   try {
-    const user = req.user!;
     const moduleId = String(req.params.moduleId ?? "").trim();
     if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
 
     const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
-
-    if (user.role === "LECTURER") {
-      const ok = await isLecturerAssignedToModule(user.id, moduleId);
-      if (!ok) return err(res, 403, "FORBIDDEN", "Lecturer is not assigned to this module");
-    }
 
     const rows = await pool.query<{
       id: string;
@@ -476,7 +446,6 @@ attendanceRouter.get("/attendance/modules/:moduleId/students", requireRole("LECT
 attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), async (req, res) => {
   try {
     const user = req.user!;
-    const role = String(user.role ?? "").toUpperCase() as AuthRole;
 
     const moduleId = String(req.body?.moduleId ?? "").trim();
     if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
@@ -485,16 +454,12 @@ attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), 
     const startsAt = String(req.body?.startsAt ?? "").trim() || null;
     const endsAt = String(req.body?.endsAt ?? "").trim() || null;
 
-    let lecturerId = user.id;
-    if (role === "ADMIN") {
-      lecturerId = String(req.body?.lecturerId ?? "").trim();
-      if (!isUuid(lecturerId)) {
-        return err(res, 400, "VALIDATION", "lecturerId is required for ADMIN and must be a UUID");
-      }
+    let lecturerId = String(req.body?.lecturerId ?? "").trim();
+    if (!lecturerId && user.role === "LECTURER") {
+      lecturerId = user.id;
     }
-
-    if (role === "LECTURER" && lecturerId !== user.id) {
-      return err(res, 403, "FORBIDDEN", "Lecturer can only create sessions for self");
+    if (!isUuid(lecturerId)) {
+      return err(res, 400, "VALIDATION", "lecturerId is required and must be a UUID");
     }
 
     const moduleRes = await pool.query<{ id: string; code: string; name: string }>(
@@ -508,17 +473,22 @@ attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), 
     );
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
 
+    const lecturerRes = await pool.query(
+      `
+        SELECT 1
+        FROM users
+        WHERE id = $1
+          AND role = 'LECTURER'
+        LIMIT 1
+      `,
+      [lecturerId]
+    );
+    if ((lecturerRes.rowCount ?? 0) === 0) {
+      return err(res, 404, "NOT_FOUND", "Lecturer not found");
+    }
+
     const assigned = await isLecturerAssignedToModule(lecturerId, moduleId);
     if (!assigned) {
-      if (role !== "ADMIN") {
-        return err(
-          res,
-          403,
-          "FORBIDDEN",
-          "Attendance sessions can only be created for lecturers assigned to this module"
-        );
-      }
-
       await pool.query(
         `
           INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
@@ -583,10 +553,7 @@ attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN", "S
     params.push(currentStudentId);
     const studentLookupParam = params.length;
 
-    if (user.role === "LECTURER") {
-      params.push(user.id);
-      where.push(`s.lecturer_id = $${params.length}`);
-    } else if (user.role === "STUDENT") {
+    if (user.role === "STUDENT") {
       params.push(user.id);
       where.push(`EXISTS (
         SELECT 1
@@ -693,7 +660,7 @@ attendanceRouter.get("/attendance/sessions/:id/roster", requireRole("LECTURER", 
     const session = await getAttendanceSessionContext(sessionId);
     if (!session) return err(res, 404, "NOT_FOUND", "Attendance session not found");
 
-    const canAccess = await canStaffAccessSession({ id: user.id, role: user.role as AuthRole }, session);
+    const canAccess = await canStaffAccessSession({ id: user.id, role: user.role as AuthRole });
     if (!canAccess) return err(res, 403, "FORBIDDEN", "User cannot access this attendance session");
 
     const rows = await pool.query<{
@@ -876,15 +843,6 @@ attendanceRouter.post("/attendance/sessions/:id/mark", requireRole("LECTURER", "
 
     if ((sessionRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Attendance session not found");
     const session = sessionRes.rows[0];
-
-    if (user.role === "LECTURER" && session.lecturer_id !== user.id) {
-      return err(res, 403, "FORBIDDEN", "Lecturer can only mark sessions assigned to self");
-    }
-
-    if (user.role === "LECTURER") {
-      const assigned = await isLecturerAssignedToModule(user.id, session.module_id);
-      if (!assigned) return err(res, 403, "FORBIDDEN", "Lecturer is not assigned to this module");
-    }
 
     const studentIds = [...new Set(marks.map((m) => m.studentId))];
     const enrolledRes = await pool.query<{ student_id: string }>(
