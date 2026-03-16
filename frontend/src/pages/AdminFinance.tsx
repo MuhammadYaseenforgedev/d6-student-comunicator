@@ -352,53 +352,53 @@ export default function AdminFinance() {
               </div>
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+                <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
                   <div className="text-lg font-semibold text-white">Account</div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <input value={balanceInput} onChange={(e) => setBalanceInput(e.target.value)} placeholder="Balance" className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
-                    <input value={currencyInput} onChange={(e) => setCurrencyInput(e.target.value.toUpperCase())} placeholder="Currency" className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
-                    <select value={statusInput} onChange={(e) => setStatusInput(e.target.value as (typeof ACCOUNT_STATUSES)[number])} className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">{ACCOUNT_STATUSES.map((status) => <option key={status}>{status}</option>)}</select>
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_120px_120px]">
+                    <input value={balanceInput} onChange={(e) => setBalanceInput(e.target.value)} placeholder="Balance" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                    <input value={currencyInput} onChange={(e) => setCurrencyInput(e.target.value.toUpperCase())} placeholder="Currency" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                    <select value={statusInput} onChange={(e) => setStatusInput(e.target.value as (typeof ACCOUNT_STATUSES)[number])} className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">{ACCOUNT_STATUSES.map((status) => <option key={status}>{status}</option>)}</select>
                   </div>
-                  <textarea value={statusNoteInput} onChange={(e) => setStatusNoteInput(e.target.value)} rows={3} placeholder="Status note visible to parents" className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                  <textarea value={statusNoteInput} onChange={(e) => setStatusNoteInput(e.target.value)} rows={3} placeholder="Status note visible to parents" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => { void saveSummary(); }} disabled={busy === "summary"} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{busy === "summary" ? "Saving..." : "Save account"}</button>
                     <button type="button" onClick={() => { void downloadStatement(); }} disabled={busy === "download"} className="rounded-lg border border-slate-700 bg-slate-900/40 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-900/70 disabled:opacity-60">{busy === "download" ? "Downloading..." : "Download statement"}</button>
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+                <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
                   <div className="text-lg font-semibold text-white">Ledger entry</div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <input value={txAmount} onChange={(e) => setTxAmount(e.target.value)} placeholder="Amount (+charge / -payment)" className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
-                    <input type="datetime-local" value={txOccurredAt} onChange={(e) => setTxOccurredAt(e.target.value)} className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <input value={txAmount} onChange={(e) => setTxAmount(e.target.value)} placeholder="Amount (+charge / -payment)" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                    <input type="datetime-local" value={txOccurredAt} onChange={(e) => setTxOccurredAt(e.target.value)} className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
                   </div>
-                  <input value={txDescription} onChange={(e) => setTxDescription(e.target.value)} placeholder="Description" className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                  <input value={txDescription} onChange={(e) => setTxDescription(e.target.value)} placeholder="Description" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
                   <button type="button" onClick={() => { void addTransaction(); }} disabled={busy === "transaction"} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">{busy === "transaction" ? "Posting..." : "Add transaction"}</button>
                 </div>
 
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+                <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
                   <div className="text-lg font-semibold text-white">Send document</div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <select value={docType} onChange={(e) => setDocType(e.target.value as (typeof DOCUMENT_TYPES)[number])} className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">{DOCUMENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select>
-                    <input type="datetime-local" value={docIssuedAt} onChange={(e) => setDocIssuedAt(e.target.value)} className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <select value={docType} onChange={(e) => setDocType(e.target.value as (typeof DOCUMENT_TYPES)[number])} className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">{DOCUMENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select>
+                    <input type="datetime-local" value={docIssuedAt} onChange={(e) => setDocIssuedAt(e.target.value)} className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
                   </div>
-                  <input value={docTitle} onChange={(e) => setDocTitle(e.target.value)} placeholder="Document title" className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <input value={docAmount} onChange={(e) => setDocAmount(e.target.value)} placeholder="Optional amount" className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
-                    <input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="Optional document URL" className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                  <input value={docTitle} onChange={(e) => setDocTitle(e.target.value)} placeholder="Document title" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <input value={docAmount} onChange={(e) => setDocAmount(e.target.value)} placeholder="Optional amount" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                    <input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="Optional document URL" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
                   </div>
-                  <textarea value={docDescription} onChange={(e) => setDocDescription(e.target.value)} rows={3} placeholder="Document description" className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                  <textarea value={docDescription} onChange={(e) => setDocDescription(e.target.value)} rows={3} placeholder="Document description" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
                   <button type="button" onClick={() => { void addDocument(); }} disabled={busy === "document"} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{busy === "document" ? "Sending..." : "Send document"}</button>
                 </div>
 
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+                <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
                   <div className="text-lg font-semibold text-white">Send notification</div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_180px]">
-                    <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Notification title" className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
-                    <select value={noteSeverity} onChange={(e) => setNoteSeverity(e.target.value as (typeof NOTIFICATION_SEVERITIES)[number])} className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">{NOTIFICATION_SEVERITIES.map((level) => <option key={level}>{level}</option>)}</select>
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_160px]">
+                    <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Notification title" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                    <select value={noteSeverity} onChange={(e) => setNoteSeverity(e.target.value as (typeof NOTIFICATION_SEVERITIES)[number])} className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">{NOTIFICATION_SEVERITIES.map((level) => <option key={level}>{level}</option>)}</select>
                   </div>
-                  <textarea value={noteBody} onChange={(e) => setNoteBody(e.target.value)} rows={4} placeholder="Message sent to linked parents" className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
-                  <button type="button" onClick={() => { void addNotification(); }} disabled={busy === "notification"} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">{busy === "notification" ? "Sending..." : "Send notification"}</button>
+                  <textarea value={noteBody} onChange={(e) => setNoteBody(e.target.value)} rows={4} placeholder="Message sent to linked parents" className="min-w-0 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm" />
+                  <button type="button" onClick={() => { void addNotification(); }} disabled={busy === "notification"} className="inline-flex w-fit rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">{busy === "notification" ? "Sending..." : "Send notification"}</button>
                 </div>
               </div>
 
