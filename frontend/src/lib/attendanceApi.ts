@@ -113,6 +113,19 @@ export async function listAttendanceDirectoryUsers(params?: {
   return Array.isArray(data.value) ? data.value : [];
 }
 
+export async function createAttendanceModule(input: {
+  code: string;
+  name: string;
+  facultyName: string;
+}) {
+  return apiClient.post<{
+    id: string;
+    facultyId: string;
+    code: string;
+    name: string;
+  }>("/attendance/modules", input);
+}
+
 export async function createAttendanceSession(input: {
   moduleId: string;
   date?: string;

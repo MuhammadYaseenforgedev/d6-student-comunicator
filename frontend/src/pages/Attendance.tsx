@@ -1,9 +1,11 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
 import {
   assignLecturerToAttendanceModule,
   checkInToAttendanceSession,
+  createAttendanceModule,
   createAttendanceSession,
   enrollStudentInAttendanceModule,
   getMyAttendance,
@@ -81,6 +83,10 @@ export default function AttendancePage() {
     return <LecturerAttendanceView role={role} />;
   }
 
+  if (role === "PARENT") {
+    return <Navigate to="/app/parent/attendance" replace />;
+  }
+
   return <StudentAttendanceView />;
 }
 
@@ -101,6 +107,9 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
   const [candidateLecturers, setCandidateLecturers] = useState<AttendanceDirectoryUser[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [selectedLecturerId, setSelectedLecturerId] = useState("");
+  const [newModuleCode, setNewModuleCode] = useState("");
+  const [newModuleName, setNewModuleName] = useState("");
+  const [newFacultyName, setNewFacultyName] = useState("");
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,15 +127,16 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
     const assignedIds = new Set((selectedModule?.lecturers ?? []).map((lecturer) => lecturer.id));
     return candidateLecturers.filter((lecturer) => !assignedIds.has(lecturer.id));
   }, [candidateLecturers, selectedModule]);
+  const assignedLecturerIds = useMemo(
+    () => new Set((selectedModule?.lecturers ?? []).map((lecturer) => lecturer.id)),
+    [selectedModule]
+  );
 
   async function loadModules() {
     const rows = await listAttendanceModules();
     setModules(rows);
     if (!moduleId && rows[0]?.id) {
       setModuleId(rows[0].id);
-      if (role === "ADMIN" && rows[0].lecturers[0]?.id) {
-        setLecturerId(rows[0].lecturers[0].id);
-      }
     }
   }
 
@@ -221,10 +231,19 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
 
   useEffect(() => {
     if (role !== "ADMIN") return;
-    if (!selectedModule) return;
-    const firstLecturer = selectedModule.lecturers[0]?.id ?? "";
-    setLecturerId(firstLecturer);
-  }, [role, selectedModule]);
+    if (!candidateLecturers.length) {
+      setLecturerId("");
+      return;
+    }
+    const assignedLecturerId = selectedModule?.lecturers[0]?.id ?? "";
+    if (assignedLecturerId) {
+      setLecturerId(assignedLecturerId);
+      return;
+    }
+    setLecturerId((current) =>
+      candidateLecturers.some((lecturer) => lecturer.id === current) ? current : candidateLecturers[0].id
+    );
+  }, [candidateLecturers, role, selectedModule]);
 
   useEffect(() => {
     if (!availableStudents.length) {
@@ -271,10 +290,38 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
       });
 
       setInfo(`Session created for ${created.date}.`);
-      await loadSessions(moduleId);
+      await refreshCurrentModuleData(moduleId);
       setSessionId(created.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create session");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createModule() {
+    const code = newModuleCode.trim().toUpperCase();
+    const name = newModuleName.trim();
+    const facultyName = newFacultyName.trim();
+
+    if (!code || !name || !facultyName) {
+      setError("Faculty name, module code, and module name are required.");
+      return;
+    }
+
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+      const created = await createAttendanceModule({ code, name, facultyName });
+      setNewModuleCode("");
+      setNewModuleName("");
+      setNewFacultyName("");
+      await loadModules();
+      setModuleId(created.id);
+      setInfo(`Module ${created.code} created.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create module");
     } finally {
       setBusy(false);
     }
@@ -396,6 +443,12 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
           <div className="text-lg font-semibold text-white">Create Session</div>
+          {role === "ADMIN" && (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300">
+              Admin module selection is global. If the module you need does not exist yet, create it below and pick
+              any lecturer directly from the full lecturer list.
+            </div>
+          )}
 
           <Field label="Module">
             <select
@@ -422,14 +475,15 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
                 onChange={(e) => setLecturerId(e.target.value)}
                 className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
               >
-                {selectedModule?.lecturers.length ? (
-                  selectedModule.lecturers.map((l) => (
+                {candidateLecturers.length ? (
+                  candidateLecturers.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.email}
+                      {assignedLecturerIds.has(l.id) ? " - assigned to module" : " - will be linked on create"}
                     </option>
                   ))
                 ) : (
-                  <option value="">No assigned lecturer for this module</option>
+                  <option value="">No lecturers available</option>
                 )}
               </select>
             </Field>
@@ -557,6 +611,53 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
           </button>
         </div>
       </div>
+
+      {role === "ADMIN" && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+          <div>
+            <div className="text-lg font-semibold text-white">Module Setup</div>
+            <div className="mt-1 text-sm text-slate-400">
+              Create attendance modules here so they appear in the global module picker immediately.
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <Field label="Faculty name">
+              <input
+                value={newFacultyName}
+                onChange={(e) => setNewFacultyName(e.target.value)}
+                placeholder="Faculty of Science"
+                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              />
+            </Field>
+            <Field label="Module code">
+              <input
+                value={newModuleCode}
+                onChange={(e) => setNewModuleCode(e.target.value.toUpperCase())}
+                placeholder="CS102"
+                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              />
+            </Field>
+            <Field label="Module name">
+              <input
+                value={newModuleName}
+                onChange={(e) => setNewModuleName(e.target.value)}
+                placeholder="Data Structures"
+                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              />
+            </Field>
+          </div>
+
+          <button
+            type="button"
+            onClick={createModule}
+            disabled={busy}
+            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-60"
+          >
+            {busy ? "Saving..." : "Create module"}
+          </button>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
         <div>

@@ -510,11 +510,22 @@ attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), 
 
     const assigned = await isLecturerAssignedToModule(lecturerId, moduleId);
     if (!assigned) {
-      return err(
-        res,
-        403,
-        "FORBIDDEN",
-        "Attendance sessions can only be created for lecturers assigned to this module"
+      if (role !== "ADMIN") {
+        return err(
+          res,
+          403,
+          "FORBIDDEN",
+          "Attendance sessions can only be created for lecturers assigned to this module"
+        );
+      }
+
+      await pool.query(
+        `
+          INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
+          VALUES ($1, $2)
+          ON CONFLICT (module_id, lecturer_id) DO NOTHING
+        `,
+        [moduleId, lecturerId]
       );
     }
 

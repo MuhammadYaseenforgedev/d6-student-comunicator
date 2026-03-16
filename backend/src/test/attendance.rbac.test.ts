@@ -14,12 +14,14 @@ type Ctx = {
   adminToken: string;
   lecturerToken: string;
   otherLecturerToken: string;
+  strangerLecturerToken: string;
   studentToken: string;
   parentToken: string;
   otherParentToken: string;
   studentId: string;
   otherStudentId: string;
   lecturerId: string;
+  otherLecturerId: string;
   moduleId: string;
   otherModuleId: string;
   facultyId: string;
@@ -35,6 +37,7 @@ describe("Attendance RBAC + marking", () => {
     const admin = await createUser("ADMIN");
     const lecturer = await createUser("LECTURER");
     const otherLecturer = await createUser("LECTURER");
+    const strangerLecturer = await createUser("LECTURER");
     const student = await createUser("STUDENT");
     const otherStudent = await createUser("STUDENT");
     const parent = await createUser("PARENT");
@@ -43,6 +46,7 @@ describe("Attendance RBAC + marking", () => {
     ctx.adminToken = signJwt(admin);
     ctx.lecturerToken = signJwt(lecturer);
     ctx.otherLecturerToken = signJwt(otherLecturer);
+    ctx.strangerLecturerToken = signJwt(strangerLecturer);
     ctx.studentToken = signJwt(student);
     ctx.parentToken = signJwt(parent);
     ctx.otherParentToken = signJwt(otherParent);
@@ -50,6 +54,7 @@ describe("Attendance RBAC + marking", () => {
     ctx.studentId = student.id;
     ctx.otherStudentId = otherStudent.id;
     ctx.lecturerId = lecturer.id;
+    ctx.otherLecturerId = otherLecturer.id;
 
     ctx.facultyId = crypto.randomUUID();
     await pool.query(`INSERT INTO faculties (id, name) VALUES ($1, $2)`, [
@@ -162,6 +167,28 @@ describe("Attendance RBAC + marking", () => {
       .send({ moduleId: ctx.moduleId, date: "2026-03-01" });
 
     expect(res.status).toBe(403);
+  });
+
+  test("admin can create attendance session for a globally selected lecturer and auto-assign them", async () => {
+    const res = await request(app)
+      .post("/api/attendance/sessions")
+      .set(auth(ctx.adminToken))
+      .send({ moduleId: ctx.moduleId, lecturerId: ctx.otherLecturerId, date: "2026-03-02" });
+
+    expect(res.status).toBe(201);
+    expect(String(res.body?.lecturerId ?? "")).toBe(ctx.otherLecturerId);
+
+    const assignment = await pool.query(
+      `
+        SELECT 1
+        FROM lecturer_module_assignments
+        WHERE module_id = $1
+          AND lecturer_id = $2
+        LIMIT 1
+      `,
+      [ctx.moduleId, ctx.otherLecturerId]
+    );
+    expect(assignment.rowCount ?? 0).toBe(1);
   });
 
   test("student cannot create attendance session", async () => {
@@ -287,7 +314,7 @@ describe("Attendance RBAC + marking", () => {
   test("unassigned lecturer cannot change enrollments on another module", async () => {
     const res = await request(app)
       .post(`/api/attendance/modules/${ctx.moduleId}/enrollments`)
-      .set(auth(ctx.otherLecturerToken))
+      .set(auth(ctx.strangerLecturerToken))
       .send({ studentId: ctx.otherStudentId });
 
     expect(res.status).toBe(403);
