@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
-import type { UploadKind } from "../lib/types";
-import type { UploadRecord } from "../lib/types";
-import { deleteUpload, downloadUpload, listUploads, uploadFile } from "../api/uploads";
+import type { UploadKind, UploadRecord } from "../lib/types";
+import {
+  deleteUpload,
+  downloadUpload,
+  listUploadAssignableUsers,
+  listUploads,
+  type UploadAssignableUser,
+  uploadFile,
+} from "../api/uploads";
 
 function prettySize(bytes: number) {
   const kb = bytes / 1024;
@@ -11,15 +17,23 @@ function prettySize(bytes: number) {
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
+function kindLabel(kind: UploadKind): string {
+  return kind === "STUDENT_SUBMISSION" ? "Student submission" : "Lecturer material";
+}
+
 export default function Uploads1() {
   const user = getUser();
   const role = user?.role ?? "STUDENT";
   const email = (user?.email ?? "dev@local").trim().toLowerCase();
+  const isAdmin = role === "ADMIN";
   const canUpload = role === "STUDENT" || role === "LECTURER" || role === "ADMIN";
   const canDelete = role === "LECTURER" || role === "ADMIN";
-  const uploadKind: UploadKind = role === "STUDENT" ? "STUDENT_SUBMISSION" : "LECTURER_MATERIAL";
+  const [uploadKind, setUploadKind] = useState<UploadKind>(role === "STUDENT" ? "STUDENT_SUBMISSION" : "LECTURER_MATERIAL");
 
   const [items, setItems] = useState<UploadRecord[]>([]);
+  const [studentTargets, setStudentTargets] = useState<UploadAssignableUser[]>([]);
+  const [lecturerTargets, setLecturerTargets] = useState<UploadAssignableUser[]>([]);
+  const [targetUserId, setTargetUserId] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -44,11 +58,35 @@ export default function Uploads1() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    void (async () => {
+      try {
+        const [students, lecturers] = await Promise.all([
+          listUploadAssignableUsers(["STUDENT"]),
+          listUploadAssignableUsers(["LECTURER"]),
+        ]);
+        setStudentTargets(students);
+        setLecturerTargets(lecturers);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load upload targets");
+      }
+    })();
+  }, [isAdmin]);
+
+  const targetOptions = uploadKind === "STUDENT_SUBMISSION" ? studentTargets : lecturerTargets;
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    setTargetUserId((current) => (targetOptions.some((option) => option.id === current) ? current : (targetOptions[0]?.id ?? "")));
+  }, [isAdmin, targetOptions]);
+
   const subtitle = useMemo(() => {
+    if (isAdmin) return "Upload lecturer materials or student submissions for a selected lecturer or student.";
     if (canDelete) return "Upload and share lecturer materials.";
     if (canUpload) return "Upload your submission and view shared lecturer materials.";
     return "View and download shared lecturer materials.";
-  }, [canDelete, canUpload]);
+  }, [canDelete, canUpload, isAdmin]);
 
   async function onUpload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -64,9 +102,14 @@ export default function Uploads1() {
       return;
     }
 
+    if (isAdmin && !targetUserId) {
+      setError(uploadKind === "STUDENT_SUBMISSION" ? "Select a student first." : "Select a lecturer first.");
+      return;
+    }
+
     setBusy(true);
     try {
-      await uploadFile({ file, kind: uploadKind });
+      await uploadFile({ file, kind: uploadKind, targetUserId: isAdmin ? targetUserId : undefined });
       setFile(null);
       await load();
     } catch (err) {
@@ -100,19 +143,69 @@ export default function Uploads1() {
             <div className="text-lg font-semibold text-white">Upload a file</div>
             <div className="mt-1 text-sm text-slate-400">
               {uploadKind === "STUDENT_SUBMISSION"
-                ? "Student submissions are visible to staff and to you."
-                : "Saved to backend (disk) + metadata in PostgreSQL."}
+                ? isAdmin
+                  ? "Student submissions are visible to staff and to the selected student."
+                  : "Student submissions are visible to staff and to you."
+                : isAdmin
+                  ? "Saved to backend (disk) + metadata in PostgreSQL, assigned to the selected lecturer."
+                  : "Saved to backend (disk) + metadata in PostgreSQL."}
             </div>
 
             <form onSubmit={onUpload} className="mt-4 space-y-3">
               <div>
                 <label className="block text-sm text-slate-300">Type</label>
-                <input
-                  value={uploadKind === "STUDENT_SUBMISSION" ? "Student submission" : "Lecturer material"}
-                  readOnly
-                  className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 text-slate-300"
-                />
+                {isAdmin ? (
+                  <select
+                    value={uploadKind}
+                    onChange={(e) => setUploadKind(e.target.value as UploadKind)}
+                    disabled={busy}
+                    className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 text-slate-300"
+                  >
+                    <option value="LECTURER_MATERIAL">Lecturer material</option>
+                    <option value="STUDENT_SUBMISSION">Student submission</option>
+                  </select>
+                ) : (
+                  <input
+                    value={kindLabel(uploadKind)}
+                    readOnly
+                    className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 text-slate-300"
+                  />
+                )}
               </div>
+
+              {isAdmin && (
+                <div>
+                  <label className="block text-sm text-slate-300">
+                    {uploadKind === "STUDENT_SUBMISSION" ? "For student" : "For lecturer"}
+                  </label>
+                  <select
+                    value={targetUserId}
+                    onChange={(e) => setTargetUserId(e.target.value)}
+                    disabled={busy || targetOptions.length === 0}
+                    className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 text-slate-300"
+                  >
+                    {targetOptions.length === 0 ? (
+                      <option value="">
+                        {uploadKind === "STUDENT_SUBMISSION" ? "No students available" : "No lecturers available"}
+                      </option>
+                    ) : (
+                      targetOptions.map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {target.email}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
+
+              {isAdmin && targetOptions.length === 0 && (
+                <div className="rounded-xl border border-amber-700/40 bg-amber-950/20 p-3 text-sm text-amber-100">
+                  {uploadKind === "STUDENT_SUBMISSION"
+                    ? "Create or register a student account first."
+                    : "Create or register a lecturer account first."}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm text-slate-300">File</label>
@@ -132,7 +225,7 @@ export default function Uploads1() {
 
               <button
                 type="submit"
-                disabled={busy}
+                disabled={busy || (isAdmin && targetOptions.length === 0)}
                 className="w-full rounded-lg bg-blue-600 py-3 font-semibold hover:bg-blue-700 disabled:opacity-60"
               >
                 {busy ? "Uploading..." : "Upload"}
@@ -184,13 +277,18 @@ export default function Uploads1() {
                       <div className="text-white font-semibold">{u.fileName}</div>
 
                       <div className="mt-1 text-xs text-slate-400">
-                        {u.kind === "LECTURER_MATERIAL" ? "Lecturer material" : "Student submission"} -{" "}
-                        {prettySize(u.size)} - {new Date(u.uploadedAt).toLocaleString()}
+                        {kindLabel(u.kind)} - {prettySize(u.size)} - {new Date(u.uploadedAt).toLocaleString()}
                       </div>
 
                       <div className="mt-1 text-xs text-slate-500">
                         Uploaded by: {u.uploaderEmail}
                       </div>
+                      {u.targetUserEmail && (
+                        <div className="mt-1 text-xs text-slate-500">
+                          For: {u.targetUserEmail}
+                          {u.targetUserRole ? ` (${u.targetUserRole.toLowerCase()})` : ""}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex gap-2">

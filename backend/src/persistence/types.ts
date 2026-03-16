@@ -19,6 +19,9 @@ export type Upload = {
   uploadedBy: string;
   uploadedByEmail?: string | null;
   uploadedByRole?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
+  targetUserId?: string | null;
+  targetUserEmail?: string | null;
+  targetUserRole?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
   createdAt: string;
 };
 
@@ -215,6 +218,7 @@ export type CreateUploadInput = {
   sizeBytes: number;
   storagePath: string;
   uploadedBy: string;
+  targetUserId?: string | null;
 };
 
 /* =========

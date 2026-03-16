@@ -57,6 +57,9 @@ export type UploadRecord = {
   uploadedAt: string; // ISO
   uploaderEmail: string;
   uploaderRole: UserRole;
+  targetUserId?: string | null;
+  targetUserEmail?: string | null;
+  targetUserRole?: UserRole | null;
 };
 
 // ---------- Calendar ----------

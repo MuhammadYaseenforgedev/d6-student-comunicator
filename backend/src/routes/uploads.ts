@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
+import { pool } from "../config/db";
 import { requireRole } from "../middleware/rbac";
 import { uploadLimiter } from "../middleware/rateLimit";
 import { repos } from "../persistence";
@@ -47,7 +48,7 @@ const upload = multer({
 // Matches your pgUploadRepo list rules
 function canAccessUpload(
   user: { id: string; role: string },
-  u: { kind: UploadKind; uploadedBy: string; uploadedByRole?: string | null }
+  u: { kind: UploadKind; uploadedBy: string; uploadedByRole?: string | null; targetUserId?: string | null }
 ) {
   const uploaderRole = String(u.uploadedByRole ?? "").toUpperCase();
   const isStaffMaterial = u.kind === "LECTURER_MATERIAL" && (uploaderRole === "ADMIN" || uploaderRole === "LECTURER");
@@ -55,7 +56,75 @@ function canAccessUpload(
   if (user.role === "ADMIN" || user.role === "LECTURER") return true;
   if (user.role === "PARENT") return isStaffMaterial;
   // STUDENT
-  return isStaffMaterial || (u.kind === "STUDENT_SUBMISSION" && u.uploadedBy === user.id);
+  return isStaffMaterial || (u.kind === "STUDENT_SUBMISSION" && (u.uploadedBy === user.id || u.targetUserId === user.id));
+}
+
+function isUploadKind(value: string): value is UploadKind {
+  return value === "LECTURER_MATERIAL" || value === "STUDENT_SUBMISSION";
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function resolveUploadTarget(
+  user: { id: string; role: string },
+  kind: UploadKind,
+  rawTargetUserId: unknown
+): Promise<{ ok: true; targetUserId: string } | { ok: false; status: number; code: string; message: string }> {
+  if (user.role === "STUDENT") {
+    return kind === "STUDENT_SUBMISSION"
+      ? { ok: true, targetUserId: user.id }
+      : { ok: false, status: 400, code: "VALIDATION", message: "Invalid kind. STUDENT must use STUDENT_SUBMISSION." };
+  }
+
+  if (user.role === "LECTURER") {
+    return kind === "LECTURER_MATERIAL"
+      ? { ok: true, targetUserId: user.id }
+      : { ok: false, status: 400, code: "VALIDATION", message: "Invalid kind. LECTURER must use LECTURER_MATERIAL." };
+  }
+
+  if (user.role !== "ADMIN") {
+    return { ok: false, status: 403, code: "FORBIDDEN", message: "Only ADMIN, LECTURER, or STUDENT can upload files." };
+  }
+
+  const targetUserId = String(rawTargetUserId ?? "").trim();
+  if (!targetUserId) {
+    return {
+      ok: false,
+      status: 400,
+      code: "VALIDATION",
+      message: kind === "STUDENT_SUBMISSION" ? "Select a student for this submission." : "Select a lecturer for this material.",
+    };
+  }
+
+  if (!isUuid(targetUserId)) {
+    return { ok: false, status: 400, code: "VALIDATION", message: "targetUserId must be a UUID" };
+  }
+
+  const target = await pool.query<{ id: string; role: string }>(
+    `
+      SELECT id, role
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [targetUserId]
+  );
+
+  if ((target.rowCount ?? 0) === 0) {
+    return { ok: false, status: 404, code: "NOT_FOUND", message: "Target user not found" };
+  }
+
+  const targetRole = String(target.rows[0]?.role ?? "").toUpperCase();
+  if (kind === "STUDENT_SUBMISSION" && targetRole !== "STUDENT") {
+    return { ok: false, status: 400, code: "VALIDATION", message: "Student submissions must target a student account." };
+  }
+  if (kind === "LECTURER_MATERIAL" && targetRole !== "LECTURER") {
+    return { ok: false, status: 400, code: "VALIDATION", message: "Lecturer materials must target a lecturer account." };
+  }
+
+  return { ok: true, targetUserId };
 }
 
 /**
@@ -172,25 +241,26 @@ uploadRouter.post(
   async (req: Request, res: Response) => {
     try {
       const user = req.user!;
-      const kind = String(req.body?.kind ?? "") as UploadKind;
+      const kindRaw = String(req.body?.kind ?? "").trim().toUpperCase();
+      if (!isUploadKind(kindRaw)) {
+        await cleanupUploadedFile(req.file?.path, "POST / invalid kind");
+        return err(res, 400, "VALIDATION", "kind must be LECTURER_MATERIAL or STUDENT_SUBMISSION");
+      }
+      const kind = kindRaw as UploadKind;
 
-      if (user.role === "ADMIN" || user.role === "LECTURER") {
-        if (kind !== "LECTURER_MATERIAL") {
-          await cleanupUploadedFile(req.file?.path, "POST / invalid staff kind");
-          return err(res, 400, "VALIDATION", "Invalid kind. ADMIN/LECTURER must use LECTURER_MATERIAL.");
-        }
-      } else if (user.role === "STUDENT") {
-        if (kind !== "STUDENT_SUBMISSION") {
-          await cleanupUploadedFile(req.file?.path, "POST / invalid student kind");
-          return err(res, 400, "VALIDATION", "Invalid kind. STUDENT must use STUDENT_SUBMISSION.");
-        }
-      } else {
+      if (user.role !== "ADMIN" && user.role !== "LECTURER" && user.role !== "STUDENT") {
         await cleanupUploadedFile(req.file?.path, "POST / invalid role");
         return err(res, 403, "FORBIDDEN", "Only ADMIN, LECTURER, or STUDENT can upload files.");
       }
 
       if (!req.file) {
         return err(res, 400, "VALIDATION", "No file uploaded. Field name must be 'file'.");
+      }
+
+      const target = await resolveUploadTarget(user, kind, req.body?.targetUserId);
+      if (!target.ok) {
+        await cleanupUploadedFile(req.file?.path, "POST / invalid target");
+        return err(res, target.status, target.code, target.message);
       }
 
       // Store as a relative path in DB (matches your existing schema style)
@@ -203,6 +273,7 @@ uploadRouter.post(
         sizeBytes: req.file.size,
         storagePath,
         uploadedBy: user.id,
+        targetUserId: target.targetUserId,
       });
 
       return res.status(201).json(withDownloadUrl(req, created));
