@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/rbac";
 import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
 import { isSmtpConfigured, sendOtpEmail as sendOtpEmailViaSmtp } from "../lib/mailer";
+import { validatePassword } from "../lib/passwordPolicy";
 
 export const authRouter = Router();
 
@@ -526,6 +527,11 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
   }
 
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: { code: "VALIDATION", message: passwordError } });
+  }
+
   if (!role) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
   }
@@ -635,6 +641,11 @@ authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
 
   if (!email || !password || !roleRaw) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
+  }
+
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: { code: "VALIDATION", message: passwordError } });
   }
 
   if (!VALID_ROLES.includes(roleRaw as Role)) {

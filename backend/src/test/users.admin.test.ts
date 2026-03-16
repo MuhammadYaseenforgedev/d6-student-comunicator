@@ -154,4 +154,30 @@ describe("Admin account management", () => {
     const matches = await bcrypt.compare(nextPassword, String(db.rows[0]?.password_hash ?? ""));
     expect(matches).toBe(true);
   });
+
+  test("admin cannot reset an account password below the minimum length", async () => {
+    const res = await request(app)
+      .patch(`/api/users/admin/accounts/${lecturerId}`)
+      .set(auth(adminToken))
+      .send({ password: "12345" });
+
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+    expect(String(res.body?.error?.message ?? "")).toMatch(/at least 6 characters/i);
+  });
+
+  test("admin-create rejects a password shorter than 6 characters", async () => {
+    const res = await request(app)
+      .post("/api/auth/admin-create")
+      .set(auth(adminToken))
+      .send({
+        email: `${unique}_short_password@co.za`,
+        password: "12345",
+        role: "LECTURER",
+      });
+
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+    expect(String(res.body?.error?.message ?? "")).toMatch(/at least 6 characters/i);
+  });
 });

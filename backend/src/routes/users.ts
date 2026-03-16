@@ -3,6 +3,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { pool } from "../config/db";
 import { requireRole } from "../middleware/rbac";
+import { validatePassword } from "../lib/passwordPolicy";
 
 type Role = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
 
@@ -252,8 +253,9 @@ userRouter.patch("/admin/accounts/:id", requireRole("ADMIN"), async (req: Reques
 
     if (hasPassword) {
       const nextPassword = String(req.body?.password ?? "");
-      if (!nextPassword.trim()) {
-        return err(res, 400, "VALIDATION", "password cannot be empty");
+      const passwordError = validatePassword(nextPassword);
+      if (passwordError) {
+        return err(res, 400, "VALIDATION", passwordError);
       }
       const passwordHash = await bcrypt.hash(nextPassword, 10);
       params.push(passwordHash);
@@ -329,7 +331,7 @@ userRouter.get("/", async (req: Request, res: Response) => {
       return err(res, 403, "FORBIDDEN", "Role cannot access user directory");
     }
 
-    const limit = parseLimit(req.query.limit, 50);
+    const limit = parseLimit(req.query.limit, 50, 500);
     const q = String(req.query.q ?? "").trim().toLowerCase();
     const requestedRoles = parseRoleFilters(req.query.role, req.query.roles);
 

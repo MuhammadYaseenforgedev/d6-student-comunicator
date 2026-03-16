@@ -99,14 +99,46 @@ function resolveUploadPath(storagePath: string): string | null {
   return absPath;
 }
 
-function cleanupUploadedFile(filePath: string | undefined): void {
+function isRetryableCleanupError(code: string): boolean {
+  return code === "EBUSY" || code === "EPERM";
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function cleanupUploadedFile(filePath: string | null | undefined, context: string): Promise<void> {
   if (!filePath) return;
-  try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await fs.promises.unlink(filePath);
+      return;
+    } catch (e: unknown) {
+      const code = String((e as NodeJS.ErrnoException | undefined)?.code ?? "");
+      if (code === "ENOENT") {
+        return;
+      }
+      if (isRetryableCleanupError(code) && attempt < 2) {
+        await delay(50 * (attempt + 1));
+        continue;
+      }
+      if (isRetryableCleanupError(code)) {
+        console.warn("[uploads] cleanup skipped after retries", {
+          context,
+          filePath,
+          code,
+          message: e instanceof Error ? e.message : String(e),
+        });
+        return;
+      }
+      console.error("[uploads] cleanup warning", {
+        context,
+        filePath,
+        code,
+        message: e instanceof Error ? e.message : String(e),
+      });
+      return;
     }
-  } catch (e: unknown) {
-    console.error("[uploads] cleanup warning", e);
   }
 }
 
@@ -144,16 +176,16 @@ uploadRouter.post(
 
       if (user.role === "ADMIN" || user.role === "LECTURER") {
         if (kind !== "LECTURER_MATERIAL") {
-          cleanupUploadedFile(req.file?.path);
+          await cleanupUploadedFile(req.file?.path, "POST / invalid staff kind");
           return err(res, 400, "VALIDATION", "Invalid kind. ADMIN/LECTURER must use LECTURER_MATERIAL.");
         }
       } else if (user.role === "STUDENT") {
         if (kind !== "STUDENT_SUBMISSION") {
-          cleanupUploadedFile(req.file?.path);
+          await cleanupUploadedFile(req.file?.path, "POST / invalid student kind");
           return err(res, 400, "VALIDATION", "Invalid kind. STUDENT must use STUDENT_SUBMISSION.");
         }
       } else {
-        cleanupUploadedFile(req.file?.path);
+        await cleanupUploadedFile(req.file?.path, "POST / invalid role");
         return err(res, 403, "FORBIDDEN", "Only ADMIN, LECTURER, or STUDENT can upload files.");
       }
 
@@ -176,7 +208,7 @@ uploadRouter.post(
       return res.status(201).json(withDownloadUrl(req, created));
     } catch (e: unknown) {
       console.error("[uploads] POST / error", e);
-      cleanupUploadedFile(req.file?.path);
+      await cleanupUploadedFile(req.file?.path, "POST / error");
       return err(res, 500, "INTERNAL", "Upload failed");
     }
   }
@@ -252,13 +284,7 @@ uploadRouter.delete("/:id", requireRole("ADMIN", "LECTURER"), async (req: Reques
     if (!deleted) return err(res, 404, "NOT_FOUND", "Not found");
 
     const absPath = resolveUploadPath(existing.storagePath);
-    if (absPath && fs.existsSync(absPath)) {
-      try {
-        fs.unlinkSync(absPath);
-      } catch (e: unknown) {
-        console.error("[uploads] DELETE /:id unlink warning", e);
-      }
-    }
+    await cleanupUploadedFile(absPath, "DELETE /:id");
 
     return res.json({ ok: true });
   } catch (e: unknown) {

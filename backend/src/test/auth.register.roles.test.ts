@@ -66,6 +66,18 @@ describe("Auth register role policy", () => {
     expect(typeof res.body?.token).toBe("string");
   });
 
+  test("rejects self-registration with a password shorter than 6 characters", async () => {
+    const res = await request(app).post("/api/auth/register").send({
+      email: uniqueEmail("short_password"),
+      password: "12345",
+      role: "PARENT",
+    });
+
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+    expect(String(res.body?.error?.message ?? "")).toMatch(/at least 6 characters/i);
+  });
+
   test("blocks STUDENT self-registration when SA ID and student number are missing", async () => {
     const res = await request(app).post("/api/auth/register").send({
       email: uniqueEmail("student_missing_identity"),

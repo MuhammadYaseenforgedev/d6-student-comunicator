@@ -183,8 +183,8 @@ function LecturerAttendanceView({
 
   async function loadDirectoryUsers() {
     const [studentsRes, lecturersRes] = await Promise.all([
-      listAttendanceDirectoryUsers({ roles: ["STUDENT"], limit: 100 }),
-      listAttendanceDirectoryUsers({ roles: ["LECTURER"], limit: 100 }),
+      listAttendanceDirectoryUsers({ roles: ["STUDENT"], limit: 500 }),
+      listAttendanceDirectoryUsers({ roles: ["LECTURER"], limit: 500 }),
     ]);
     setCandidateStudents(sortDirectoryUsers(studentsRes));
     setCandidateLecturers(sortDirectoryUsers(lecturersRes));

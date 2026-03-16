@@ -18,6 +18,7 @@ const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
   { value: "STUDENT", label: "Students" },
   { value: "PARENT", label: "Parents" },
 ];
+const MIN_PASSWORD_LENGTH = 6;
 
 function roleTone(role: AdminAccountRole): string {
   if (role === "ADMIN") return "border-cyan-500/30 bg-cyan-500/10 text-cyan-100";
@@ -161,6 +162,10 @@ export default function AdminUsers() {
     }
 
     if (nextPassword.trim()) {
+      if (nextPassword.length < MIN_PASSWORD_LENGTH) {
+        setError(`Passwords must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+        return;
+      }
       payload.password = nextPassword;
     }
     if (account.role === "STUDENT" && nextStudentNumber !== currentStudentNumber) {

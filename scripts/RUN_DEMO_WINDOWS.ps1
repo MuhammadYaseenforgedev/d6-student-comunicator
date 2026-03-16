@@ -147,7 +147,7 @@ try {
   Invoke-Checked "npm" @("--prefix", "backend", "run", "migrate") $RepoRoot
 
   Step "Starting backend"
-  $backendProc = Start-ManagedProcess "backend" "npm --prefix backend run dev"
+  $backendProc = Start-ManagedProcess "backend" "set AUTH_REQUIRE_OTP=false && set AUTH_ALLOW_PASSWORD_REGISTER=true && npm --prefix backend run dev"
   try {
     Wait-ForHttp200 "$BackendUrl/api/health" 90 "Backend"
   } catch {
@@ -182,4 +182,3 @@ try {
 finally {
   Stop-Transcript | Out-Null
 }
-
