@@ -21,8 +21,10 @@ type Ctx = {
   otherStudentId: string;
   lecturerId: string;
   moduleId: string;
+  otherModuleId: string;
   facultyId: string;
   sessionId: string;
+  otherSessionId: string;
 };
 
 describe("Attendance RBAC + marking", () => {
@@ -63,12 +65,29 @@ describe("Attendance RBAC + marking", () => {
       [ctx.moduleId, ctx.facultyId, `TST-${Date.now()}`, "Test Module"]
     );
 
+    ctx.otherModuleId = crypto.randomUUID();
+    await pool.query(
+      `
+        INSERT INTO faculty_modules (id, faculty_id, code, name)
+        VALUES ($1, $2, $3, $4)
+      `,
+      [ctx.otherModuleId, ctx.facultyId, `ALT-${Date.now()}`, "Other Test Module"]
+    );
+
     await pool.query(
       `
         INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
         VALUES ($1, $2)
       `,
       [ctx.moduleId, lecturer.id]
+    );
+
+    await pool.query(
+      `
+        INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
+        VALUES ($1, $2)
+      `,
+      [ctx.otherModuleId, otherLecturer.id]
     );
 
     await pool.query(
@@ -96,9 +115,20 @@ describe("Attendance RBAC + marking", () => {
       [lecturer.id, ctx.moduleId]
     );
     ctx.sessionId = seededSession.rows[0].id;
+
+    const otherSeededSession = await pool.query<{ id: string }>(
+      `
+        INSERT INTO attendance_sessions (lecturer_id, module_id, attendance_date, created_by)
+        VALUES ($1, $2, CURRENT_DATE, $1)
+        RETURNING id
+      `,
+      [otherLecturer.id, ctx.otherModuleId]
+    );
+    ctx.otherSessionId = otherSeededSession.rows[0].id;
   });
 
   afterAll(async () => {
+    await pool.query(`DELETE FROM faculty_modules WHERE id = $1`, [ctx.otherModuleId]);
     await pool.query(`DELETE FROM faculty_modules WHERE id = $1`, [ctx.moduleId]);
     await pool.query(`DELETE FROM faculties WHERE id = $1`, [ctx.facultyId]);
     await cleanupTestUsers();
@@ -149,6 +179,64 @@ describe("Attendance RBAC + marking", () => {
       .send([{ studentId: ctx.otherStudentId, status: "ABSENT" }]);
 
     expect(res.status).toBe(400);
+  });
+
+  test("student can list only enrolled modules", async () => {
+    const res = await request(app)
+      .get("/api/attendance/modules")
+      .set(auth(ctx.studentToken));
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body?.value)).toBe(true);
+    expect(res.body.value).toHaveLength(1);
+    expect(String(res.body.value[0]?.id ?? "")).toBe(ctx.moduleId);
+  });
+
+  test("student can list sessions for enrolled module", async () => {
+    const res = await request(app)
+      .get("/api/attendance/sessions")
+      .set(auth(ctx.studentToken))
+      .query({ moduleId: ctx.moduleId });
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body?.value)).toBe(true);
+    expect(res.body.value.some((row: { moduleId?: string }) => row.moduleId === ctx.moduleId)).toBe(true);
+    expect(res.body.value.some((row: { moduleId?: string }) => row.moduleId === ctx.otherModuleId)).toBe(false);
+  });
+
+  test("student cannot list sessions for module they are not enrolled in", async () => {
+    const res = await request(app)
+      .get("/api/attendance/sessions")
+      .set(auth(ctx.studentToken))
+      .query({ moduleId: ctx.otherModuleId });
+
+    expect(res.status).toBe(403);
+  });
+
+  test("assigned lecturer can enroll and remove students on assigned module", async () => {
+    const enrollRes = await request(app)
+      .post(`/api/attendance/modules/${ctx.moduleId}/enrollments`)
+      .set(auth(ctx.lecturerToken))
+      .send({ studentId: ctx.otherStudentId });
+
+    expect(enrollRes.status).toBe(200);
+    expect(Boolean(enrollRes.body?.ok)).toBe(true);
+
+    const removeRes = await request(app)
+      .delete(`/api/attendance/modules/${ctx.moduleId}/enrollments/${ctx.otherStudentId}`)
+      .set(auth(ctx.lecturerToken));
+
+    expect(removeRes.status).toBe(200);
+    expect(Boolean(removeRes.body?.ok)).toBe(true);
+  });
+
+  test("unassigned lecturer cannot change enrollments on another module", async () => {
+    const res = await request(app)
+      .post(`/api/attendance/modules/${ctx.moduleId}/enrollments`)
+      .set(auth(ctx.otherLecturerToken))
+      .send({ studentId: ctx.otherStudentId });
+
+    expect(res.status).toBe(403);
   });
 
   test("student can view own attendance", async () => {

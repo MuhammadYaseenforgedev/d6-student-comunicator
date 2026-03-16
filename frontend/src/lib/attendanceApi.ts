@@ -20,6 +20,14 @@ export type AttendanceModuleStudent = {
   studentNumber: string | null;
 };
 
+export type AttendanceDirectoryUserRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+
+export type AttendanceDirectoryUser = {
+  id: string;
+  email: string;
+  role: AttendanceDirectoryUserRole;
+};
+
 export type AttendanceSession = {
   id: string;
   lecturerId: string;
@@ -79,6 +87,23 @@ export async function listAttendanceModuleStudents(moduleId: string): Promise<At
   return Array.isArray(data.value) ? data.value : [];
 }
 
+export async function listAttendanceDirectoryUsers(params?: {
+  roles?: AttendanceDirectoryUserRole[];
+  q?: string;
+  limit?: number;
+}): Promise<AttendanceDirectoryUser[]> {
+  const qs = new URLSearchParams();
+  if (params?.roles?.length) {
+    for (const role of params.roles) qs.append("role", role);
+  }
+  if (params?.q?.trim()) qs.set("q", params.q.trim());
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+
+  const data = await apiClient.get<{ value: AttendanceDirectoryUser[] }>(`/users${suffix}`);
+  return Array.isArray(data.value) ? data.value : [];
+}
+
 export async function createAttendanceSession(input: {
   moduleId: string;
   date?: string;
@@ -122,6 +147,32 @@ export async function markAttendanceSession(
       markedBy: string;
     }>;
   }>(`/attendance/sessions/${encodeURIComponent(sessionId)}/mark`, rows);
+}
+
+export async function assignLecturerToAttendanceModule(moduleId: string, lecturerId: string) {
+  return apiClient.post<{ ok: boolean; created: boolean }>(
+    `/attendance/modules/${encodeURIComponent(moduleId)}/lecturers`,
+    { lecturerId }
+  );
+}
+
+export async function removeLecturerFromAttendanceModule(moduleId: string, lecturerId: string) {
+  return apiClient.delete<{ ok: boolean }>(
+    `/attendance/modules/${encodeURIComponent(moduleId)}/lecturers/${encodeURIComponent(lecturerId)}`
+  );
+}
+
+export async function enrollStudentInAttendanceModule(moduleId: string, studentId: string) {
+  return apiClient.post<{ ok: boolean; created: boolean }>(
+    `/attendance/modules/${encodeURIComponent(moduleId)}/enrollments`,
+    { studentId }
+  );
+}
+
+export async function removeStudentFromAttendanceModule(moduleId: string, studentId: string) {
+  return apiClient.delete<{ ok: boolean }>(
+    `/attendance/modules/${encodeURIComponent(moduleId)}/enrollments/${encodeURIComponent(studentId)}`
+  );
 }
 
 export async function getMyAttendance(params?: { from?: string; to?: string; childId?: string }) {

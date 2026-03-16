@@ -39,6 +39,18 @@ async function isLecturerAssignedToModule(lecturerId: string, moduleId: string):
   return (r.rowCount ?? 0) > 0;
 }
 
+async function isStudentEnrolledInModule(studentId: string, moduleId: string): Promise<boolean> {
+  const q = `
+    SELECT 1
+    FROM student_module_enrollments
+    WHERE student_id = $1
+      AND module_id = $2
+    LIMIT 1
+  `;
+  const r = await pool.query(q, [studentId, moduleId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
 async function ensureParentCanAccessChild(parentId: string, childId: string): Promise<boolean> {
   const q = `
     SELECT 1
@@ -155,8 +167,9 @@ attendanceRouter.post("/attendance/modules/:moduleId/lecturers", requireRole("AD
 });
 
 // Enroll student to module and expose auto-linked lecturers for attendance/messaging workflows.
-attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("ADMIN"), async (req, res) => {
+attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("ADMIN", "LECTURER"), async (req, res) => {
   try {
+    const user = req.user!;
     const moduleId = String(req.params.moduleId ?? "").trim();
     const studentId = String(req.body?.studentId ?? "").trim();
 
@@ -165,6 +178,11 @@ attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("
 
     const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
+
+    if (user.role === "LECTURER") {
+      const assigned = await isLecturerAssignedToModule(user.id, moduleId);
+      if (!assigned) return err(res, 403, "FORBIDDEN", "Lecturer is not assigned to this module");
+    }
 
     const student = await pool.query(
       `
@@ -209,21 +227,103 @@ attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("
   }
 });
 
+attendanceRouter.delete(
+  "/attendance/modules/:moduleId/enrollments/:studentId",
+  requireRole("ADMIN", "LECTURER"),
+  async (req, res) => {
+    try {
+      const user = req.user!;
+      const moduleId = String(req.params.moduleId ?? "").trim();
+      const studentId = String(req.params.studentId ?? "").trim();
+
+      if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      if (!isUuid(studentId)) return err(res, 400, "VALIDATION", "studentId must be a UUID");
+
+      const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
+      if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
+
+      if (user.role === "LECTURER") {
+        const assigned = await isLecturerAssignedToModule(user.id, moduleId);
+        if (!assigned) return err(res, 403, "FORBIDDEN", "Lecturer is not assigned to this module");
+      }
+
+      const deleted = await pool.query(
+        `
+          DELETE FROM student_module_enrollments
+          WHERE module_id = $1
+            AND student_id = $2
+        `,
+        [moduleId, studentId]
+      );
+
+      if ((deleted.rowCount ?? 0) === 0) {
+        return err(res, 404, "NOT_FOUND", "Student enrollment not found");
+      }
+
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error("[attendance] DELETE /attendance/modules/:moduleId/enrollments/:studentId error", e);
+      return err(res, 500, "INTERNAL", "Failed to remove student enrollment");
+    }
+  }
+);
+
+attendanceRouter.delete(
+  "/attendance/modules/:moduleId/lecturers/:lecturerId",
+  requireRole("ADMIN"),
+  async (req, res) => {
+    try {
+      const moduleId = String(req.params.moduleId ?? "").trim();
+      const lecturerId = String(req.params.lecturerId ?? "").trim();
+
+      if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      if (!isUuid(lecturerId)) return err(res, 400, "VALIDATION", "lecturerId must be a UUID");
+
+      const deleted = await pool.query(
+        `
+          DELETE FROM lecturer_module_assignments
+          WHERE module_id = $1
+            AND lecturer_id = $2
+        `,
+        [moduleId, lecturerId]
+      );
+
+      if ((deleted.rowCount ?? 0) === 0) {
+        return err(res, 404, "NOT_FOUND", "Lecturer assignment not found");
+      }
+
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error("[attendance] DELETE /attendance/modules/:moduleId/lecturers/:lecturerId error", e);
+      return err(res, 500, "INTERNAL", "Failed to remove lecturer assignment");
+    }
+  }
+);
+
 // List modules available for attendance workflows.
-attendanceRouter.get("/attendance/modules", requireRole("LECTURER", "ADMIN"), async (req, res) => {
+attendanceRouter.get("/attendance/modules", requireRole("LECTURER", "ADMIN", "STUDENT"), async (req, res) => {
   try {
     const user = req.user!;
-    const isAdmin = user.role === "ADMIN";
+    const isLecturer = user.role === "LECTURER";
+    const isStudent = user.role === "STUDENT";
 
     const params: unknown[] = [];
     const where: string[] = [];
-    if (!isAdmin) {
+    if (isLecturer) {
       params.push(user.id);
       where.push(`EXISTS (
         SELECT 1
         FROM lecturer_module_assignments lma2
         WHERE lma2.module_id = fm.id
           AND lma2.lecturer_id = $${params.length}
+      )`);
+    } else if (isStudent) {
+      params.push(user.id);
+      where.push(`EXISTS (
+        SELECT 1
+        FROM student_module_enrollments sme2
+        WHERE sme2.module_id = fm.id
+          AND sme2.student_id = $${params.length}
       )`);
     }
 
@@ -420,7 +520,7 @@ attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), 
 });
 
 // List sessions.
-attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN"), async (req, res) => {
+attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN", "STUDENT"), async (req, res) => {
   try {
     const user = req.user!;
     const moduleIdRaw = String(req.query.moduleId ?? "").trim();
@@ -432,10 +532,22 @@ attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN"), a
     if (user.role === "LECTURER") {
       params.push(user.id);
       where.push(`s.lecturer_id = $${params.length}`);
+    } else if (user.role === "STUDENT") {
+      params.push(user.id);
+      where.push(`EXISTS (
+        SELECT 1
+        FROM student_module_enrollments sme
+        WHERE sme.module_id = s.module_id
+          AND sme.student_id = $${params.length}
+      )`);
     }
 
     if (moduleIdRaw) {
       if (!isUuid(moduleIdRaw)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      if (user.role === "STUDENT") {
+        const enrolled = await isStudentEnrolledInModule(user.id, moduleIdRaw);
+        if (!enrolled) return err(res, 403, "FORBIDDEN", "Student is not enrolled in this module");
+      }
       params.push(moduleIdRaw);
       where.push(`s.module_id = $${params.length}`);
     }

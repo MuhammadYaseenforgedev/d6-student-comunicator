@@ -2,12 +2,18 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
 import {
+  assignLecturerToAttendanceModule,
   createAttendanceSession,
+  enrollStudentInAttendanceModule,
   getMyAttendance,
+  listAttendanceDirectoryUsers,
   listAttendanceModuleStudents,
   listAttendanceModules,
   listAttendanceSessions,
   markAttendanceSession,
+  removeLecturerFromAttendanceModule,
+  removeStudentFromAttendanceModule,
+  type AttendanceDirectoryUser,
   type AttendanceMeResponse,
   type AttendanceModule,
   type AttendanceModuleStudent,
@@ -45,6 +51,18 @@ function sortStudents(rows: AttendanceModuleStudent[]): AttendanceModuleStudent[
   });
 }
 
+function sortDirectoryUsers(rows: AttendanceDirectoryUser[]): AttendanceDirectoryUser[] {
+  return [...rows].sort((a, b) => a.email.toLowerCase().localeCompare(b.email.toLowerCase()));
+}
+
+function studentDisplayName(student: AttendanceModuleStudent): string {
+  return `${student.firstName ?? ""} ${student.lastName ?? ""}`.trim() || student.email;
+}
+
+function studentMeta(student: AttendanceModuleStudent): string {
+  return student.studentNumber?.trim() || student.courseName?.trim() || student.email;
+}
+
 export default function AttendancePage() {
   const user = getUser();
   const role = roleLabel(user?.role ?? "");
@@ -68,6 +86,10 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [lecturerId, setLecturerId] = useState("");
+  const [candidateStudents, setCandidateStudents] = useState<AttendanceDirectoryUser[]>([]);
+  const [candidateLecturers, setCandidateLecturers] = useState<AttendanceDirectoryUser[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [selectedLecturerId, setSelectedLecturerId] = useState("");
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +99,14 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
     () => modules.find((m) => m.id === moduleId) ?? null,
     [modules, moduleId]
   );
+  const availableStudents = useMemo(() => {
+    const enrolledIds = new Set(students.map((student) => student.id));
+    return candidateStudents.filter((student) => !enrolledIds.has(student.id));
+  }, [candidateStudents, students]);
+  const availableLecturers = useMemo(() => {
+    const assignedIds = new Set((selectedModule?.lecturers ?? []).map((lecturer) => lecturer.id));
+    return candidateLecturers.filter((lecturer) => !assignedIds.has(lecturer.id));
+  }, [candidateLecturers, selectedModule]);
 
   async function loadModules() {
     const rows = await listAttendanceModules();
@@ -113,10 +143,33 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
     setMarks(nextMarks);
   }
 
+  async function loadDirectoryUsers() {
+    const [studentsRes, lecturersRes] = await Promise.all([
+      listAttendanceDirectoryUsers({ roles: ["STUDENT"], limit: 100 }),
+      role === "ADMIN"
+        ? listAttendanceDirectoryUsers({ roles: ["LECTURER"], limit: 100 })
+        : Promise.resolve([]),
+    ]);
+    setCandidateStudents(sortDirectoryUsers(studentsRes));
+    setCandidateLecturers(sortDirectoryUsers(lecturersRes));
+  }
+
+  async function refreshCurrentModuleData(currentModuleId: string) {
+    await Promise.all([
+      loadModules(),
+      loadStudents(currentModuleId),
+      loadSessions(currentModuleId, date),
+    ]);
+  }
+
   useEffect(() => {
-    void loadModules().catch((e: unknown) => {
-      setError(e instanceof Error ? e.message : "Failed to load attendance modules");
-    });
+    void (async () => {
+      try {
+        await Promise.all([loadModules(), loadDirectoryUsers()]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load attendance modules");
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -139,6 +192,27 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
     const firstLecturer = selectedModule.lecturers[0]?.id ?? "";
     setLecturerId(firstLecturer);
   }, [role, selectedModule]);
+
+  useEffect(() => {
+    if (!availableStudents.length) {
+      setSelectedStudentId("");
+      return;
+    }
+    setSelectedStudentId((current) =>
+      availableStudents.some((student) => student.id === current) ? current : availableStudents[0].id
+    );
+  }, [availableStudents]);
+
+  useEffect(() => {
+    if (role !== "ADMIN") return;
+    if (!availableLecturers.length) {
+      setSelectedLecturerId("");
+      return;
+    }
+    setSelectedLecturerId((current) =>
+      availableLecturers.some((lecturer) => lecturer.id === current) ? current : availableLecturers[0].id
+    );
+  }, [availableLecturers, role]);
 
   async function createSession() {
     if (!moduleId) {
@@ -196,6 +270,80 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
       setInfo(`Attendance submitted (${result.count} record(s)).`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit attendance");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addStudentToModule() {
+    if (!moduleId || !selectedStudentId) {
+      setError("Select a module and student first.");
+      return;
+    }
+
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+      await enrollStudentInAttendanceModule(moduleId, selectedStudentId);
+      await refreshCurrentModuleData(moduleId);
+      setInfo("Student linked to module.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to link student to module");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeStudentFromModule(studentId: string) {
+    if (!moduleId) return;
+
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+      await removeStudentFromAttendanceModule(moduleId, studentId);
+      await refreshCurrentModuleData(moduleId);
+      setInfo("Student removed from module.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove student from module");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addLecturerToModule() {
+    if (!moduleId || !selectedLecturerId) {
+      setError("Select a module and lecturer first.");
+      return;
+    }
+
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+      await assignLecturerToAttendanceModule(moduleId, selectedLecturerId);
+      await refreshCurrentModuleData(moduleId);
+      setInfo("Lecturer linked to module.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to link lecturer to module");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeLecturerFromModule(assignedLecturerId: string) {
+    if (!moduleId) return;
+
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+      await removeLecturerFromAttendanceModule(moduleId, assignedLecturerId);
+      await refreshCurrentModuleData(moduleId);
+      setInfo("Lecturer removed from module.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove lecturer from module");
     } finally {
       setBusy(false);
     }
@@ -365,6 +513,141 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
           </button>
         </div>
       </div>
+
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+        <div>
+          <div className="text-lg font-semibold text-white">Module Membership</div>
+          <div className="mt-1 text-sm text-slate-400">
+            Students do not join attendance sessions manually. Once they are linked to a module, they appear here for
+            the lecturer or admin to mark when a session is created.
+          </div>
+        </div>
+
+        <div className={`grid grid-cols-1 gap-6 ${role === "ADMIN" ? "xl:grid-cols-2" : ""}`}>
+          {role === "ADMIN" && (
+            <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="text-sm font-semibold text-white">Assigned lecturers</div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+                <select
+                  value={selectedLecturerId}
+                  onChange={(e) => setSelectedLecturerId(e.target.value)}
+                  disabled={busy || !moduleId || availableLecturers.length === 0}
+                  className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+                >
+                  {availableLecturers.length === 0 ? (
+                    <option value="">No additional lecturers available</option>
+                  ) : (
+                    availableLecturers.map((lecturer) => (
+                      <option key={lecturer.id} value={lecturer.id}>
+                        {lecturer.email}
+                      </option>
+                    ))
+                  )}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={addLecturerToModule}
+                  disabled={busy || !moduleId || !selectedLecturerId}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  Add lecturer
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {(selectedModule?.lecturers ?? []).length === 0 ? (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-3 text-sm text-slate-300">
+                    No lecturers assigned to this module yet.
+                  </div>
+                ) : (
+                  selectedModule!.lecturers.map((lecturer) => (
+                    <div
+                      key={lecturer.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 p-3"
+                    >
+                      <div className="text-sm text-slate-200">{lecturer.email}</div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void removeLecturerFromModule(lecturer.id);
+                        }}
+                        disabled={busy}
+                        className="rounded-lg border border-red-700/40 bg-red-950/30 px-3 py-1 text-xs font-semibold text-red-200 hover:bg-red-950/50 disabled:opacity-60"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="text-sm font-semibold text-white">Enrolled students</div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+              <select
+                value={selectedStudentId}
+                onChange={(e) => setSelectedStudentId(e.target.value)}
+                disabled={busy || !moduleId || availableStudents.length === 0}
+                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              >
+                {availableStudents.length === 0 ? (
+                  <option value="">No additional students available</option>
+                ) : (
+                  availableStudents.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.email}
+                    </option>
+                  ))
+                )}
+              </select>
+
+              <button
+                type="button"
+                onClick={addStudentToModule}
+                disabled={busy || !moduleId || !selectedStudentId}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                Add student
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {students.length === 0 ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-3 text-sm text-slate-300">
+                  No students linked to this module yet.
+                </div>
+              ) : (
+                students.map((student) => (
+                  <div
+                    key={student.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 p-3"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-slate-100">{studentDisplayName(student)}</div>
+                      <div className="text-xs text-slate-400">{studentMeta(student)}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void removeStudentFromModule(student.id);
+                      }}
+                      disabled={busy}
+                      className="rounded-lg border border-red-700/40 bg-red-950/30 px-3 py-1 text-xs font-semibold text-red-200 hover:bg-red-950/50 disabled:opacity-60"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -373,27 +656,64 @@ function StudentAttendanceView() {
   const [from, setFrom] = useState(defaultFromDate(30));
   const [to, setTo] = useState(todayDate());
   const [data, setData] = useState<AttendanceMeResponse | null>(null);
+  const [modules, setModules] = useState<AttendanceModule[]>([]);
+  const [sessions, setSessions] = useState<AttendanceSession[]>([]);
+  const [selectedModuleId, setSelectedModuleId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  const selectedModule = useMemo(
+    () => modules.find((module) => module.id === selectedModuleId) ?? null,
+    [modules, selectedModuleId]
+  );
+
+  async function loadModuleSessions(currentModuleId: string) {
+    if (!currentModuleId) {
+      setSessions([]);
+      return;
+    }
+    const rows = await listAttendanceSessions({ moduleId: currentModuleId });
+    setSessions(rows);
+  }
+
+  async function loadAttendanceView() {
     try {
       setLoading(true);
       setError(null);
-      const out = await getMyAttendance({ from, to });
-      setData(out);
+      const [attendance, moduleRows] = await Promise.all([
+        getMyAttendance({ from, to }),
+        listAttendanceModules(),
+      ]);
+      setData(attendance);
+      setModules(moduleRows);
+      const nextModuleId =
+        moduleRows.some((module) => module.id === selectedModuleId) ? selectedModuleId : (moduleRows[0]?.id ?? "");
+      setSelectedModuleId(nextModuleId);
+      await loadModuleSessions(nextModuleId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load attendance");
       setData(null);
+      setModules([]);
+      setSessions([]);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    void loadAttendanceView();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!selectedModuleId) {
+      setSessions([]);
+      return;
+    }
+    void loadModuleSessions(selectedModuleId).catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : "Failed to load attendance sessions");
+    });
+  }, [selectedModuleId]);
 
   const summary = data?.summary ?? { present: 0, absent: 0, late: 0, total: 0 };
 
@@ -417,7 +737,9 @@ function StudentAttendanceView() {
           />
           <button
             type="button"
-            onClick={load}
+            onClick={() => {
+              void loadAttendanceView();
+            }}
             disabled={loading}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
           >
@@ -433,6 +755,79 @@ function StudentAttendanceView() {
         <SummaryCard label="Late" value={summary.late} className="text-yellow-300" />
         <SummaryCard label="Absent" value={summary.absent} className="text-red-300" />
         <SummaryCard label="Total" value={summary.total} className="text-white" />
+      </div>
+
+      <Alert
+        tone="info"
+        message="You do not join attendance sessions manually. If you are enrolled in a module, your lecturer or admin can create sessions for that module and mark your attendance there."
+      />
+
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
+        <div className="text-lg font-semibold text-white">Your enrolled modules</div>
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {modules.length === 0 ? (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+              No modules linked to your account yet.
+            </div>
+          ) : (
+            modules.map((module) => {
+              const isSelected = module.id === selectedModuleId;
+              return (
+                <button
+                  key={module.id}
+                  type="button"
+                  onClick={() => setSelectedModuleId(module.id)}
+                  className={[
+                    "rounded-2xl border p-4 text-left transition",
+                    isSelected
+                      ? "border-cyan-400/40 bg-cyan-500/10"
+                      : "border-slate-800 bg-slate-950/40 hover:border-slate-700",
+                  ].join(" ")}
+                >
+                  <div className="font-semibold text-slate-100">
+                    {module.code} - {module.name}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">{module.facultyName}</div>
+                  <div className="mt-3 text-xs text-slate-300">
+                    Lecturers:{" "}
+                    {module.lecturers.length > 0
+                      ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
+                      : "Not assigned yet"}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
+        <div className="text-lg font-semibold text-white">Sessions for selected module</div>
+        <div className="mt-1 text-sm text-slate-400">
+          {selectedModule ? `${selectedModule.code} - ${selectedModule.name}` : "Select a module to view sessions."}
+        </div>
+        <div className="mt-3 space-y-2">
+          {!selectedModule ? (
+            <div className="text-sm text-slate-300">No module selected.</div>
+          ) : sessions.length === 0 ? (
+            <div className="text-sm text-slate-300">No attendance sessions created for this module yet.</div>
+          ) : (
+            sessions.map((session) => (
+              <div
+                key={session.id}
+                className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-200"
+              >
+                <div className="font-semibold">
+                  {session.date} | {session.moduleCode} - {session.moduleName}
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  {session.startsAt ? `Starts: ${session.startsAt}` : "Start time not set"}
+                  {session.endsAt ? ` | Ends: ${session.endsAt}` : ""}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
