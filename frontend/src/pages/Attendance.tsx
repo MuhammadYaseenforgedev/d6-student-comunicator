@@ -3,12 +3,14 @@ import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
 import {
   assignLecturerToAttendanceModule,
+  checkInToAttendanceSession,
   createAttendanceSession,
   enrollStudentInAttendanceModule,
   getMyAttendance,
   listAttendanceDirectoryUsers,
   listAttendanceModuleStudents,
   listAttendanceModules,
+  listAttendanceSessionRoster,
   listAttendanceSessions,
   markAttendanceSession,
   removeLecturerFromAttendanceModule,
@@ -18,6 +20,7 @@ import {
   type AttendanceModule,
   type AttendanceModuleStudent,
   type AttendanceSession,
+  type AttendanceSessionRosterStudent,
   type AttendanceStatus,
 } from "../lib/attendanceApi";
 
@@ -43,7 +46,7 @@ function roleLabel(role: string): string {
   return String(role ?? "").toUpperCase();
 }
 
-function sortStudents(rows: AttendanceModuleStudent[]): AttendanceModuleStudent[] {
+function sortStudents<T extends Pick<AttendanceModuleStudent, "email" | "firstName" | "lastName">>(rows: T[]): T[] {
   return [...rows].sort((a, b) => {
     const aKey = `${a.lastName ?? ""} ${a.firstName ?? ""} ${a.email}`.toLowerCase();
     const bKey = `${b.lastName ?? ""} ${b.firstName ?? ""} ${b.email}`.toLowerCase();
@@ -63,6 +66,13 @@ function studentMeta(student: AttendanceModuleStudent): string {
   return student.studentNumber?.trim() || student.courseName?.trim() || student.email;
 }
 
+function formatDateTime(raw: string | null): string {
+  if (!raw) return "Not recorded";
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return raw;
+  return new Date(ms).toLocaleString();
+}
+
 export default function AttendancePage() {
   const user = getUser();
   const role = roleLabel(user?.role ?? "");
@@ -77,7 +87,8 @@ export default function AttendancePage() {
 function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
   const [modules, setModules] = useState<AttendanceModule[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
-  const [students, setStudents] = useState<AttendanceModuleStudent[]>([]);
+  const [moduleStudents, setModuleStudents] = useState<AttendanceModuleStudent[]>([]);
+  const [rosterStudents, setRosterStudents] = useState<AttendanceSessionRosterStudent[]>([]);
   const [marks, setMarks] = useState<MarkMap>({});
 
   const [moduleId, setModuleId] = useState("");
@@ -100,9 +111,9 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
     [modules, moduleId]
   );
   const availableStudents = useMemo(() => {
-    const enrolledIds = new Set(students.map((student) => student.id));
+    const enrolledIds = new Set(moduleStudents.map((student) => student.id));
     return candidateStudents.filter((student) => !enrolledIds.has(student.id));
-  }, [candidateStudents, students]);
+  }, [candidateStudents, moduleStudents]);
   const availableLecturers = useMemo(() => {
     const assignedIds = new Set((selectedModule?.lecturers ?? []).map((lecturer) => lecturer.id));
     return candidateLecturers.filter((lecturer) => !assignedIds.has(lecturer.id));
@@ -119,27 +130,38 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
     }
   }
 
-  async function loadSessions(currentModuleId: string, currentDate: string) {
+  async function loadSessions(currentModuleId: string) {
     if (!currentModuleId) {
       setSessions([]);
       setSessionId("");
       return;
     }
-    const rows = await listAttendanceSessions({ moduleId: currentModuleId, date: currentDate });
+    const rows = await listAttendanceSessions({ moduleId: currentModuleId });
     setSessions(rows);
-    if (!sessionId && rows[0]?.id) setSessionId(rows[0].id);
+    setSessionId((current) => (rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? "")));
   }
 
-  async function loadStudents(currentModuleId: string) {
+  async function loadModuleStudents(currentModuleId: string) {
     if (!currentModuleId) {
-      setStudents([]);
-      setMarks({});
+      setModuleStudents([]);
       return;
     }
     const rows = sortStudents(await listAttendanceModuleStudents(currentModuleId));
-    setStudents(rows);
+    setModuleStudents(rows);
+  }
+
+  async function loadRoster(currentSessionId: string) {
+    if (!currentSessionId) {
+      setRosterStudents([]);
+      setMarks({});
+      return;
+    }
+    const rows = sortStudents(await listAttendanceSessionRoster(currentSessionId));
+    setRosterStudents(rows);
     const nextMarks: MarkMap = {};
-    for (const s of rows) nextMarks[s.id] = "PRESENT";
+    for (const student of rows) {
+      nextMarks[student.id] = student.currentStatus ?? student.suggestedStatus;
+    }
     setMarks(nextMarks);
   }
 
@@ -157,9 +179,12 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
   async function refreshCurrentModuleData(currentModuleId: string) {
     await Promise.all([
       loadModules(),
-      loadStudents(currentModuleId),
-      loadSessions(currentModuleId, date),
+      loadModuleStudents(currentModuleId),
+      loadSessions(currentModuleId),
     ]);
+    if (sessionId) {
+      await loadRoster(sessionId);
+    }
   }
 
   useEffect(() => {
@@ -177,14 +202,22 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
     if (!moduleId) return;
     setError(null);
     setInfo(null);
-    void loadStudents(moduleId).catch((e: unknown) => {
+    setSessionId("");
+    setRosterStudents([]);
+    setMarks({});
+    void loadModuleStudents(moduleId).catch((e: unknown) => {
       setError(e instanceof Error ? e.message : "Failed to load module students");
     });
-    void loadSessions(moduleId, date).catch((e: unknown) => {
+    void loadSessions(moduleId).catch((e: unknown) => {
       setError(e instanceof Error ? e.message : "Failed to load attendance sessions");
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, date]);
+  }, [moduleId]);
+
+  useEffect(() => {
+    void loadRoster(sessionId).catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : "Failed to load session roster");
+    });
+  }, [sessionId]);
 
   useEffect(() => {
     if (role !== "ADMIN") return;
@@ -238,7 +271,7 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
       });
 
       setInfo(`Session created for ${created.date}.`);
-      await loadSessions(moduleId, date);
+      await loadSessions(moduleId);
       setSessionId(created.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create session");
@@ -252,8 +285,8 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
       setError("Select a session to mark.");
       return;
     }
-    if (students.length === 0) {
-      setError("No enrolled students found for this module.");
+    if (rosterStudents.length === 0) {
+      setError("No enrolled students found for this session.");
       return;
     }
 
@@ -262,12 +295,13 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
       setError(null);
       setInfo(null);
 
-      const payload = students.map((s) => ({
+      const payload = rosterStudents.map((s) => ({
         studentId: s.id,
         status: marks[s.id] ?? "PRESENT",
       }));
       const result = await markAttendanceSession(sessionId, payload);
       setInfo(`Attendance submitted (${result.count} record(s)).`);
+      await loadRoster(sessionId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit attendance");
     } finally {
@@ -452,7 +486,7 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
               ) : (
                 sessions.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.date} - {s.moduleCode} {s.moduleName}
+                    {s.date} - {s.moduleCode} {s.moduleName} ({s.checkedInCount} checked in)
                   </option>
                 ))
               )}
@@ -460,24 +494,34 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
           </Field>
 
           <div className="max-h-[420px] overflow-auto rounded-xl border border-slate-800">
-            {students.length === 0 ? (
-              <div className="p-4 text-sm text-slate-300">No enrolled students for this module.</div>
+            {!sessionId ? (
+              <div className="p-4 text-sm text-slate-300">Select a session to load its attendance roster.</div>
+            ) : rosterStudents.length === 0 ? (
+              <div className="p-4 text-sm text-slate-300">No enrolled students for this session.</div>
             ) : (
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-900/50 text-slate-300">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Student</th>
+                    <th className="px-3 py-2 text-left font-medium">Check-in</th>
+                    <th className="px-3 py-2 text-left font-medium">Suggested</th>
                     <th className="px-3 py-2 text-left font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((s) => {
+                  {rosterStudents.map((s) => {
                     const name = `${s.firstName ?? ""} ${s.lastName ?? ""}`.trim() || s.email;
                     return (
                       <tr key={s.id} className="border-t border-slate-800">
                         <td className="px-3 py-2 text-slate-200">
                           <div>{name}</div>
                           <div className="text-xs text-slate-400">{s.studentNumber ?? s.email}</div>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-slate-300">
+                          {s.checkedInAt ? formatDateTime(s.checkedInAt) : "Not checked in"}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-slate-300">
+                          <span className={statusClass(s.suggestedStatus)}>{s.suggestedStatus}</span>
                         </td>
                         <td className="px-3 py-2">
                           <select
@@ -506,7 +550,7 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
           <button
             type="button"
             onClick={submitMarks}
-            disabled={busy || !sessionId || students.length === 0}
+            disabled={busy || !sessionId || rosterStudents.length === 0}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
           >
             {busy ? "Submitting..." : "Submit Attendance"}
@@ -518,8 +562,8 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
         <div>
           <div className="text-lg font-semibold text-white">Module Membership</div>
           <div className="mt-1 text-sm text-slate-400">
-            Students do not join attendance sessions manually. Once they are linked to a module, they appear here for
-            the lecturer or admin to mark when a session is created.
+            Students must be linked to a module before they can see or join its attendance sessions. Their session
+            check-in time appears in the roster for lecturer or admin marking.
           </div>
         </div>
 
@@ -617,12 +661,12 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
             </div>
 
             <div className="space-y-2">
-              {students.length === 0 ? (
+              {moduleStudents.length === 0 ? (
                 <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-3 text-sm text-slate-300">
                   No students linked to this module yet.
                 </div>
               ) : (
-                students.map((student) => (
+                moduleStudents.map((student) => (
                   <div
                     key={student.id}
                     className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 p-3"
@@ -660,7 +704,9 @@ function StudentAttendanceView() {
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [busySessionId, setBusySessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   const selectedModule = useMemo(
     () => modules.find((module) => module.id === selectedModuleId) ?? null,
@@ -680,6 +726,7 @@ function StudentAttendanceView() {
     try {
       setLoading(true);
       setError(null);
+      setInfo(null);
       const [attendance, moduleRows] = await Promise.all([
         getMyAttendance({ from, to }),
         listAttendanceModules(),
@@ -697,6 +744,25 @@ function StudentAttendanceView() {
       setSessions([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onCheckIn(sessionId: string) {
+    try {
+      setBusySessionId(sessionId);
+      setError(null);
+      setInfo(null);
+      const result = await checkInToAttendanceSession(sessionId);
+      setInfo(
+        result.created
+          ? `Session check-in recorded at ${formatDateTime(result.checkedInAt)}.`
+          : `You already checked in at ${formatDateTime(result.checkedInAt)}.`
+      );
+      await loadModuleSessions(selectedModuleId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to join attendance session");
+    } finally {
+      setBusySessionId(null);
     }
   }
 
@@ -749,6 +815,7 @@ function StudentAttendanceView() {
       </div>
 
       {error && <Alert tone="error" message={error} />}
+      {info && <Alert tone="info" message={info} />}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <SummaryCard label="Present" value={summary.present} className="text-emerald-300" />
@@ -759,7 +826,7 @@ function StudentAttendanceView() {
 
       <Alert
         tone="info"
-        message="You do not join attendance sessions manually. If you are enrolled in a module, your lecturer or admin can create sessions for that module and mark your attendance there."
+        message="When your lecturer creates a session for one of your modules, join it here to record your check-in time. Your lecturer or admin still chooses the final attendance status."
       />
 
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
@@ -817,12 +884,35 @@ function StudentAttendanceView() {
                 key={session.id}
                 className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-200"
               >
-                <div className="font-semibold">
-                  {session.date} | {session.moduleCode} - {session.moduleName}
-                </div>
-                <div className="mt-1 text-xs text-slate-400">
-                  {session.startsAt ? `Starts: ${session.startsAt}` : "Start time not set"}
-                  {session.endsAt ? ` | Ends: ${session.endsAt}` : ""}
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <div className="font-semibold">
+                      {session.date} | {session.moduleCode} - {session.moduleName}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-400">
+                      {session.startsAt ? `Starts: ${formatDateTime(session.startsAt)}` : "Start time not set"}
+                      {session.endsAt ? ` | Ends: ${formatDateTime(session.endsAt)}` : ""}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-300">
+                      {session.checkedInAt
+                        ? `Checked in: ${formatDateTime(session.checkedInAt)}`
+                        : "You have not checked in yet."}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void onCheckIn(session.id);
+                    }}
+                    disabled={busySessionId === session.id || Boolean(session.checkedInAt)}
+                    className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-60"
+                  >
+                    {session.checkedInAt
+                      ? "Checked in"
+                      : busySessionId === session.id
+                        ? "Joining..."
+                        : "Join session"}
+                  </button>
                 </div>
               </div>
             ))

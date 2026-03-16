@@ -24,6 +24,7 @@ import Uploads from "./pages/Uploads1";
 import Calendar from "./pages/Calendar";
 import ManageResults from "./pages/ManageResults";
 import AdminParentLinks from "./pages/AdminParentLinks";
+import AdminUsers from "./pages/AdminUsers";
 import Attendance from "./pages/Attendance";
 import Notifications from "./pages/Notifications";
 
@@ -92,6 +93,7 @@ export default function App() {
 
                 <Route element={<RequireRole roles={["ADMIN"]} />}>
                   <Route path="admin/parent-links" element={<AdminParentLinks />} />
+                  <Route path="admin/users" element={<AdminUsers />} />
                 </Route>
 
                 <Route element={<RequireRole roles={["PARENT"]} />}>

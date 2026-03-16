@@ -39,6 +39,15 @@ export type AttendanceSession = {
   startsAt: string | null;
   endsAt: string | null;
   createdAt: string;
+  checkedInAt: string | null;
+  checkedInCount: number;
+};
+
+export type AttendanceSessionRosterStudent = AttendanceModuleStudent & {
+  checkedInAt: string | null;
+  currentStatus: AttendanceStatus | null;
+  markedAt: string | null;
+  suggestedStatus: AttendanceStatus;
 };
 
 export type AttendanceSummary = {
@@ -130,6 +139,22 @@ export async function listAttendanceSessions(params?: { date?: string; moduleId?
 
   const data = await apiClient.get<{ value: AttendanceSession[] }>(`/attendance/sessions${suffix}`);
   return Array.isArray(data.value) ? data.value : [];
+}
+
+export async function listAttendanceSessionRoster(sessionId: string): Promise<AttendanceSessionRosterStudent[]> {
+  const data = await apiClient.get<{ value: AttendanceSessionRosterStudent[] }>(
+    `/attendance/sessions/${encodeURIComponent(sessionId)}/roster`
+  );
+  return Array.isArray(data.value) ? data.value : [];
+}
+
+export async function checkInToAttendanceSession(sessionId: string) {
+  return apiClient.post<{
+    ok: boolean;
+    created: boolean;
+    checkedInAt: string | null;
+    suggestedStatus: AttendanceStatus;
+  }>(`/attendance/sessions/${encodeURIComponent(sessionId)}/check-in`);
 }
 
 export async function markAttendanceSession(

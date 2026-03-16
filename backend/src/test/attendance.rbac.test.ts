@@ -24,6 +24,7 @@ type Ctx = {
   otherModuleId: string;
   facultyId: string;
   sessionId: string;
+  checkinSessionId: string;
   otherSessionId: string;
 };
 
@@ -116,6 +117,16 @@ describe("Attendance RBAC + marking", () => {
     );
     ctx.sessionId = seededSession.rows[0].id;
 
+    const checkinSession = await pool.query<{ id: string }>(
+      `
+        INSERT INTO attendance_sessions (lecturer_id, module_id, attendance_date, created_by)
+        VALUES ($1, $2, CURRENT_DATE, $1)
+        RETURNING id
+      `,
+      [lecturer.id, ctx.moduleId]
+    );
+    ctx.checkinSessionId = checkinSession.rows[0].id;
+
     const otherSeededSession = await pool.query<{ id: string }>(
       `
         INSERT INTO attendance_sessions (lecturer_id, module_id, attendance_date, created_by)
@@ -204,6 +215,29 @@ describe("Attendance RBAC + marking", () => {
     expect(res.body.value.some((row: { moduleId?: string }) => row.moduleId === ctx.otherModuleId)).toBe(false);
   });
 
+  test("student can check in to an enrolled attendance session", async () => {
+    const res = await request(app)
+      .post(`/api/attendance/sessions/${ctx.checkinSessionId}/check-in`)
+      .set(auth(ctx.studentToken))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(Boolean(res.body?.ok)).toBe(true);
+    expect(typeof res.body?.checkedInAt).toBe("string");
+    expect(String(res.body?.suggestedStatus ?? "")).toBe("PRESENT");
+  });
+
+  test("student session listing includes recorded check-in time", async () => {
+    const res = await request(app)
+      .get("/api/attendance/sessions")
+      .set(auth(ctx.studentToken))
+      .query({ moduleId: ctx.moduleId });
+
+    expect(res.status).toBe(200);
+    const row = res.body.value.find((value: { id?: string }) => value.id === ctx.checkinSessionId);
+    expect(typeof row?.checkedInAt).toBe("string");
+  });
+
   test("student cannot list sessions for module they are not enrolled in", async () => {
     const res = await request(app)
       .get("/api/attendance/sessions")
@@ -211,6 +245,26 @@ describe("Attendance RBAC + marking", () => {
       .query({ moduleId: ctx.otherModuleId });
 
     expect(res.status).toBe(403);
+  });
+
+  test("student cannot check in to a session for another module", async () => {
+    const res = await request(app)
+      .post(`/api/attendance/sessions/${ctx.otherSessionId}/check-in`)
+      .set(auth(ctx.studentToken))
+      .send({});
+
+    expect(res.status).toBe(403);
+  });
+
+  test("assigned lecturer can view session roster with check-in data", async () => {
+    const res = await request(app)
+      .get(`/api/attendance/sessions/${ctx.checkinSessionId}/roster`)
+      .set(auth(ctx.lecturerToken));
+
+    expect(res.status).toBe(200);
+    const row = res.body.value.find((value: { id?: string }) => value.id === ctx.studentId);
+    expect(typeof row?.checkedInAt).toBe("string");
+    expect(String(row?.suggestedStatus ?? "")).toBe("PRESENT");
   });
 
   test("assigned lecturer can enroll and remove students on assigned module", async () => {

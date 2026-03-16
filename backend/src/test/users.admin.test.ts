@@ -1,0 +1,105 @@
+import request from "supertest";
+import { createApp } from "../app";
+import { pool } from "../config/db";
+import { cleanupTestUsers, createUser, signJwt } from "./helpers";
+
+const app = createApp();
+
+function auth(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
+
+describe("Admin account management", () => {
+  const unique = `test_accounts_${Date.now()}`;
+  let adminToken = "";
+  let lecturerToken = "";
+  let adminId = "";
+
+  beforeAll(async () => {
+    const admin = await createUser("ADMIN", `${unique}_admin@co.za`);
+    const lecturer = await createUser("LECTURER", `${unique}_lecturer@co.za`);
+    const student = await createUser("STUDENT", `${unique}_student@co.za`);
+    const parent = await createUser("PARENT", `${unique}_parent@co.za`);
+
+    adminId = admin.id;
+    adminToken = signJwt(admin);
+    lecturerToken = signJwt(lecturer);
+
+    await pool.query(
+      `
+        UPDATE users
+        SET first_name = 'Demo',
+            last_name = 'Student',
+            course_name = 'Computer Science',
+            public_student_id = $2
+        WHERE id = $1
+      `,
+      [student.id, `${unique.toUpperCase()}_STU`]
+    );
+
+    await pool.query(
+      `
+        UPDATE users
+        SET can_link_children = true,
+            first_name = 'Demo',
+            last_name = 'Parent'
+        WHERE id = $1
+      `,
+      [parent.id]
+    );
+  });
+
+  afterAll(async () => {
+    await cleanupTestUsers();
+  });
+
+  test("admin can view registered admins, lecturers, students, and parents", async () => {
+    const res = await request(app)
+      .get("/api/users/admin/accounts")
+      .set(auth(adminToken))
+      .query({ q: unique, limit: 50 });
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body?.value)).toBe(true);
+
+    const emails = new Set(res.body.value.map((row: { email?: string }) => String(row.email ?? "")));
+    expect(emails.has(`${unique}_admin@co.za`)).toBe(true);
+    expect(emails.has(`${unique}_lecturer@co.za`)).toBe(true);
+    expect(emails.has(`${unique}_student@co.za`)).toBe(true);
+    expect(emails.has(`${unique}_parent@co.za`)).toBe(true);
+
+    const studentRow = res.body.value.find((row: { email?: string }) => row.email === `${unique}_student@co.za`);
+    expect(String(studentRow?.studentNumber ?? "")).toBe(`${unique.toUpperCase()}_STU`);
+  });
+
+  test("non-admin cannot view admin account registry", async () => {
+    const res = await request(app)
+      .get("/api/users/admin/accounts")
+      .set(auth(lecturerToken))
+      .query({ q: unique });
+
+    expect([401, 403]).toContain(res.status);
+  });
+
+  test("admin cannot delete the current account", async () => {
+    const res = await request(app)
+      .delete(`/api/users/admin/accounts/${adminId}`)
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(400);
+  });
+
+  test("admin can delete another account", async () => {
+    const target = await createUser("LECTURER", `${unique}_delete_me@co.za`);
+
+    const res = await request(app)
+      .delete(`/api/users/admin/accounts/${target.id}`)
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(Boolean(res.body?.ok)).toBe(true);
+
+    const db = await pool.query(`SELECT 1 FROM users WHERE id = $1 LIMIT 1`, [target.id]);
+    expect(db.rowCount ?? 0).toBe(0);
+  });
+});
