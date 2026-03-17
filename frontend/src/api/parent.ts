@@ -462,10 +462,23 @@ export async function getResults(childId: string): Promise<Result[]> {
   return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
 }
 
+export async function getStudentResults(): Promise<Result[]> {
+  const data = await apiGet<unknown>("/api/parent/student/results");
+  return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
+}
+
 export async function downloadResults(
   childId: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
   return apiDownload(`/api/parent/results/download?childId=${encodeURIComponent(childId)}`);
+}
+
+export async function downloadStudentResults(): Promise<{
+  blob: Blob;
+  fileName: string | null;
+  contentType: string | null;
+}> {
+  return apiDownload("/api/parent/student/results/download");
 }
 
 export async function listResultsForStaff(childId: string): Promise<Result[]> {

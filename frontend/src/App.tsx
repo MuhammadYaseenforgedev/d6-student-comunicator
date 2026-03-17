@@ -23,6 +23,7 @@ import ThreadPage from "./pages/ThreadPage";
 import Uploads from "./pages/Uploads1";
 import Calendar from "./pages/Calendar";
 import ManageResults from "./pages/ManageResults";
+import StudentResults from "./pages/StudentResults";
 import AdminParentLinks from "./pages/AdminParentLinks";
 import AdminFinance from "./pages/AdminFinance";
 import AdminUsers from "./pages/AdminUsers";
@@ -77,6 +78,10 @@ export default function App() {
                   <Route path="emergency" element={<Emergency />} />
                   <Route path="c/:id" element={<ChannelPage />} />
                   <Route path="attendance" element={<Attendance />} />
+                </Route>
+
+                <Route element={<RequireRole roles={["STUDENT"]} />}>
+                  <Route path="results" element={<StudentResults />} />
                 </Route>
 
                 <Route element={<RequireRole roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]} />}>

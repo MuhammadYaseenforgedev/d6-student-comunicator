@@ -85,7 +85,7 @@ export default function AppShell() {
     return profile?.courseName?.trim() || "Course not assigned";
   }, [isStudent, profile?.courseName]);
 
-    const title =
+  const title =
       location.pathname.includes("/calendar")
         ? "Calendar"
       : location.pathname.includes("/admin/finance")
@@ -96,6 +96,8 @@ export default function AppShell() {
       ? "Parent Link Approvals"
       : location.pathname.includes("/manage-results")
       ? "Manage Results"
+      : location.pathname === "/app/results"
+      ? "Results"
       : location.pathname.includes("/uploads")
       ? "Uploads"
       : location.pathname.includes("/attendance")
@@ -185,9 +187,10 @@ export default function AppShell() {
                     <Item to="/app/messages" label="Messages" badge={messageBadge} />
                     <Item to={calendarTo} label="Calendar" />
                     <Item to="/app/attendance" label="Attendance" badge={attendanceBadge} />
+                    {user?.role === "STUDENT" && <Item to="/app/results" label="Results" badge={resultBadge} />}
 
                      {(user?.role === "ADMIN" || user?.role === "LECTURER") && (
-                       <Item to="/app/manage-results" label="Manage Results" badge={resultBadge} />
+                        <Item to="/app/manage-results" label="Manage Results" badge={resultBadge} />
                      )}
                      {user?.role === "ADMIN" && <Item to="/app/admin/finance" label="Finance" badge={financeBadge} />}
                      {user?.role === "ADMIN" && <Item to="/app/admin/users" label="Accounts" />}

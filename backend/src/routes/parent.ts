@@ -110,6 +110,26 @@ async function listAssessmentResultsForStudent(studentId: string): Promise<Asses
   return r.rows;
 }
 
+async function getStudentResultLabel(studentId: string): Promise<string> {
+  const result = await pool.query<{ public_student_id: string | null; email: string }>(
+    `
+      SELECT public_student_id, email
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [studentId]
+  );
+
+  const row = result.rows[0];
+  if (!row) return studentId;
+
+  const publicStudentId = String(row.public_student_id ?? "").trim();
+  if (publicStudentId) return publicStudentId;
+
+  return row.email;
+}
+
 function buildResultsCsv(childId: string, rows: AssessmentResultRow[]): string {
   const generatedAt = new Date().toISOString();
   const lines: string[] = [
@@ -559,6 +579,48 @@ parentRouter.delete("/children/:studentId", requireRole("PARENT"), async (req, r
 /**
  * -------------------------
  * RESULTS (Option A)
+ * -------------------------
+ * GET /api/parent/student/results
+ */
+parentRouter.get("/student/results", requireRole("STUDENT"), async (req, res) => {
+  try {
+    const rows = await listAssessmentResultsForStudent(req.user!.id);
+    return res.json(rows);
+  } catch (e: any) {
+    console.error("[parent] GET /student/results error", e);
+    return err(res, 500, "INTERNAL", "Failed to load results");
+  }
+});
+
+/**
+ * GET /api/parent/student/results/download
+ * Download the signed-in student's own results.
+ */
+parentRouter.get("/student/results/download", requireRole("STUDENT"), async (req, res) => {
+  try {
+    const studentId = req.user!.id;
+    const childId = await getStudentResultLabel(studentId);
+    const rows = await listAssessmentResultsForStudent(studentId);
+    const csv = buildResultsCsv(childId, rows);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const safeChildId = childId.replace(/[^a-z0-9._-]+/gi, "_");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="results-${safeChildId || "student"}-${dateStamp}.csv"`
+    );
+
+    return res.status(200).send(csv);
+  } catch (e: any) {
+    console.error("[parent] GET /student/results/download error", e);
+    return err(res, 500, "INTERNAL", "Failed to download results");
+  }
+});
+
+/**
+ * -------------------------
+ * RESULTS (Parent)
  * -------------------------
  * GET /api/parent/results?childId=STU-1001
  */

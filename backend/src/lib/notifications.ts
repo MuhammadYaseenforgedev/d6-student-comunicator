@@ -326,7 +326,7 @@ export async function createResultNotifications(input: {
       title: input.action === "PUBLISHED" ? `Result published: ${input.subject}` : `Result updated: ${input.subject}`,
       body,
       meta: {
-        ...notificationHref("/app"),
+        ...notificationHref("/app/results"),
         resultId: input.resultId,
         studentId: input.studentId,
         subject: input.subject,
