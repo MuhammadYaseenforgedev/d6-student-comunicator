@@ -22,17 +22,28 @@ type Props = {
   tone?: HeaderTone;
 };
 
-/**
- * Return heading text color classes based on the active section.
- * This lets page headings visually match the section’s announcement cards.
- */
 function headingToneClass(tone: HeaderTone): string {
-  if (tone === "modules") return "text-[#49BCF3]";
-  if (tone === "faculty") return "text-[#70ECE4]";
-  if (tone === "clubs") return "text-[#6C44FD]";
-  if (tone === "emergency") return "text-[#DC2626]";
-  if (tone === "general") return "text-[#4EC2F3]";
-  return "text-slate-900";
+  if (tone === "modules") {
+    return "text-[#38D5FF]";
+  }
+
+  if (tone === "faculty") {
+    return "text-[#35FFE3]";
+  }
+
+  if (tone === "clubs") {
+    return "text-[#8C5BFF]";
+  }
+
+  if (tone === "emergency") {
+    return "text-[#FF8CCF]";
+  }
+
+  if (tone === "general") {
+    return "text-[#8CEBFF]";
+  }
+
+  return "bg-gradient-to-r from-[#8CEBFF] via-[#8C5BFF] to-[#FF5EDB] bg-clip-text text-transparent";
 }
 
 export default function PageHeader({
@@ -53,7 +64,7 @@ export default function PageHeader({
           {title}
         </h1>
 
-        {subtitle && <p className="mt-1 text-sm text-black">{subtitle}</p>}
+        {subtitle && <p className="mt-1 text-sm text-white/72">{subtitle}</p>}
       </div>
 
       {actions && <div className="flex gap-2">{actions}</div>}

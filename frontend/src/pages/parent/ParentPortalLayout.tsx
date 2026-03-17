@@ -4,7 +4,7 @@
 // - Render the shared Parent Portal page header
 // - Render portal navigation tabs
 // - Render the active parent portal child route via <Outlet />
-// - Use purple blocks to match the updated application theme
+// - Match the neon glass theme used across the app
 
 import { NavLink, Outlet } from "react-router-dom";
 import PageHeader from "../../components/PageHeader";
@@ -18,11 +18,10 @@ export default function ParentPortalLayout() {
     <div>
       <PageHeader
         title="Parent Portal"
-        subtitle="Overview, finance, results, calendar, and linking (Week 3+)."
+        subtitle="Overview, finance, results, calendar, and linking."
       />
 
-      {/* Tabs container */}
-      <div className="mt-6 rounded-3xl border border-[#6C44FD] bg-[#794DFA] p-2 text-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+      <div className="mt-6 teal-glow-card p-2">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
           <Tab to="/app/parent" end label="Overview" />
           <Tab to="/app/parent/finance" label="Finance" />
@@ -33,7 +32,6 @@ export default function ParentPortalLayout() {
         </div>
       </div>
 
-      {/* Active tab page */}
       <div className="mt-6">
         <Outlet />
       </div>
@@ -41,10 +39,6 @@ export default function ParentPortalLayout() {
   );
 }
 
-/**
- * Reusable parent portal tab.
- * Active tabs use a deeper purple block.
- */
 function Tab({
   to,
   label,
@@ -60,10 +54,10 @@ function Tab({
       end={end}
       className={({ isActive }) =>
         [
-          "rounded-2xl border px-3 py-2 text-center text-sm font-semibold transition",
+          "rounded-2xl border px-3 py-2 text-center text-sm font-semibold transition-all duration-200",
           isActive
-            ? "border-[#794DFA] bg-[#6C44FD] text-white"
-            : "border-white/25 bg-transparent text-white hover:bg-[#6C44FD] hover:text-white",
+            ? "border-[rgba(140,235,255,0.30)] bg-[rgba(14,42,99,0.72)] text-white shadow-[0_0_18px_rgba(140,235,255,0.16)]"
+            : "border-transparent bg-transparent text-white/78 hover:border-[rgba(140,235,255,0.22)] hover:bg-[rgba(140,235,255,0.08)] hover:text-white",
         ].join(" ")
       }
     >

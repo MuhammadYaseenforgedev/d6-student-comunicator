@@ -24,9 +24,13 @@ function childLabel(child: ParentChild): string {
 
 function requestClass(status: string) {
   const normalized = status.toUpperCase();
-  if (normalized === "APPROVED") return "border-green-200 bg-green-50 text-green-700";
-  if (normalized === "REJECTED") return "border-red-200 bg-red-50 text-red-700";
-  return "border-yellow-200 bg-yellow-50 text-yellow-700";
+  if (normalized === "APPROVED") {
+    return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
+  }
+  if (normalized === "REJECTED") {
+    return "border-rose-400/30 bg-rose-500/10 text-rose-200";
+  }
+  return "border-amber-400/30 bg-amber-500/10 text-amber-200";
 }
 
 export default function ParentOverview() {
@@ -94,7 +98,9 @@ export default function ParentOverview() {
       } catch (e) {
         if (!cancelled) {
           console.error(e);
-          setError(e instanceof Error ? e.message : "Failed to load linked children");
+          setError(
+            e instanceof Error ? e.message : "Failed to load linked children"
+          );
         }
       } finally {
         if (!cancelled) setLoadingChildren(false);
@@ -131,7 +137,9 @@ export default function ParentOverview() {
           setResults([]);
           setFinance(null);
           setError(
-            e instanceof Error ? e.message : "Failed to load parent dashboard data"
+            e instanceof Error
+              ? e.message
+              : "Failed to load parent dashboard data"
           );
         }
       } finally {
@@ -170,7 +178,9 @@ export default function ParentOverview() {
       await refreshChildrenAndRequests(created.childId);
     } catch (e) {
       console.error(e);
-      setLinkError(e instanceof Error ? e.message : "Failed to submit link request");
+      setLinkError(
+        e instanceof Error ? e.message : "Failed to submit link request"
+      );
     } finally {
       setLinkBusy(false);
     }
@@ -198,28 +208,22 @@ export default function ParentOverview() {
         />
         <Card
           title="Attendance"
-          desc="Track present/absent/late history for linked children."
+          desc="Track present, absent, and late history for linked children."
           to="/app/parent/attendance"
         />
         <Card
           title="Children"
-          desc="Link children using South African ID (admin approval required)."
+          desc="Link children using South African ID with admin approval."
           to="/app/parent/children"
         />
 
-        <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-          <div className="text-lg font-semibold text-slate-900">Tip</div>
-          <p className="mt-2 text-sm text-slate-700">
-            This portal matches the backend structure: separate endpoints for finance,
-            results, calendar, and parent-child linking. No rewrites needed, just swap stores for API.
-          </p>
-        </div>
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Link a child</div>
-        <div className="mt-2 text-sm text-slate-700">
-          Enter a student's South African ID (13 digits), then submit for admin approval.
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Link a child</div>
+        <div className="mt-2 text-sm text-white/72">
+          Enter a student&apos;s South African ID, then submit for admin
+          approval.
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
@@ -228,7 +232,7 @@ export default function ParentOverview() {
             value={linkSouthAfricanId}
             onChange={(e) => setLinkSouthAfricanId(e.target.value)}
             placeholder="e.g. 0012311234088"
-            className="w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+            className="input-glass"
             aria-label="Student South African ID"
             title="Student South African ID"
           />
@@ -243,41 +247,34 @@ export default function ParentOverview() {
           </button>
         </div>
 
-        {linkError && (
-          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {linkError}
-          </div>
-        )}
-
-        {requestStatus && (
-          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-            {requestStatus}
-          </div>
-        )}
+        {linkError && <div className="error-banner mt-3">{linkError}</div>}
+        {requestStatus && <div className="info-banner mt-3">{requestStatus}</div>}
 
         <div className="mt-4 space-y-2">
-          <div className="text-sm font-semibold text-slate-900">Recent requests</div>
+          <div className="text-sm font-semibold text-white">Recent requests</div>
           {linkRequests.length === 0 ? (
-            <div className="text-sm text-slate-700">No link requests yet.</div>
+            <div className="text-sm text-white/72">No link requests yet.</div>
           ) : (
             linkRequests.slice(0, 5).map((req) => (
               <div
                 key={req.id}
-                className="flex items-center justify-between rounded-2xl border border-[#e2d8ff] bg-white p-3 shadow-[0_8px_20px_rgba(121,77,250,0.06)]"
+                className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-3 shadow-[0_0_18px_rgba(140,235,255,0.08)]"
               >
-                <div className="text-sm text-slate-900">
-                  {req.childId}
-                  <div className="mt-1 text-xs text-slate-500">
-                    Requested: {new Date(req.requestedAt).toLocaleString()}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm text-white">
+                    {req.childId}
+                    <div className="mt-1 text-xs text-white/60">
+                      Requested: {new Date(req.requestedAt).toLocaleString()}
+                    </div>
                   </div>
-                </div>
-                <div
-                  className={[
-                    "rounded-full border px-3 py-1 text-xs font-semibold",
-                    requestClass(req.status),
-                  ].join(" ")}
-                >
-                  {req.status}
+                  <div
+                    className={[
+                      "rounded-full border px-3 py-1 text-xs font-semibold",
+                      requestClass(req.status),
+                    ].join(" ")}
+                  >
+                    {req.status}
+                  </div>
                 </div>
               </div>
             ))
@@ -285,16 +282,17 @@ export default function ParentOverview() {
         </div>
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Child</div>
-        <div className="mt-2 text-sm text-slate-700">
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Child</div>
+        <div className="mt-2 text-sm text-white/72">
           Select a linked child to load dashboard data.
         </div>
+
         <select
           id="parent-overview-child"
           value={selectedChildId}
           onChange={(e) => setSelectedChildId(e.target.value)}
-          className="mt-4 w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15 sm:max-w-md"
+          className="input-glass mt-4 w-full sm:max-w-md"
           disabled={loadingChildren || children.length === 0}
           aria-label="Select linked child"
           title="Select linked child"
@@ -315,14 +313,14 @@ export default function ParentOverview() {
         </select>
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Results</div>
-        <div className="mt-2 text-sm text-slate-700">Loaded from parent API.</div>
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Results</div>
+        <div className="mt-2 text-sm text-white/72">Loaded from parent API.</div>
 
-        {loading && <div className="mt-3 text-sm text-slate-700">Loading...</div>}
-        {error && <div className="mt-3 text-sm text-red-700">{error}</div>}
+        {loading && <div className="mt-3 text-sm text-white/72">Loading...</div>}
+        {error && <div className="mt-3 text-sm text-rose-200">{error}</div>}
         {!selectedChildId && !loadingChildren && (
-          <div className="mt-3 text-sm text-slate-700">
+          <div className="mt-3 text-sm text-white/72">
             Link a child first to view results.
           </div>
         )}
@@ -330,10 +328,13 @@ export default function ParentOverview() {
         {!loading && !error && Boolean(selectedChildId) && (
           <div className="mt-4 space-y-2">
             {results.length === 0 ? (
-              <div className="text-sm text-slate-700">No results found.</div>
+              <div className="text-sm text-white/72">No results found.</div>
             ) : (
               results.map((r) => (
-                <div key={r.id} className="text-sm text-slate-900">
+                <div
+                  key={r.id}
+                  className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] px-4 py-3 text-sm text-white"
+                >
                   {r.subject} - {r.score}/{r.outOf}
                 </div>
               ))
@@ -342,23 +343,27 @@ export default function ParentOverview() {
         )}
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Finance</div>
-        <div className="mt-2 text-sm text-slate-700">Loaded from parent API.</div>
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Finance</div>
+        <div className="mt-2 text-sm text-white/72">Loaded from parent API.</div>
 
         {!selectedChildId && !loadingChildren ? (
-          <div className="mt-4 text-sm text-slate-700">
+          <div className="mt-4 text-sm text-white/72">
             Link a child first to view finance.
           </div>
         ) : finance ? (
-          <div className="mt-4 text-sm text-slate-900">
+          <div className="mt-4 text-sm text-white">
             Balance: {finance.balance}
             <br />
             Status: {finance.status}
           </div>
         ) : (
           !loading &&
-          !error && <div className="mt-4 text-sm text-slate-700">No finance data found.</div>
+          !error && (
+            <div className="mt-4 text-sm text-white/72">
+              No finance data found.
+            </div>
+          )
         )}
       </div>
     </div>
@@ -369,11 +374,11 @@ function Card({ title, desc, to }: { title: string; desc: string; to: string }) 
   return (
     <Link
       to={to}
-      className="block rounded-3xl border border-[#d9ccff] bg-white p-5 text-slate-900 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#cbb8ff]"
+      className="block rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-5 text-white shadow-[0_0_18px_rgba(140,235,255,0.08)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)] hover:shadow-[0_0_22px_rgba(140,235,255,0.12)]"
     >
-      <div className="text-lg font-semibold text-slate-900">{title}</div>
-      <div className="mt-2 text-sm text-slate-700">{desc}</div>
-      <div className="mt-4 text-sm font-semibold text-[#794DFA] underline">
+      <div className="text-lg font-semibold text-white">{title}</div>
+      <div className="mt-2 text-sm text-white/72">{desc}</div>
+      <div className="mt-4 text-sm font-semibold text-[#8CEBFF] underline">
         Open {title}
       </div>
     </Link>

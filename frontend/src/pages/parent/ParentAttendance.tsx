@@ -113,13 +113,13 @@ export default function ParentAttendance() {
         subtitle="View attendance summary and records for a linked child."
       />
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-4 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
+      <div className="teal-glow-card p-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <select
             id="parent-attendance-child"
             value={selectedChildId}
             onChange={(e) => setSelectedChildId(e.target.value)}
-            className="rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+            className="input-glass"
             disabled={loadingChildren || children.length === 0}
             aria-label="Select child for attendance"
             title="Select child for attendance"
@@ -144,7 +144,7 @@ export default function ParentAttendance() {
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+            className="input-glass"
             aria-label="Attendance from date"
             title="Attendance from date"
           />
@@ -154,7 +154,7 @@ export default function ParentAttendance() {
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+            className="input-glass"
             aria-label="Attendance to date"
             title="Attendance to date"
           />
@@ -171,13 +171,11 @@ export default function ParentAttendance() {
       </div>
 
       {childrenError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {childrenError}
-        </div>
+        <div className="error-banner p-3 text-sm">{childrenError}</div>
       )}
 
       {!loadingChildren && !selectedChildId && (
-        <div className="rounded-xl border border-[#e2d8ff] bg-[#faf8ff] p-3 text-sm text-slate-700">
+        <div className="rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-3 text-sm text-white/80">
           {hasChildren
             ? "Select a child to view this information."
             : "No linked children. Link a child first."}
@@ -185,43 +183,41 @@ export default function ParentAttendance() {
       )}
 
       {attendanceError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {attendanceError}
-        </div>
+        <div className="error-banner p-3 text-sm">{attendanceError}</div>
       )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Summary label="Present" value={summary.present} className="text-emerald-600" />
-        <Summary label="Late" value={summary.late} className="text-amber-500" />
-        <Summary label="Absent" value={summary.absent} className="text-red-600" />
-        <Summary label="Total" value={summary.total} className="text-slate-900" />
+        <Summary label="Present" value={summary.present} className="text-emerald-200" />
+        <Summary label="Late" value={summary.late} className="text-amber-200" />
+        <Summary label="Absent" value={summary.absent} className="text-rose-200" />
+        <Summary label="Total" value={summary.total} className="text-white" />
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Attendance Records</div>
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Attendance Records</div>
         <div className="mt-3 space-y-2">
           {!selectedChildId ? (
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-white/72">
               Select a child to view this information.
             </div>
           ) : records.length === 0 ? (
-            <div className="text-sm text-slate-700">No attendance records found.</div>
+            <div className="text-sm text-white/72">No attendance records found.</div>
           ) : (
             records.map((row) => (
               <div
                 key={`${row.sessionId}-${row.markedAt}`}
-                className="rounded-2xl border border-[#e2d8ff] bg-white p-3 shadow-[0_8px_20px_rgba(121,77,250,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#cbb8ff]"
+                className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-3 shadow-[0_0_18px_rgba(140,235,255,0.08)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)]"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <div className="font-semibold text-slate-900">
+                    <div className="font-semibold text-white">
                       {row.moduleCode} - {row.moduleName}
                     </div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-white/55">
                       {row.date} | {row.facultyName}
                     </div>
                   </div>
-                  <div className="text-sm font-semibold text-slate-900">
+                  <div className="text-sm font-semibold text-white">
                     {row.status}
                   </div>
                 </div>
@@ -244,8 +240,8 @@ function Summary({
   className: string;
 }) {
   return (
-    <div className="rounded-3xl border border-[#d9ccff] bg-white p-4 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-      <div className="text-xs uppercase tracking-wide text-slate-500">
+    <div className="teal-glow-card p-4">
+      <div className="text-xs uppercase tracking-wide text-white/55">
         {label}
       </div>
       <div className={["mt-2 text-2xl font-bold", className].join(" ")}>

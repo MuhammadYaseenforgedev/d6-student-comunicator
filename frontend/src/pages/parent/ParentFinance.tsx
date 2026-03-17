@@ -65,7 +65,9 @@ export default function ParentFinance() {
 
         setChildren(Array.isArray(list) ? list : []);
         const first =
-          (Array.isArray(list) ? list : []).map(childIdentifier).find(Boolean) ?? "";
+          (Array.isArray(list) ? list : [])
+            .map(childIdentifier)
+            .find(Boolean) ?? "";
         setSelectedChildId(first);
       } catch (e) {
         if (!cancelled) {
@@ -120,8 +122,8 @@ export default function ParentFinance() {
   const status = finance?.status ?? "OK";
   const badge =
     status === "OVERDUE"
-      ? "bg-red-50 border-red-200 text-red-700"
-      : "bg-emerald-50 border-emerald-200 text-emerald-700";
+      ? "border-rose-400/30 bg-rose-500/10 text-rose-200"
+      : "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
 
   async function onDownloadStatement() {
     if (!selectedChildId) return;
@@ -135,7 +137,8 @@ export default function ParentFinance() {
         const a = document.createElement("a");
         a.href = url;
         a.download =
-          fileName || `finance-statement-${new Date().toISOString().slice(0, 10)}.csv`;
+          fileName ||
+          `finance-statement-${new Date().toISOString().slice(0, 10)}.csv`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -156,9 +159,9 @@ export default function ParentFinance() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Child</div>
-        <div className="mt-1 text-sm text-slate-600">
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Child</div>
+        <div className="mt-1 text-sm text-white/72">
           Select a linked child to view finance.
         </div>
 
@@ -167,7 +170,7 @@ export default function ParentFinance() {
             id="parent-finance-child"
             value={selectedChildId}
             onChange={(e) => setSelectedChildId(e.target.value)}
-            className="w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15 sm:max-w-md"
+            className="input-glass w-full sm:max-w-md"
             disabled={loadingChildren || children.length === 0}
             aria-label="Select child for finance"
             title="Select child for finance"
@@ -199,19 +202,17 @@ export default function ParentFinance() {
           </button>
 
           {childrenError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-2 text-sm text-red-700">
-              {childrenError}
-            </div>
+            <div className="error-banner p-2 text-sm">{childrenError}</div>
           )}
         </div>
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
+      <div className="teal-glow-card p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-lg font-semibold text-slate-900">Account Status</div>
-            <div className="mt-1 text-sm text-slate-600">
-              Finance documents + status notifications.
+            <div className="text-lg font-semibold text-white">Account Status</div>
+            <div className="mt-1 text-sm text-white/72">
+              Finance documents and status notifications.
             </div>
           </div>
 
@@ -227,25 +228,23 @@ export default function ParentFinance() {
 
         {!selectedChildId && !loadingChildren &&
           (!hasChildren ? (
-            <div className="mt-5 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+            <div className="mt-5 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
               No linked children found. Link a child first to view finance.
             </div>
           ) : (
-            <div className="mt-5 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+            <div className="mt-5 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
               Select a child to view this information.
             </div>
           ))}
 
         {loadingFinance && (
-          <div className="mt-5 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+          <div className="mt-5 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
             Loading finance...
           </div>
         )}
 
         {financeError && (
-          <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {financeError}
-          </div>
+          <div className="error-banner mt-5 p-4 text-sm">{financeError}</div>
         )}
 
         {finance && !loadingFinance && !financeError && (
@@ -275,47 +274,45 @@ export default function ParentFinance() {
         </div>
 
         {downloadError && (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {downloadError}
-          </div>
+          <div className="error-banner mt-4 p-4 text-sm">{downloadError}</div>
         )}
 
         {import.meta.env.DEV && (
-          <details className="mt-4 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-3">
-            <summary className="cursor-pointer text-xs text-slate-600">
+          <details className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-3">
+            <summary className="cursor-pointer text-xs text-white/65">
               Debug: finance payload
             </summary>
-            <pre className="mt-2 max-h-56 overflow-auto text-xs text-slate-800">
+            <pre className="mt-2 max-h-56 overflow-auto text-xs text-white/80">
               {JSON.stringify(finance, null, 2)}
             </pre>
           </details>
         )}
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Notifications</div>
-        <div className="mt-2 text-sm text-slate-600">
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Notifications</div>
+        <div className="mt-2 text-sm text-white/72">
           Billing and status notifications for the selected child.
         </div>
 
         <div className="mt-4 space-y-3">
           {!selectedChildId ? (
-            <div className="rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+            <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
               Select a child to view this information.
             </div>
           ) : !finance || notifications.length === 0 ? (
-            <div className="rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+            <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
               No finance records found.
             </div>
           ) : (
             notifications.map((n) => (
               <div
                 key={n.id}
-                className="rounded-2xl border border-[#e2d8ff] bg-white p-4 shadow-[0_8px_20px_rgba(121,77,250,0.06)]"
+                className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 shadow-[0_0_18px_rgba(140,235,255,0.08)]"
               >
-                <div className="text-sm font-semibold text-slate-900">{n.title}</div>
-                <div className="mt-1 text-sm text-slate-700">{n.body}</div>
-                <div className="mt-2 text-xs uppercase tracking-wide text-slate-500">
+                <div className="text-sm font-semibold text-white">{n.title}</div>
+                <div className="mt-1 text-sm text-white/72">{n.body}</div>
+                <div className="mt-2 text-xs uppercase tracking-wide text-white/55">
                   {n.severity}
                 </div>
               </div>
@@ -324,43 +321,43 @@ export default function ParentFinance() {
         </div>
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Documents</div>
-        <div className="mt-2 text-sm text-slate-600">
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Documents</div>
+        <div className="mt-2 text-sm text-white/72">
           Statements and related finance transactions for the selected child.
         </div>
 
         <div className="mt-4 space-y-3">
           {!selectedChildId ? (
-            <div className="rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+            <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
               Select a child to view this information.
             </div>
           ) : !finance || documents.length === 0 ? (
-            <div className="rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+            <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
               No finance records found.
             </div>
           ) : (
             documents.map((d) => (
               <div
                 key={d.id}
-                className="rounded-2xl border border-[#e2d8ff] bg-white p-4 shadow-[0_8px_20px_rgba(121,77,250,0.06)]"
+                className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 shadow-[0_0_18px_rgba(140,235,255,0.08)]"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-slate-900">{d.type}</div>
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="text-sm font-semibold text-white">{d.type}</div>
+                    <div className="mt-1 text-xs text-white/55">
                       {d.occurredAt
                         ? new Date(d.occurredAt).toLocaleString()
                         : "Unknown date"}
                     </div>
                     {d.description && (
-                      <div className="mt-2 text-sm text-slate-700">
+                      <div className="mt-2 text-sm text-white/72">
                         {d.description}
                       </div>
                     )}
                   </div>
 
-                  <div className="text-right text-sm font-semibold text-slate-900">
+                  <div className="text-right text-sm font-semibold text-white">
                     R {d.amount.toFixed(2)}
                   </div>
                 </div>
@@ -375,9 +372,9 @@ export default function ParentFinance() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-[#e2d8ff] bg-white p-4 shadow-[0_8px_20px_rgba(121,77,250,0.06)]">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-slate-900">{value}</div>
+    <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 shadow-[0_0_18px_rgba(140,235,255,0.08)]">
+      <div className="text-xs text-white/55">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-white">{value}</div>
     </div>
   );
 }

@@ -65,7 +65,9 @@ export default function ParentResults() {
 
         setChildren(Array.isArray(list) ? list : []);
         const first =
-          (Array.isArray(list) ? list : []).map(childIdentifier).find(Boolean) ?? "";
+          (Array.isArray(list) ? list : [])
+            .map(childIdentifier)
+            .find(Boolean) ?? "";
         setSelectedChildId(first);
       } catch (e) {
         if (!cancelled) {
@@ -145,9 +147,9 @@ export default function ParentResults() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Child</div>
-        <div className="mt-1 text-sm text-slate-600">
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Child</div>
+        <div className="mt-1 text-sm text-white/72">
           Select a linked child to view results.
         </div>
 
@@ -156,7 +158,7 @@ export default function ParentResults() {
             id="parent-results-child"
             value={selectedChildId}
             onChange={(e) => setSelectedChildId(e.target.value)}
-            className="w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15 sm:max-w-md"
+            className="input-glass w-full sm:max-w-md"
             disabled={loadingChildren || children.length === 0}
             aria-label="Select child for results"
             title="Select child for results"
@@ -188,18 +190,18 @@ export default function ParentResults() {
           </button>
 
           {childrenError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-2 text-sm text-red-700">
-              {childrenError}
-            </div>
+            <div className="error-banner p-2 text-sm">{childrenError}</div>
           )}
         </div>
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
+      <div className="teal-glow-card p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-lg font-semibold text-slate-900">Assessment Results</div>
-            <div className="mt-1 text-sm text-slate-600">
+            <div className="text-lg font-semibold text-white">
+              Assessment Results
+            </div>
+            <div className="mt-1 text-sm text-white/72">
               Parents can view marks, but cannot edit anything.
             </div>
           </div>
@@ -232,43 +234,39 @@ export default function ParentResults() {
         </div>
 
         {downloadError && (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {downloadError}
-          </div>
+          <div className="error-banner mt-4 p-4 text-sm">{downloadError}</div>
         )}
 
-        <div className="mt-1 text-sm text-slate-600">
+        <div className="mt-1 text-sm text-white/72">
           Download results as a CSV for the selected child.
         </div>
 
         {!loadingChildren && !hasChildren && (
-          <div className="mt-5 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+          <div className="mt-5 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
             No linked children found. Link a child first to view results.
           </div>
         )}
 
         {!selectedChildId && !loadingChildren && hasChildren && (
-          <div className="mt-5 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+          <div className="mt-5 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
             Select a child to view this information.
           </div>
         )}
 
         {loadingResults && (
-          <div className="mt-5 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+          <div className="mt-5 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
             Loading results...
           </div>
         )}
 
         {resultsError && (
-          <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {resultsError}
-          </div>
+          <div className="error-banner mt-5 p-4 text-sm">{resultsError}</div>
         )}
 
         {!loadingResults && !resultsError && selectedChildId && (
           <div className="mt-5 space-y-3">
             {results.length === 0 ? (
-              <div className="rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+              <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
                 No results found.
               </div>
             ) : (
@@ -278,12 +276,12 @@ export default function ParentResults() {
                 return (
                   <div
                     key={r.id}
-                    className="rounded-2xl border border-[#e2d8ff] bg-white p-4 shadow-[0_8px_20px_rgba(121,77,250,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#cbb8ff]"
+                    className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 shadow-[0_0_18px_rgba(140,235,255,0.08)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)]"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="font-semibold text-slate-900">{r.subject}</div>
-                        <div className="mt-1 text-xs text-slate-500">
+                        <div className="font-semibold text-white">{r.subject}</div>
+                        <div className="mt-1 text-xs text-white/55">
                           Date:{" "}
                           {r.date
                             ? new Date(r.date).toLocaleDateString()
@@ -292,10 +290,10 @@ export default function ParentResults() {
                       </div>
 
                       <div className="text-right">
-                        <div className="font-semibold text-slate-900">
+                        <div className="font-semibold text-white">
                           {r.score}/{max} ({pct}%)
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">
+                        <div className="mt-1 text-xs text-white/55">
                           {pct >= 75
                             ? "Excellent"
                             : pct >= 50
@@ -312,9 +310,9 @@ export default function ParentResults() {
         )}
       </div>
 
-      <div className="rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-lg font-semibold text-slate-900">Exam Dates</div>
-        <div className="mt-2 text-sm text-slate-600">
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Exam Dates</div>
+        <div className="mt-2 text-sm text-white/72">
           Upcoming exam schedule will appear here when published.
         </div>
       </div>

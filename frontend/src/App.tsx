@@ -1,10 +1,10 @@
 // src/App.tsx
 // Global router and application layout.
 // Responsibilities:
-// - Apply the global light background
+// - Apply the global neon glass background
 // - Render all routes
 // - Keep footer visible on all pages
-// - Provide a clean, minimal, professional visual base
+// - Provide a dark futuristic visual base
 
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
@@ -38,6 +38,7 @@ import ParentLinks from "./pages/parent/ParentLinks";
 import ParentAttendance from "./pages/parent/ParentAttendance";
 
 import { getUser } from "./lib/auth";
+import forgeBg from "./assets/forge-bg.png";
 
 function AppIndex() {
   const user = getUser();
@@ -48,17 +49,32 @@ function AppIndex() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="relative flex min-h-screen flex-col overflow-hidden text-black">
-        {/* Global light background */}
+      <div className="relative flex min-h-screen flex-col overflow-hidden text-white">
+
+        {/* GLOBAL BACKGROUND */}
         <div className="pointer-events-none absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-[#F2F3F5]" />
-          <div className="absolute inset-0 bg-gradient-to-br from-[#ffffff] via-[#F2F3F5] to-[#E5E7EB]" />
-          <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-[#4EC2F3]/10 blur-3xl" />
-          <div className="absolute top-32 right-[-80px] h-96 w-96 rounded-full bg-[#794DFA]/8 blur-3xl" />
-          <div className="absolute bottom-[-120px] left-1/3 h-80 w-80 rounded-full bg-[#7EF3E3]/10 blur-3xl" />
+
+          {/* Background image */}
+          <img
+            src={forgeBg}
+            alt="Forge neon background"
+            className="animated-bg absolute inset-0 h-full w-full object-cover scale-[1.02] md:scale-[1.01] lg:scale-100"
+          />
+
+          {/* dark cinematic overlay */}
+          <div className="absolute inset-0 bg-[#020C2A]/82" />
+
+          {/* gradient depth */}
+          <div className="absolute inset-0 bg-gradient-to-br from-[#081A44]/88 via-[#020C2A]/80 to-[#020C2A]/92" />
+
+          {/* ambient neon halos */}
+          <div className="absolute -top-28 -left-20 h-[28rem] w-[28rem] rounded-full bg-[#8CEBFF]/12 blur-3xl" />
+          <div className="absolute top-10 right-[-6rem] h-[32rem] w-[32rem] rounded-full bg-[#8C5BFF]/14 blur-3xl" />
+          <div className="absolute bottom-[-8rem] left-1/3 h-[24rem] w-[24rem] rounded-full bg-[#2F7BFF]/10 blur-3xl" />
+          <div className="absolute bottom-[-6rem] right-20 h-[18rem] w-[18rem] rounded-full bg-[#FF5EDB]/8 blur-3xl" />
         </div>
 
-        {/* Main routed content */}
+        {/* ROUTES */}
         <div className="relative z-10 flex-1">
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
@@ -121,12 +137,12 @@ export default function App() {
 
             <Route
               path="*"
-              element={<div className="p-6 text-black">Not found</div>}
+              element={<div className="p-6 text-white">Not found</div>}
             />
           </Routes>
         </div>
 
-        {/* Global footer */}
+        {/* FOOTER */}
         <div className="relative z-20 mt-10">
           <AppFooter />
         </div>

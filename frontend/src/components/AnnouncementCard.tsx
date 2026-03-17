@@ -4,7 +4,7 @@
 // - Show channel badge, title, body, author, and created date
 // - Allow privileged users to edit or delete announcements
 // - Keep card actions visually aligned with the shared app button system
-// - Give each channel its own light background identity
+// - Give each channel its own neon glass identity
 
 import { useEffect, useState } from "react";
 import type { Announcement } from "../lib/types";
@@ -19,60 +19,75 @@ type Props = {
   onDelete?: (id: string) => Promise<void> | void;
 };
 
-/**
- * Shared badge base style.
- */
 function badgeBase() {
   return "rounded-full border px-2.5 py-0.5 text-xs font-medium";
 }
 
-/**
- * Channel-specific badge styling.
- */
 function channelBadge(channel: string) {
   const base = badgeBase();
 
   if (channel === "modules") {
-    return `${base} border-[#4EC2F3]/30 bg-[#4EC2F3]/15 text-black`;
+    return `${base} border-[#38D5FF]/80 bg-[#38D5FF]/20 text-white shadow-[0_0_12px_rgba(56,213,255,0.35)]`;
   }
 
   if (channel === "faculty") {
-    return `${base} border-[#70ECE4]/35 bg-[#7EF3E3]/18 text-black`;
+    return `${base} border-[#35FFE3]/80 bg-[#35FFE3]/18 text-white shadow-[0_0_12px_rgba(53,255,227,0.35)]`;
   }
 
   if (channel === "clubs") {
-    return `${base} border-[#794DFA]/25 bg-[#794DFA]/12 text-black`;
+    return `${base} border-[#8C5BFF]/80 bg-[#8C5BFF]/18 text-white shadow-[0_0_12px_rgba(140,91,255,0.35)]`;
   }
 
   if (channel === "emergency") {
-    return `${base} border-red-300 bg-red-50 text-black`;
+    return `${base} border-[#FF5E7E]/80 bg-[#FF5E7E]/18 text-white shadow-[0_0_12px_rgba(255,94,126,0.35)]`;
   }
 
-  return `${base} border-[#49BCF3]/25 bg-[#49BCF3]/10 text-black`;
+  return `${base} border-[#4FA6FF]/80 bg-[#4FA6FF]/18 text-white shadow-[0_0_12px_rgba(79,166,255,0.35)]`;
 }
 
-/**
- * Card styling per channel.
- * This is the main visual identity change for each section.
- */
 function channelCardClass(channel: string) {
   if (channel === "modules") {
-    return "border-[#4EC2F3]/35 bg-[#4EC2F3]/10 hover:border-[#4EC2F3]/55 hover:bg-[#4EC2F3]/16";
+    return [
+      "border-[#38D5FF]/75 bg-[#081A44]/72",
+      "shadow-[0_0_0_1px_rgba(56,213,255,0.24),0_0_18px_rgba(56,213,255,0.24),0_12px_30px_rgba(2,12,42,0.55)]",
+      "hover:border-[#38D5FF] hover:bg-[#0B204D]/80",
+      "hover:shadow-[0_0_0_1px_rgba(56,213,255,0.36),0_0_26px_rgba(56,213,255,0.34),0_16px_36px_rgba(2,12,42,0.62)]",
+    ].join(" ");
   }
 
   if (channel === "faculty") {
-  return "border-[#70ECE4]/50 bg-[#7EF3E3]/20 hover:border-[#70ECE4]/70 hover:bg-[#7EF3E3]/30";
+    return [
+      "border-[#35FFE3]/75 bg-[#081A44]/72",
+      "shadow-[0_0_0_1px_rgba(53,255,227,0.24),0_0_18px_rgba(53,255,227,0.22),0_12px_30px_rgba(2,12,42,0.55)]",
+      "hover:border-[#35FFE3] hover:bg-[#0B204D]/80",
+      "hover:shadow-[0_0_0_1px_rgba(53,255,227,0.36),0_0_26px_rgba(53,255,227,0.30),0_16px_36px_rgba(2,12,42,0.62)]",
+    ].join(" ");
   }
 
   if (channel === "clubs") {
-    return "border-[#794DFA]/28 bg-[#794DFA]/10 hover:border-[#794DFA]/45 hover:bg-[#794DFA]/14";
+    return [
+      "border-[#8C5BFF]/75 bg-[#081A44]/72",
+      "shadow-[0_0_0_1px_rgba(140,91,255,0.24),0_0_18px_rgba(140,91,255,0.24),0_12px_30px_rgba(2,12,42,0.55)]",
+      "hover:border-[#8C5BFF] hover:bg-[#0B204D]/80",
+      "hover:shadow-[0_0_0_1px_rgba(140,91,255,0.36),0_0_26px_rgba(140,91,255,0.32),0_16px_36px_rgba(2,12,42,0.62)]",
+    ].join(" ");
   }
 
   if (channel === "emergency") {
-    return "border-red-300 bg-red-50 hover:border-red-400 hover:bg-red-100/70";
+    return [
+      "border-[#FF5E7E]/78 bg-[#081A44]/72",
+      "shadow-[0_0_0_1px_rgba(255,94,126,0.24),0_0_18px_rgba(255,94,126,0.22),0_12px_30px_rgba(2,12,42,0.55)]",
+      "hover:border-[#FF5E7E] hover:bg-[#0B204D]/80",
+      "hover:shadow-[0_0_0_1px_rgba(255,94,126,0.36),0_0_26px_rgba(255,94,126,0.30),0_16px_36px_rgba(2,12,42,0.62)]",
+    ].join(" ");
   }
 
-  return "border-[#49BCF3]/28 bg-white hover:border-[#49BCF3]/45 hover:bg-[#49BCF3]/08";
+  return [
+    "border-[#4FA6FF]/75 bg-[#081A44]/72",
+    "shadow-[0_0_0_1px_rgba(79,166,255,0.24),0_0_18px_rgba(79,166,255,0.22),0_12px_30px_rgba(2,12,42,0.55)]",
+    "hover:border-[#4FA6FF] hover:bg-[#0B204D]/80",
+    "hover:shadow-[0_0_0_1px_rgba(79,166,255,0.36),0_0_26px_rgba(79,166,255,0.30),0_16px_36px_rgba(2,12,42,0.62)]",
+  ].join(" ");
 }
 
 export default function AnnouncementCard({
@@ -81,20 +96,14 @@ export default function AnnouncementCard({
   onUpdate,
   onDelete,
 }: Props) {
-  // Local edit state
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(a.title);
   const [body, setBody] = useState(a.body);
   const [pinned, setPinned] = useState(a.pinned);
 
-  // Busy and error state for save/delete actions
   const [busy, setBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  /**
-   * Keep local form fields synced with incoming announcement data,
-   * but avoid overwriting while actively editing.
-   */
   useEffect(() => {
     if (editing) return;
     setTitle(a.title);
@@ -102,9 +111,6 @@ export default function AnnouncementCard({
     setPinned(a.pinned);
   }, [a.body, a.pinned, a.title, editing]);
 
-  /**
-   * Save edited announcement values.
-   */
   async function save() {
     if (!onUpdate) return;
 
@@ -134,9 +140,6 @@ export default function AnnouncementCard({
     }
   }
 
-  /**
-   * Delete the current announcement.
-   */
   async function remove() {
     if (!onDelete) return;
 
@@ -154,9 +157,6 @@ export default function AnnouncementCard({
     }
   }
 
-  /**
-   * Cancel edit mode and restore original values.
-   */
   function cancelEdit() {
     setTitle(a.title);
     setBody(a.body);
@@ -168,12 +168,11 @@ export default function AnnouncementCard({
   return (
     <div
       className={[
-        "rounded-3xl border p-5 transition-all duration-200",
-        "hover:-translate-y-[1px] hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]",
+        "rounded-3xl border p-5 transition-all duration-200 backdrop-blur-xl",
+        "hover:-translate-y-[1px]",
         channelCardClass(a.channel),
       ].join(" ")}
     >
-      {/* Badges */}
       <div className="flex flex-wrap items-center gap-2">
         <span className={channelBadge(a.channel)}>
           {a.channel[0].toUpperCase() + a.channel.slice(1)}
@@ -181,14 +180,13 @@ export default function AnnouncementCard({
 
         {(editing ? pinned : a.pinned) && (
           <span
-            className={`${badgeBase()} border-yellow-300 bg-yellow-100 text-black`}
+            className={`${badgeBase()} border-yellow-300/80 bg-yellow-300/20 text-white shadow-[0_0_12px_rgba(253,224,71,0.28)]`}
           >
             Pinned
           </span>
         )}
       </div>
 
-      {/* Edit form */}
       {editing ? (
         <div className="mt-4 space-y-3">
           <input
@@ -210,7 +208,7 @@ export default function AnnouncementCard({
             title="Announcement body"
           />
 
-          <label className="inline-flex items-center gap-2 text-sm text-black">
+          <label className="inline-flex items-center gap-2 text-sm text-white">
             <input
               type="checkbox"
               checked={pinned}
@@ -222,25 +220,22 @@ export default function AnnouncementCard({
           {editError && <div className="error-banner text-xs">{editError}</div>}
         </div>
       ) : (
-        /* Read-only display */
         <div className="mt-4">
-          <div className="text-lg font-semibold tracking-tight text-black">
+          <div className="text-lg font-semibold tracking-tight text-white">
             {a.title}
           </div>
 
-          <div className="mt-2 text-sm leading-relaxed text-black">
+          <div className="mt-2 text-sm leading-relaxed text-white/88">
             {a.body}
           </div>
         </div>
       )}
 
-      {/* Meta information */}
-      <div className="mt-5 flex items-center justify-between gap-4 text-xs text-black">
+      <div className="mt-5 flex items-center justify-between gap-4 text-xs text-white/72">
         <div className="truncate">{a.author}</div>
         <div className="shrink-0">{new Date(a.createdAt).toLocaleString()}</div>
       </div>
 
-      {/* Management actions */}
       {canManage && (
         <div className="mt-4 flex flex-wrap gap-2">
           {editing ? (

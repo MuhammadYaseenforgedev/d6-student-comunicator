@@ -15,19 +15,18 @@ export default class AppErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: unknown) {
-    // Logs to console for debugging
     console.error("AppErrorBoundary caught:", error);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="rounded-2xl border border-red-500/30 bg-red-950/30 p-6 text-red-100">
-          <div className="text-lg font-semibold">Page crashed</div>
-          <div className="mt-2 text-sm text-red-100/90">
+        <div className="rounded-3xl border border-[#ff5edb]/25 bg-[rgba(74,10,31,0.72)] p-6 text-[#ffe1e8] shadow-[0_0_22px_rgba(255,94,219,0.10),0_16px_38px_rgba(3,10,28,0.35)] backdrop-blur-2xl">
+          <div className="text-lg font-semibold text-white">Page crashed</div>
+          <div className="mt-2 text-sm text-[#ffe1e8]/90">
             {this.state.message}
           </div>
-          <div className="mt-4 text-xs text-red-200/70">
+          <div className="mt-4 text-xs text-[#ffd0df]/75">
             Open the browser console to see the full stack trace.
           </div>
         </div>

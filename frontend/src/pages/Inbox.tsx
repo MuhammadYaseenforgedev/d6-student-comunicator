@@ -3,7 +3,7 @@
 // - Lists conversation threads
 // - Allows creating a new conversation
 // - Parents are limited to messaging lecturers and admins
-// - Uses shared button and panel classes for consistent hover effects
+// - Uses shared neon glass styles for consistent layout
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -169,9 +169,9 @@ export default function Inbox() {
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[420px_1fr]">
         {/* New conversation panel */}
-        <div className="glass-panel p-5">
-          <div className="text-lg font-semibold text-black">New Message</div>
-          <div className="mt-1 text-sm text-black">
+        <div className="teal-glow-card p-5">
+          <div className="text-lg font-semibold text-white">New Message</div>
+          <div className="mt-1 text-sm text-white/72">
             {isParent
               ? "Start a new conversation with a lecturer or admin."
               : "Start a new conversation by entering the other participant's email."}
@@ -181,7 +181,7 @@ export default function Inbox() {
             <div>
               <label
                 htmlFor="inbox-participant-email"
-                className="block text-sm text-black"
+                className="block text-sm text-white/80"
               >
                 Participant email
               </label>
@@ -241,17 +241,17 @@ export default function Inbox() {
         </div>
 
         {/* Thread list panel */}
-        <div className="glass-panel p-5">
-          <div className="text-lg font-semibold text-black">Conversations</div>
-          <div className="mt-1 text-sm text-black">
+        <div className="teal-glow-card p-5">
+          <div className="text-lg font-semibold text-white">Conversations</div>
+          <div className="mt-1 text-sm text-white/72">
             {loading ? "Loading..." : `${threads.length} thread(s)`}
           </div>
 
           <div className="mt-4 space-y-2">
             {loading ? (
-              <div className="text-black">Loading...</div>
+              <div className="text-white/75">Loading...</div>
             ) : threads.length === 0 ? (
-              <div className="rounded-3xl border border-[#DADDE2] bg-white p-6 text-black">
+              <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-6 text-white/80">
                 No conversations yet.
               </div>
             ) : (
@@ -260,14 +260,14 @@ export default function Inbox() {
                   key={t.id}
                   type="button"
                   onClick={() => navigate(`/app/messages/${t.id}`)}
-                  className="w-full rounded-3xl border border-[#DADDE2] bg-white p-4 text-left transition-all duration-200 hover:-translate-y-[1px] hover:border-[#4EC2F3]/50 hover:bg-[#4EC2F3]/08 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                  className="w-full rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 text-left text-white transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)] hover:shadow-[0_0_18px_rgba(140,235,255,0.12)]"
                   title={`Open conversation with ${threadTitle(t)}`}
                   aria-label={`Open conversation with ${threadTitle(t)}`}
                 >
-                  <div className="font-semibold text-black">
+                  <div className="font-semibold text-white">
                     {threadTitle(t)}
                   </div>
-                  <div className="mt-1 text-xs text-black">
+                  <div className="mt-1 text-xs text-white/70">
                     {t.lastMessageAt
                       ? `Last message: ${new Date(
                           t.lastMessageAt

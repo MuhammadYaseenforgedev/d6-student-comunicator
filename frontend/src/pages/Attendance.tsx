@@ -5,8 +5,7 @@
 // - Show student attendance summary/history
 // - Create attendance sessions
 // - Mark attendance per session
-// - Use consistent shared styles across views
-// - Apply purple block styling for this section
+// - Use consistent neon glass styles across views
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
@@ -45,9 +44,9 @@ function defaultFromDate(daysBack: number): string {
  * Color class for attendance status.
  */
 function statusClass(status: AttendanceStatus): string {
-  if (status === "PRESENT") return "text-emerald-600";
-  if (status === "LATE") return "text-amber-600";
-  return "text-red-600";
+  if (status === "PRESENT") return "text-emerald-300";
+  if (status === "LATE") return "text-amber-300";
+  return "text-rose-300";
 }
 
 type MarkMap = Record<string, AttendanceStatus>;
@@ -263,8 +262,8 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Create session panel */}
-        <div className="glass-panel space-y-4 border-[#794DFA]/20 bg-[#794DFA]/08 p-5">
-          <div className="text-lg font-semibold text-black">Create Session</div>
+        <div className="teal-glow-card space-y-4 p-5">
+          <div className="text-lg font-semibold text-white">Create Session</div>
 
           <Field label="Module">
             <select
@@ -361,8 +360,8 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
         </div>
 
         {/* Mark attendance panel */}
-        <div className="glass-panel space-y-4 border-[#794DFA]/20 bg-[#794DFA]/08 p-5">
-          <div className="text-lg font-semibold text-black">
+        <div className="teal-glow-card space-y-4 p-5">
+          <div className="text-lg font-semibold text-white">
             Mark Attendance
           </div>
 
@@ -387,14 +386,14 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
             </select>
           </Field>
 
-          <div className="max-h-[420px] overflow-auto rounded-xl border border-[#794DFA]/18 bg-white">
+          <div className="max-h-[420px] overflow-auto rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)]">
             {students.length === 0 ? (
-              <div className="p-4 text-sm text-black">
+              <div className="p-4 text-sm text-white/80">
                 No enrolled students for this module.
               </div>
             ) : (
               <table className="min-w-full text-sm">
-                <thead className="bg-[#794DFA]/06 text-black">
+                <thead className="bg-[rgba(140,235,255,0.08)] text-white/85">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Student</th>
                     <th className="px-3 py-2 text-left font-medium">Status</th>
@@ -407,10 +406,10 @@ function LecturerAttendanceView({ role }: { role: "LECTURER" | "ADMIN" }) {
                       s.email;
 
                     return (
-                      <tr key={s.id} className="border-t border-[#DADDE2]">
-                        <td className="px-3 py-2 text-black">
+                      <tr key={s.id} className="border-t border-[rgba(140,235,255,0.12)]">
+                        <td className="px-3 py-2 text-white">
                           <div>{name}</div>
-                          <div className="text-xs text-black">
+                          <div className="text-xs text-white/60">
                             {s.studentNumber ?? s.email}
                           </div>
                         </td>
@@ -503,7 +502,7 @@ function StudentAttendanceView() {
         subtitle="Your attendance summary and session history."
       />
 
-      <div className="glass-panel border-[#794DFA]/20 bg-[#794DFA]/08 p-4">
+      <div className="teal-glow-card p-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <input
             id="attendance-from-date"
@@ -544,45 +543,45 @@ function StudentAttendanceView() {
         <SummaryCard
           label="Present"
           value={summary.present}
-          className="text-emerald-600"
+          className="text-emerald-300"
         />
         <SummaryCard
           label="Late"
           value={summary.late}
-          className="text-amber-600"
+          className="text-amber-300"
         />
         <SummaryCard
           label="Absent"
           value={summary.absent}
-          className="text-red-600"
+          className="text-rose-300"
         />
         <SummaryCard
           label="Total"
           value={summary.total}
-          className="text-black"
+          className="text-white"
         />
       </div>
 
-      <div className="glass-panel border-[#794DFA]/20 bg-[#794DFA]/08 p-5">
-        <div className="text-lg font-semibold text-black">Recent Sessions</div>
+      <div className="teal-glow-card p-5">
+        <div className="text-lg font-semibold text-white">Recent Sessions</div>
 
         <div className="mt-3 space-y-2">
           {(data?.value ?? []).length === 0 ? (
-            <div className="text-sm text-black">
+            <div className="text-sm text-white/75">
               No attendance records in this range.
             </div>
           ) : (
             data!.value.map((row) => (
               <div
                 key={`${row.sessionId}-${row.markedAt}`}
-                className="rounded-2xl border border-[#794DFA]/18 bg-white p-3 transition-all duration-200 hover:-translate-y-[1px] hover:border-[#794DFA]/35 hover:bg-[#794DFA]/06 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-3 transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)] hover:shadow-[0_0_18px_rgba(140,235,255,0.10)]"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="font-semibold text-black">
+                    <div className="font-semibold text-white">
                       {row.moduleCode} - {row.moduleName}
                     </div>
-                    <div className="text-xs text-black">
+                    <div className="text-xs text-white/60">
                       {row.date} | {row.facultyName}
                     </div>
                   </div>
@@ -617,7 +616,7 @@ function Field({
 }) {
   return (
     <div>
-      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-black">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/72">
         {label}
       </div>
       {children}
@@ -638,8 +637,8 @@ function SummaryCard({
   className: string;
 }) {
   return (
-    <div className="glass-panel border-[#794DFA]/20 bg-[#794DFA]/08 p-4">
-      <div className="text-xs uppercase tracking-wide text-black">
+    <div className="teal-glow-card p-4">
+      <div className="text-xs uppercase tracking-wide text-white/65">
         {label}
       </div>
       <div className={["mt-2 text-2xl font-bold", className].join(" ")}>
@@ -661,8 +660,8 @@ function Alert({
 }) {
   const className =
     tone === "error"
-      ? "border-red-200 bg-red-50 text-red-700"
-      : "border-[#794DFA]/20 bg-[#794DFA]/08 text-black";
+      ? "border-[rgba(255,94,130,0.22)] bg-[rgba(74,10,31,0.72)] text-[#ffe1e8]"
+      : "border-[rgba(140,235,255,0.22)] bg-[rgba(12,31,78,0.70)] text-white";
 
   return (
     <div className={["rounded-2xl border p-3 text-sm", className].join(" ")}>

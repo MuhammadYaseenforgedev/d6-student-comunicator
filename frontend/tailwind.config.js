@@ -5,25 +5,30 @@ export default {
     extend: {
       colors: {
         brand: {
-          sky1: "#4EC2F3",
-          sky2: "#49BCF3",
-          aqua1: "#7EF3E3",
-          aqua2: "#70ECE4",
-          purple1: "#794DFA",
-          purple2: "#6C44FD",
-          bg: "#F2F3F5",
-          soft: "#E5E7EB",
-          border: "#DADDE2",
+          deep: "#020C2A",
+          dark: "#081A44",
+          mid: "#0E2A63",
+          electricBlue: "#2F7BFF",
+          neonBlue: "#4FA6FF",
+          neonCyan: "#8CEBFF",
+          vividPurple: "#6B4DFF",
+          neonPurple: "#8C5BFF",
+          magentaGlow: "#FF5EDB",
         },
       },
       boxShadow: {
-        soft: "0 1px 2px rgba(15,23,42,0.04), 0 12px 30px rgba(15,23,42,0.05)",
-        softLg: "0 2px 8px rgba(15,23,42,0.05), 0 16px 40px rgba(15,23,42,0.07)",
-        softXl: "0 4px 16px rgba(15,23,42,0.06), 0 22px 50px rgba(15,23,42,0.08)",
-        primaryBtn: "0 8px 20px rgba(121,77,250,0.10), 0 1px 2px rgba(15,23,42,0.06)",
+        tealGlow:
+          "0 0 22px rgba(140,235,255,0.14), 0 14px 38px rgba(3,10,28,0.42)",
+        purpleGlow:
+          "0 0 22px rgba(140,91,255,0.14), 0 14px 38px rgba(3,10,28,0.42)",
+        glass:
+          "0 0 0 1px rgba(140,235,255,0.08) inset, 0 14px 38px rgba(3,10,28,0.42)",
       },
       borderRadius: {
         "4xl": "2rem",
+      },
+      backdropBlur: {
+        xs: "2px",
       },
     },
   },

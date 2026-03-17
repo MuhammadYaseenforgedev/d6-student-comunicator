@@ -2,7 +2,7 @@
 // Calendar page for non-parent roles.
 // - Allows eligible users to create calendar entries
 // - Lists upcoming calendar entries grouped by day
-// - Uses the shared button system for consistent hover and border effects
+// - Uses the shared neon glass button system for consistent hover and border effects
 
 import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
@@ -91,20 +91,17 @@ export default function Calendar() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         {/* Create entry panel */}
-        <div className="glass-panel border-[#794DFA]/20 bg-[#794DFA]/08 p-5">
-          <h2 className="text-lg font-semibold text-black">Add an entry</h2>
-          <p className="mt-1 text-sm text-black">
-            Saved to PostgreSQL (per-user).
-          </p>
+        <div className="teal-glow-card p-5">
+          <h2 className="text-lg font-semibold text-white">Add an entry</h2>
 
           {!canCreate ? (
-            <div className="mt-4 rounded-2xl border border-[#794DFA]/18 bg-white p-3 text-sm text-black">
+            <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-3 text-sm text-white/80">
               Your role cannot create calendar entries.
             </div>
           ) : (
             <form onSubmit={onCreate} className="mt-4 space-y-3">
               <div>
-                <label htmlFor="calendar-title" className="text-sm text-black">
+                <label htmlFor="calendar-title" className="text-sm text-white/80">
                   Title
                 </label>
                 <input
@@ -121,7 +118,7 @@ export default function Calendar() {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="calendar-start" className="text-sm text-black">
+                  <label htmlFor="calendar-start" className="text-sm text-white/80">
                     Start
                   </label>
                   <input
@@ -137,7 +134,7 @@ export default function Calendar() {
                 </div>
 
                 <div>
-                  <label htmlFor="calendar-end" className="text-sm text-black">
+                  <label htmlFor="calendar-end" className="text-sm text-white/80">
                     End
                   </label>
                   <input
@@ -154,7 +151,7 @@ export default function Calendar() {
               </div>
 
               <div>
-                <label htmlFor="calendar-location" className="text-sm text-black">
+                <label htmlFor="calendar-location" className="text-sm text-white/80">
                   Location (optional)
                 </label>
                 <input
@@ -172,7 +169,7 @@ export default function Calendar() {
               <div>
                 <label
                   htmlFor="calendar-description"
-                  className="text-sm text-black"
+                  className="text-sm text-white/80"
                 >
                   Description (optional)
                 </label>
@@ -203,23 +200,23 @@ export default function Calendar() {
         </div>
 
         {/* Upcoming entries panel */}
-        <div className="glass-panel border-[#794DFA]/20 bg-[#794DFA]/08 p-5">
+        <div className="teal-glow-card p-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-black">Upcoming</h2>
-            <span className="text-xs text-black">
+            <h2 className="text-lg font-semibold text-white">Upcoming</h2>
+            <span className="text-xs text-white/65">
               {loading ? "Loading..." : ""}
             </span>
           </div>
 
           {grouped.length === 0 && !loading ? (
-            <div className="mt-4 rounded-2xl border border-[#794DFA]/18 bg-white p-4 text-sm text-black">
+            <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
               No calendar entries yet.
             </div>
           ) : (
             <div className="mt-4 space-y-4">
               {grouped.map(([day, entries]) => (
                 <div key={day}>
-                  <div className="mb-2 text-xs font-semibold text-black">
+                  <div className="mb-2 text-xs font-semibold text-white/72">
                     {day}
                   </div>
 
@@ -227,23 +224,23 @@ export default function Calendar() {
                     {entries.map((it) => (
                       <div
                         key={it.id}
-                        className="rounded-2xl border border-[#794DFA]/18 bg-white p-4 transition-all duration-200 hover:-translate-y-[1px] hover:border-[#794DFA]/35 hover:bg-[#794DFA]/06 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                        className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)] hover:shadow-[0_0_18px_rgba(140,235,255,0.10)]"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate font-semibold text-black">
+                            <div className="truncate font-semibold text-white">
                               {it.title}
                             </div>
-                            <div className="mt-1 text-xs text-black">
+                            <div className="mt-1 text-xs text-white/70">
                               {fmt(it.startsAt)} → {fmt(it.endsAt)}
                             </div>
                             {it.location && (
-                              <div className="mt-1 text-xs text-black">
+                              <div className="mt-1 text-xs text-white/65">
                                 {it.location}
                               </div>
                             )}
                             {it.description && (
-                              <div className="mt-2 whitespace-pre-wrap text-sm text-black">
+                              <div className="mt-2 whitespace-pre-wrap text-sm text-white/85">
                                 {it.description}
                               </div>
                             )}

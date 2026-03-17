@@ -95,7 +95,8 @@ export default function ThreadPage() {
       requestAnimationFrame(() => {
         if (!container) return;
         const newScrollHeight = container.scrollHeight;
-        container.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
+        container.scrollTop =
+          prevScrollTop + (newScrollHeight - prevScrollHeight);
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load older messages");
@@ -158,7 +159,7 @@ export default function ThreadPage() {
 
   if (!threadId) {
     return (
-      <div className="text-black">
+      <div className="text-white">
         Missing thread id.{" "}
         <button className="underline" onClick={() => navigate("/app/messages")}>
           Back
@@ -187,14 +188,14 @@ export default function ThreadPage() {
 
       {error && <div className="error-banner mt-4">{error}</div>}
 
-      <div className="glass-panel mt-6">
+      <div className="teal-glow-card mt-6">
         {/* Message list */}
         <div
           ref={scrollRef}
           className="h-[60vh] space-y-3 overflow-y-auto p-4"
         >
           {loading ? (
-            <div className="text-black">Loading…</div>
+            <div className="text-white/75">Loading…</div>
           ) : (
             <>
               <div className="flex justify-center">
@@ -210,12 +211,12 @@ export default function ThreadPage() {
                     {loadingMore ? "Loading older…" : "Load older"}
                   </button>
                 ) : (
-                  <div className="text-xs text-black">No older messages</div>
+                  <div className="text-xs text-white/60">No older messages</div>
                 )}
               </div>
 
               {messages.length === 0 ? (
-                <div className="py-6 text-center text-sm text-black">
+                <div className="py-6 text-center text-sm text-white/75">
                   No messages yet. Send the first one.
                 </div>
               ) : (
@@ -228,12 +229,12 @@ export default function ThreadPage() {
                       className={[
                         "max-w-[78%] rounded-3xl border px-4 py-3 text-sm transition-all duration-200",
                         isMine(m)
-                          ? "border-[#4EC2F3]/35 bg-[#4EC2F3]/16 text-black"
-                          : "border-[#DADDE2] bg-white text-black",
+                          ? "border-[rgba(140,235,255,0.28)] bg-[rgba(79,166,255,0.16)] text-white shadow-[0_0_16px_rgba(140,235,255,0.10)]"
+                          : "border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.72)] text-white",
                       ].join(" ")}
                     >
                       <div className="whitespace-pre-wrap">{m.body}</div>
-                      <div className="mt-2 text-[11px] text-black">
+                      <div className="mt-2 text-[11px] text-white/60">
                         {new Date(m.createdAt).toLocaleString()}
                       </div>
                     </div>
@@ -245,7 +246,7 @@ export default function ThreadPage() {
         </div>
 
         {/* Composer */}
-        <div className="flex gap-2 border-t border-[#DADDE2] p-4">
+        <div className="flex gap-2 border-t border-[rgba(140,235,255,0.14)] p-4">
           <input
             value={body}
             onChange={(e) => setBody(e.target.value)}

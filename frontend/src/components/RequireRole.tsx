@@ -6,14 +6,13 @@ import type { UserRole } from "../lib/auth";
 import { getUser } from "../lib/auth";
 
 type Props = {
-  roles: UserRole[]; // allowed roles for this route section
+  roles: UserRole[];
 };
 
 export default function RequireRole({ roles }: Props) {
   const location = useLocation();
   const user = getUser();
 
-  // If not logged in, kick to login and remember where they wanted to go.
   if (!user) {
     return (
       <Navigate
@@ -24,8 +23,6 @@ export default function RequireRole({ roles }: Props) {
     );
   }
 
-  // If logged in but wrong role, kick back to app home.
-  // (You can later swap this to a real "403 Forbidden" page.)
   if (!roles.includes(user.role)) {
     const fallbackTo = user.role === "PARENT" ? "/app/parent" : "/app";
     return (
@@ -37,6 +34,5 @@ export default function RequireRole({ roles }: Props) {
     );
   }
 
-  // Allowed: render nested routes
   return <Outlet />;
 }

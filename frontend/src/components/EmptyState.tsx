@@ -22,7 +22,7 @@ export default function EmptyState({ title, subtitle, action }: Props) {
           <div className="text-base font-semibold text-white">{title}</div>
 
           {subtitle && (
-            <div className="mt-1 text-sm text-slate-400">{subtitle}</div>
+            <div className="mt-1 text-sm text-white/72">{subtitle}</div>
           )}
 
           {action && <div className="mt-4">{action}</div>}

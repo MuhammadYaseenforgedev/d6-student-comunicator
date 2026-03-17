@@ -5,19 +5,14 @@
 // - Render the current page content via <Outlet />
 // - Show role-aware navigation
 // - Display logged-in user summary
-// - Keep visual styling consistent with the app-wide light theme
+// - Keep visual styling consistent with the app-wide neon glass theme
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Link,
-  NavLink,
-  Outlet,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearAuth, getUser } from "../lib/auth";
 import AppErrorBoundary from "./AppErrorBoundary";
 import { fetchMeProfile, type MeProfile } from "../lib/authService";
+import AnimatedForgeLogo from "./AnimatedForgeLogo";
 
 function Item({
   to,
@@ -39,7 +34,6 @@ function Item({
 }
 
 export default function AppShell() {
-  const location = useLocation();
   const navigate = useNavigate();
   const user = getUser();
 
@@ -92,33 +86,6 @@ export default function AppShell() {
     return profile?.courseName?.trim() || "Course not assigned";
   }, [isStudent, profile?.courseName]);
 
-  const title =
-    location.pathname.includes("/calendar")
-      ? "Calendar"
-      : location.pathname.includes("/admin/parent-links")
-      ? "Parent Link Approvals"
-      : location.pathname.includes("/manage-results")
-      ? "Manage Results"
-      : location.pathname.includes("/uploads")
-      ? "Uploads"
-      : location.pathname.includes("/attendance")
-      ? "Attendance"
-      : location.pathname.includes("/modules")
-      ? "Modules"
-      : location.pathname.includes("/faculty")
-      ? "Faculty"
-      : location.pathname.includes("/clubs")
-      ? "Clubs"
-      : location.pathname.includes("/emergency")
-      ? "Emergency"
-      : location.pathname.includes("/messages")
-      ? "Messages"
-      : location.pathname.includes("/parent")
-      ? "Parent Portal"
-      : location.pathname.includes("/c/")
-      ? "Channel"
-      : "Home";
-
   function logout() {
     clearAuth();
     navigate("/login", { replace: true });
@@ -131,15 +98,14 @@ export default function AppShell() {
           {/* Sidebar */}
           <aside className="glass-panel-premium relative overflow-hidden p-4">
             <div className="pointer-events-none absolute inset-0 opacity-100">
-              <div className="absolute -left-16 -top-16 h-48 w-48 rounded-full bg-[#4EC2F3]/10 blur-3xl" />
-              <div className="absolute -bottom-16 -right-12 h-52 w-52 rounded-full bg-[#794DFA]/10 blur-3xl" />
+              <div className="absolute -left-16 -top-16 h-48 w-48 rounded-full bg-[#8CEBFF]/12 blur-3xl" />
+              <div className="absolute -bottom-16 -right-12 h-52 w-52 rounded-full bg-[#8C5BFF]/12 blur-3xl" />
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/50 to-transparent" />
             </div>
 
             <div className="relative">
               <Link to={homeTo} className="block">
-                <div className="text-2xl font-bold tracking-tight">
-                  <span className="app-title-gradient">Forge Communicator</span>
-                </div>
+                <AnimatedForgeLogo />
               </Link>
 
               <div className="mt-6 space-y-1.5">
@@ -185,18 +151,33 @@ export default function AppShell() {
                 )}
               </div>
 
-              <div className="mt-6 rounded-3xl border border-[#DADDE2] bg-[#F8FAFC] p-4">
-                <div className="text-xs uppercase tracking-[0.2em] text-black">
+              <div className="mt-6 rounded-3xl border border-[rgba(140,235,255,0.14)] bg-[rgba(9,23,54,0.72)] p-4 backdrop-blur-xl shadow-[0_0_0_1px_rgba(140,235,255,0.04)_inset,0_10px_24px_rgba(3,10,28,0.28)]">
+                <div className="text-xs uppercase tracking-[0.2em] text-white/60">
                   Signed in as
                 </div>
 
-                <div className="mt-2 truncate text-sm font-semibold text-black">
-                  {user?.email ?? "Unknown"}
+                <div className="mt-2 truncate text-sm font-semibold">
+                  <span className="app-title-gradient">
+                    {user?.email ?? "Unknown"}
+                  </span>
                 </div>
 
-                <div className="mt-1 text-xs text-black">
-                  Role: {user?.role ?? "Unknown"}
+                <div className="mt-2">
+                  <span className="inline-flex items-center rounded-full border border-[#8CEBFF]/30 bg-[#8CEBFF]/10 px-3 py-1 text-xs font-medium text-[#8CEBFF]">
+                    {user?.role ?? "Unknown"}
+                  </span>
                 </div>
+
+                {isStudent && (
+                  <div className="mt-3 rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,19,47,0.68)] px-3 py-2 backdrop-blur-xl">
+                    <div className="text-sm font-semibold text-[#8CEBFF]">
+                      {studentDisplayName}
+                    </div>
+                    <div className="text-xs text-white/70">
+                      {studentCourse}
+                    </div>
+                  </div>
+                )}
 
                 <button
                   onClick={logout}
@@ -214,38 +195,8 @@ export default function AppShell() {
           {/* Main content area */}
           <main className="glass-panel relative overflow-hidden">
             <div className="pointer-events-none absolute inset-0 opacity-100">
-              <div className="absolute left-0 top-0 h-32 w-32 rounded-full bg-[#4EC2F3]/8 blur-3xl" />
-              <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-[#7EF3E3]/10 blur-3xl" />
-            </div>
-
-            <div className="relative border-b border-[#DADDE2] px-5 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-xl font-semibold tracking-tight text-slate-900">
-                    {title}
-                  </div>
-
-                  <div className="mt-1 text-xs text-black">
-                    {location.pathname}
-                  </div>
-
-                  {isStudent && (
-                    <div className="mt-3 rounded-2xl border border-[#DADDE2] bg-[#F8FAFC] px-3 py-2">
-                      <div className="text-sm font-semibold text-slate-900">
-                        {studentDisplayName}
-                      </div>
-                      <div className="text-xs text-black">
-                        {studentCourse}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="hidden items-center gap-2 md:flex">
-                  <div className="status-dot" />
-                  <div className="text-xs text-black">Live</div>
-                </div>
-              </div>
+              <div className="absolute left-0 top-0 h-36 w-36 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
+              <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
             </div>
 
             <div className="relative p-6">

@@ -49,7 +49,9 @@ export default function ParentCalendar() {
         if (cancelled) return;
         setChildren(Array.isArray(list) ? list : []);
         const firstChildId =
-          (Array.isArray(list) ? list : []).map(childCalendarId).find(Boolean) ?? "";
+          (Array.isArray(list) ? list : [])
+            .map(childCalendarId)
+            .find(Boolean) ?? "";
         setSelectedChildId((prev) => prev || firstChildId);
       } catch (e) {
         if (!cancelled) {
@@ -110,15 +112,15 @@ export default function ParentCalendar() {
         }
       />
 
-      <div className="mt-4 rounded-3xl border border-[#d9ccff] bg-white p-4 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
-        <div className="text-sm font-semibold text-slate-900">Child</div>
+      <div className="mt-4 teal-glow-card p-4">
+        <div className="text-sm font-semibold text-white">Child</div>
 
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
           <select
             id="parent-calendar-child"
             value={selectedChildId}
             onChange={(e) => setSelectedChildId(e.target.value)}
-            className="w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15 sm:max-w-md"
+            className="input-glass w-full sm:max-w-md"
             disabled={loadingChildren || !hasChildren}
             aria-label="Select child for calendar"
             title="Select child for calendar"
@@ -137,44 +139,40 @@ export default function ParentCalendar() {
           </select>
 
           {childrenError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-2 text-sm text-red-700">
-              {childrenError}
-            </div>
+            <div className="error-banner p-2 text-sm">{childrenError}</div>
           )}
         </div>
 
-        <div className="mt-2 text-xs text-slate-600">
-          Parents can view a child's entries, but cannot create or delete.
+        <div className="mt-2 text-xs text-white/60">
+          Parents can view a child&apos;s entries, but cannot create or delete.
         </div>
       </div>
 
       {calendarError && (
-        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {calendarError}
-        </div>
+        <div className="error-banner mt-3 p-3 text-sm">{calendarError}</div>
       )}
 
-      <div className="mt-6 rounded-3xl border border-[#d9ccff] bg-white p-5 shadow-[0_0_0_1px_rgba(121,77,250,0.05),0_12px_28px_rgba(121,77,250,0.10)]">
+      <div className="mt-6 teal-glow-card p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Upcoming</h2>
-          <span className="text-xs text-slate-500">{loading ? "Loading..." : ""}</span>
+          <h2 className="text-lg font-semibold text-white">Upcoming</h2>
+          <span className="text-xs text-white/55">{loading ? "Loading..." : ""}</span>
         </div>
 
         {!selectedChildId ? (
-          <div className="mt-4 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+          <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
             {hasChildren
               ? "Select a child to load their calendar."
               : "No linked children. Link a child first."}
           </div>
         ) : groupedTyped.length === 0 && !loading ? (
-          <div className="mt-4 rounded-2xl border border-[#e2d8ff] bg-[#faf8ff] p-4 text-sm text-slate-700">
+          <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
             No events found
           </div>
         ) : (
           <div className="mt-4 space-y-4">
             {groupedTyped.map(([day, entries]) => (
               <div key={day}>
-                <div className="mb-2 text-xs font-semibold text-[#794DFA]">
+                <div className="mb-2 text-xs font-semibold text-[#8CEBFF]">
                   {day}
                 </div>
 
@@ -182,19 +180,19 @@ export default function ParentCalendar() {
                   {entries.map((it) => (
                     <div
                       key={it.id}
-                      className="rounded-2xl border border-[#e2d8ff] bg-white p-4 shadow-[0_8px_20px_rgba(121,77,250,0.06)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[#cbb8ff]"
+                      className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 shadow-[0_0_18px_rgba(140,235,255,0.08)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)]"
                     >
-                      <div className="font-semibold text-slate-900">{it.title}</div>
-                      <div className="mt-1 text-xs text-slate-600">
+                      <div className="font-semibold text-white">{it.title}</div>
+                      <div className="mt-1 text-xs text-white/60">
                         {fmt(it.startsAt)} - {fmt(it.endsAt)}
                       </div>
                       {it.location && (
-                        <div className="mt-1 text-xs text-slate-500">
+                        <div className="mt-1 text-xs text-white/55">
                           {it.location}
                         </div>
                       )}
                       {it.description && (
-                        <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-white/72">
                           {it.description}
                         </div>
                       )}

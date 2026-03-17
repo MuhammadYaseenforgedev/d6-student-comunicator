@@ -93,7 +93,7 @@ export default function NewAnnouncementModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#020C2A]/72 p-4 backdrop-blur-md"
       onMouseDown={onBackdropClick}
       onKeyDown={onKeyDown}
       role="dialog"
@@ -105,10 +105,7 @@ export default function NewAnnouncementModal({
       <div className="glass-panel-strong w-full max-w-lg p-5 text-white shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">New announcement</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              Post an update to a channel. Keep it clear and short.
-            </p>
+            <h2 className="text-lg font-semibold text-white">New announcement</h2>
           </div>
 
           <button
@@ -128,7 +125,7 @@ export default function NewAnnouncementModal({
             <div>
               <label
                 htmlFor="announcement-channel"
-                className="text-sm text-slate-300"
+                className="text-sm text-white/78"
               >
                 Channel
               </label>
@@ -149,7 +146,7 @@ export default function NewAnnouncementModal({
               </select>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-slate-300 sm:mt-6">
+            <label className="flex items-center gap-2 text-sm text-white/78 sm:mt-6">
               <input
                 type="checkbox"
                 checked={pinned}
@@ -163,7 +160,7 @@ export default function NewAnnouncementModal({
           <div>
             <label
               htmlFor="announcement-title"
-              className="text-sm text-slate-300"
+              className="text-sm text-white/78"
             >
               Title
             </label>
@@ -179,7 +176,7 @@ export default function NewAnnouncementModal({
               title="Announcement title"
             />
             {!titleOk && title.length > 0 && (
-              <div className="mt-1 text-xs text-slate-500">
+              <div className="mt-1 text-xs text-white/55">
                 Min 3 characters.
               </div>
             )}
@@ -189,7 +186,7 @@ export default function NewAnnouncementModal({
           <div>
             <label
               htmlFor="announcement-body"
-              className="text-sm text-slate-300"
+              className="text-sm text-white/78"
             >
               Body
             </label>
@@ -206,7 +203,7 @@ export default function NewAnnouncementModal({
               title="Announcement body"
             />
             {!bodyOk && body.length > 0 && (
-              <div className="mt-1 text-xs text-slate-500">
+              <div className="mt-1 text-xs text-white/55">
                 Min 5 characters.
               </div>
             )}

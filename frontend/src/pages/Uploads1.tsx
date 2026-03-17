@@ -5,7 +5,7 @@
 // - List uploaded files the current user can access
 // - Support download for visible files
 // - Support delete for lecturer/admin roles
-// - Keep styling aligned with the shared light theme
+// - Keep styling aligned with the shared neon glass theme
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
@@ -138,11 +138,11 @@ export default function Uploads1() {
       >
         {/* Upload form panel */}
         {canUpload && (
-          <div className="glass-panel border-[#794DFA]/20 bg-[#794DFA]/08 p-5">
-            <div className="text-lg font-semibold text-black">
+          <div className="teal-glow-card p-5">
+            <div className="text-lg font-semibold text-white">
               Upload a file
             </div>
-            <div className="mt-1 text-sm text-black">
+            <div className="mt-1 text-sm text-white/72">
               {uploadKind === "STUDENT_SUBMISSION"
                 ? "Student submissions are visible to staff and to you."
                 : "Saved to backend (disk) + metadata in PostgreSQL."}
@@ -152,7 +152,7 @@ export default function Uploads1() {
               <div>
                 <label
                   htmlFor="upload-kind"
-                  className="block text-sm text-black"
+                  className="block text-sm text-white/80"
                 >
                   Type
                 </label>
@@ -164,7 +164,7 @@ export default function Uploads1() {
                       : "Lecturer material"
                   }
                   readOnly
-                  className="input-glass mt-2 text-black"
+                  className="input-glass mt-2"
                   aria-label="Upload type"
                   title="Upload type"
                 />
@@ -173,7 +173,7 @@ export default function Uploads1() {
               <div>
                 <label
                   htmlFor="upload-file"
-                  className="block text-sm text-black"
+                  className="block text-sm text-white/80"
                 >
                   File
                 </label>
@@ -181,7 +181,7 @@ export default function Uploads1() {
                   id="upload-file"
                   type="file"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  className="mt-2 block w-full text-sm text-black file:mr-4 file:rounded-xl file:border file:border-[#DADDE2] file:bg-white file:px-4 file:py-2 file:text-black file:transition-all file:duration-200 hover:file:border-[#794DFA]/35 hover:file:bg-[#794DFA]/08"
+                  className="mt-2 block w-full text-sm text-white file:mr-4 file:rounded-xl file:border file:file:border-[rgba(140,235,255,0.18)] file:file:bg-[rgba(8,18,48,0.86)] file:file:px-4 file:file:py-2 file:file:text-white file:file:transition-all file:file:duration-200 hover:file:file:border-[rgba(140,235,255,0.34)] hover:file:file:bg-[rgba(14,42,99,0.75)]"
                   disabled={busy}
                   aria-label="Choose file to upload"
                   title="Choose file to upload"
@@ -204,11 +204,11 @@ export default function Uploads1() {
         )}
 
         {/* File list panel */}
-        <div className="glass-panel border-[#794DFA]/20 bg-[#794DFA]/08 p-5">
+        <div className="teal-glow-card p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-lg font-semibold text-black">Files</div>
-              <div className="mt-1 text-sm text-black">
+              <div className="text-lg font-semibold text-white">Files</div>
+              <div className="mt-1 text-sm text-white/72">
                 {canDelete
                   ? "You can see all uploads."
                   : canUpload
@@ -232,24 +232,24 @@ export default function Uploads1() {
 
           <div className="mt-5 space-y-3">
             {loading ? (
-              <div className="text-black">Loading...</div>
+              <div className="text-white/75">Loading...</div>
             ) : items.length === 0 ? (
-              <div className="rounded-3xl border border-[#794DFA]/18 bg-white p-6 text-black">
+              <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-6 text-white/80">
                 No files yet.
               </div>
             ) : (
               items.map((u) => (
                 <div
                   key={u.id}
-                  className="rounded-3xl border border-[#794DFA]/20 bg-white p-4 transition-all duration-200 hover:-translate-y-[1px] hover:border-[#794DFA]/40 hover:bg-[#794DFA]/06 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                  className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)] hover:shadow-[0_0_18px_rgba(140,235,255,0.10)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-semibold text-black">
+                      <div className="font-semibold text-white">
                         {u.fileName}
                       </div>
 
-                      <div className="mt-1 text-xs text-black">
+                      <div className="mt-1 text-xs text-white/70">
                         {u.kind === "LECTURER_MATERIAL"
                           ? "Lecturer material"
                           : "Student submission"}{" "}
@@ -257,7 +257,7 @@ export default function Uploads1() {
                         {new Date(u.uploadedAt).toLocaleString()}
                       </div>
 
-                      <div className="mt-1 text-xs text-black">
+                      <div className="mt-1 text-xs text-white/60">
                         Uploaded by: {u.uploaderEmail}
                       </div>
                     </div>
@@ -297,7 +297,7 @@ export default function Uploads1() {
             )}
           </div>
 
-          <div className="mt-4 text-xs text-black">
+          <div className="mt-4 text-xs text-white/60">
             Logged in as: {email} ({role})
           </div>
         </div>

@@ -7,11 +7,11 @@
 // - Student-specific fields
 // - Role-aware registration rules
 //
-// Styling updated for the light minimal theme with:
-// - full-page purple + teal halo background
-// - white login card
-// - purple shadow border
-// - existing shared button styling retained
+// Styling updated for the neon glass theme with:
+// - dark glass login card
+// - neon halo background
+// - Forge logo image in place of title text
+// - shared neon input/button styling
 
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -23,6 +23,7 @@ import {
   register as registerApi,
   requestOtp as requestOtpApi,
 } from "../lib/authService";
+import forgeLogo from "../assets/Forge.jpg";
 
 type LocationState = { from?: string };
 type Mode = "login" | "register";
@@ -84,7 +85,11 @@ function isOtpRequiredLoginError(error: HttpError, otpCode: string): boolean {
     return true;
   }
 
-  if (status === 400 && code === "VALIDATION" && msg.includes("missing fields")) {
+  if (
+    status === 400 &&
+    code === "VALIDATION" &&
+    msg.includes("missing fields")
+  ) {
     return true;
   }
 
@@ -164,9 +169,13 @@ export default function LoginPage2() {
 
     if (devOtp) {
       setOtp(devOtp);
-      setInfo(`OTP generated and auto-filled. Expires: ${data.expiresAt ?? "soon"}`);
+      setInfo(
+        `OTP generated and auto-filled. Expires: ${data.expiresAt ?? "soon"}`
+      );
     } else {
-      setInfo("OTP requested. Check backend terminal in dev or email in production.");
+      setInfo(
+        "OTP requested. Check backend terminal in dev or email in production."
+      );
     }
   }
 
@@ -352,35 +361,31 @@ export default function LoginPage2() {
 
   return (
     <div className="relative mx-auto flex min-h-[calc(100vh-220px)] w-full max-w-7xl items-center justify-center overflow-hidden px-4 py-10 md:py-14">
-      {/* Full-page halo background */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-[-10%] top-[6%] h-[24rem] w-[24rem] rounded-full bg-[#794DFA]/20 blur-3xl" />
-        <div className="absolute right-[-8%] top-[10%] h-[22rem] w-[22rem] rounded-full bg-[#4EC2F3]/18 blur-3xl" />
-        <div className="absolute bottom-[-6%] left-[20%] h-[20rem] w-[20rem] rounded-full bg-[#70ECE4]/16 blur-3xl" />
-        <div className="absolute bottom-[0%] right-[18%] h-[18rem] w-[18rem] rounded-full bg-[#6C44FD]/14 blur-3xl" />
+        <div className="absolute left-[-10%] top-[6%] h-[24rem] w-[24rem] rounded-full bg-[#8C5BFF]/18 blur-3xl" />
+        <div className="absolute right-[-8%] top-[10%] h-[22rem] w-[22rem] rounded-full bg-[#4FA6FF]/14 blur-3xl" />
+        <div className="absolute bottom-[-6%] left-[20%] h-[20rem] w-[20rem] rounded-full bg-[#8CEBFF]/12 blur-3xl" />
+        <div className="absolute bottom-[0%] right-[18%] h-[18rem] w-[18rem] rounded-full bg-[#FF5EDB]/10 blur-3xl" />
       </div>
 
       <div className="relative mx-auto w-full max-w-md">
-        {/* Main card */}
-        <div
-          className="relative overflow-hidden rounded-[28px] border border-[#d7ccff] bg-white p-8 shadow-[0_0_0_1px_rgba(121,77,250,0.08),0_18px_50px_rgba(108,68,253,0.18)] md:p-9"
-        >
+        <div className="glass-panel-strong relative overflow-hidden p-8 md:p-9">
           <div className="pointer-events-none absolute inset-0">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#794DFA]/30 to-transparent" />
-            <div className="absolute -left-8 top-0 h-28 w-28 rounded-full bg-[#4EC2F3]/10 blur-2xl" />
-            <div className="absolute -right-8 top-10 h-28 w-28 rounded-full bg-[#794DFA]/10 blur-2xl" />
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/40 to-transparent" />
+            <div className="absolute -left-8 top-0 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-2xl" />
+            <div className="absolute -right-8 top-10 h-28 w-28 rounded-full bg-[#8C5BFF]/10 blur-2xl" />
           </div>
 
           <div className="relative">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 md:text-[2.1rem]">
-              <span className="bg-gradient-to-r from-[#4EC2F3] via-[#70ECE4] to-[#794DFA] bg-clip-text text-transparent">
-                Forge Communicator
-              </span>
-            </h1>
+            <div className="flex justify-center">
+              <img
+                src={forgeLogo}
+                alt="Forge"
+                className="h-20 w-auto object-contain md:h-24"
+              />
+            </div>
 
-
-            {/* Mode switch */}
-            <div className="mt-6 grid grid-cols-2 rounded-2xl border border-[#e5e7eb] bg-[#f8fafc] p-1">
+            <div className="mt-6 grid grid-cols-2 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.58)] p-1 backdrop-blur-xl">
               <button
                 type="button"
                 onClick={() => {
@@ -392,10 +397,10 @@ export default function LoginPage2() {
                   setSouthAfricanId("");
                 }}
                 className={[
-                  "rounded-xl px-4 py-2.5 text-sm font-semibold transition",
+                  "rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200",
                   mode === "login"
-                    ? "bg-white text-slate-900 shadow-sm border border-[#e5e7eb]"
-                    : "text-slate-600 hover:bg-white/70",
+                    ? "border border-[rgba(140,235,255,0.22)] bg-[rgba(14,42,99,0.82)] text-white shadow-[0_0_14px_rgba(140,235,255,0.08)]"
+                    : "text-white/65 hover:bg-[rgba(140,235,255,0.08)] hover:text-white",
                 ].join(" ")}
                 title="Switch to login mode"
                 aria-label="Switch to login mode"
@@ -414,10 +419,10 @@ export default function LoginPage2() {
                   setSouthAfricanId("");
                 }}
                 className={[
-                  "rounded-xl px-4 py-2.5 text-sm font-semibold transition",
+                  "rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200",
                   mode === "register"
-                    ? "bg-white text-slate-900 shadow-sm border border-[#e5e7eb]"
-                    : "text-slate-600 hover:bg-white/70",
+                    ? "border border-[rgba(140,235,255,0.22)] bg-[rgba(14,42,99,0.82)] text-white shadow-[0_0_14px_rgba(140,235,255,0.08)]"
+                    : "text-white/65 hover:bg-[rgba(140,235,255,0.08)] hover:text-white",
                 ].join(" ")}
                 title="Switch to register mode"
                 aria-label="Switch to register mode"
@@ -426,36 +431,40 @@ export default function LoginPage2() {
               </button>
             </div>
 
-            <h2 className="mt-6 text-xl font-semibold text-slate-900">{title}</h2>
+            <h2 className="mt-6 text-xl font-semibold text-white">{title}</h2>
 
             {info && (
-              <div className="mt-4 rounded-xl border border-[#bfeaf3] bg-[#eefbfd] p-3 text-sm text-slate-800">
+              <div className="info-banner mt-4">
                 {info}
               </div>
             )}
 
             {error && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div className="error-banner mt-4">
                 {error}
               </div>
             )}
 
             {ENV_CONFIG_ERROR && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div className="error-banner mt-4">
                 {ENV_CONFIG_ERROR}
               </div>
             )}
 
-            <form onSubmit={onSubmit} className="mt-5 space-y-4" autoComplete="on">
+            <form
+              onSubmit={onSubmit}
+              className="mt-5 space-y-4"
+              autoComplete="on"
+            >
               <div>
-                <label htmlFor="email" className="block text-sm text-slate-700">
+                <label htmlFor="email" className="block text-sm text-white/80">
                   Email
                 </label>
                 <input
                   id="email"
                   name="username"
                   type="email"
-                  className="mt-2 w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+                  className="input-glass mt-2"
                   placeholder="name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -466,14 +475,14 @@ export default function LoginPage2() {
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-sm text-slate-700">
+                <label htmlFor="password" className="block text-sm text-white/80">
                   Password
                 </label>
                 <input
                   id="password"
                   name={mode === "login" ? "current-password" : "new-password"}
                   type="password"
-                  className="mt-2 w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+                  className="input-glass mt-2"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -490,7 +499,7 @@ export default function LoginPage2() {
                 <div>
                   <label
                     htmlFor="studentNumber"
-                    className="block text-sm text-slate-700"
+                    className="block text-sm text-white/80"
                   >
                     Student Number
                   </label>
@@ -498,7 +507,7 @@ export default function LoginPage2() {
                     id="studentNumber"
                     name="studentNumber"
                     type="text"
-                    className="mt-2 w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+                    className="input-glass mt-2"
                     placeholder="e.g. STU-1001"
                     value={studentNumber}
                     onChange={(e) => setStudentNumber(e.target.value)}
@@ -507,7 +516,7 @@ export default function LoginPage2() {
                     disabled={busy}
                   />
                   {mode === "login" && (
-                    <p className="mt-2 text-xs text-slate-500">
+                    <p className="mt-2 text-xs text-white/55">
                       Required for student accounts. Other roles can leave this blank.
                     </p>
                   )}
@@ -518,7 +527,7 @@ export default function LoginPage2() {
                 <div>
                   <label
                     htmlFor="southAfricanId"
-                    className="block text-sm text-slate-700"
+                    className="block text-sm text-white/80"
                   >
                     South African ID
                   </label>
@@ -527,7 +536,7 @@ export default function LoginPage2() {
                     name="southAfricanId"
                     type="text"
                     inputMode="numeric"
-                    className="mt-2 w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+                    className="input-glass mt-2"
                     placeholder="13-digit ID number"
                     value={southAfricanId}
                     onChange={(e) => setSouthAfricanId(e.target.value)}
@@ -540,13 +549,13 @@ export default function LoginPage2() {
 
               {mode === "register" && (
                 <div>
-                  <label htmlFor="role" className="block text-sm text-slate-700">
+                  <label htmlFor="role" className="block text-sm text-white/80">
                     Role
                   </label>
                   <select
                     id="role"
                     name="role"
-                    className="mt-2 w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+                    className="select-glass mt-2"
                     value={role}
                     onChange={(e) => {
                       const nextRole = e.target.value as UserRole;
@@ -565,7 +574,7 @@ export default function LoginPage2() {
                     <option value="LECTURER">Lecturer</option>
                     <option value="ADMIN">Admin</option>
                   </select>
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-white/55">
                     Student and Parent can self-register. Admin and Lecturer require a staff registration password.
                   </p>
                 </div>
@@ -575,7 +584,7 @@ export default function LoginPage2() {
                 <div>
                   <label
                     htmlFor="staffRegisterPassword"
-                    className="block text-sm text-slate-700"
+                    className="block text-sm text-white/80"
                   >
                     Staff Registration Password
                   </label>
@@ -583,7 +592,7 @@ export default function LoginPage2() {
                     id="staffRegisterPassword"
                     name="staffRegisterPassword"
                     type="password"
-                    className="mt-2 w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+                    className="input-glass mt-2"
                     placeholder="Enter staff password"
                     value={staffRegisterPassword}
                     onChange={(e) => setStaffRegisterPassword(e.target.value)}
@@ -597,7 +606,7 @@ export default function LoginPage2() {
                 <div>
                   <label
                     htmlFor="confirmPassword"
-                    className="block text-sm text-slate-700"
+                    className="block text-sm text-white/80"
                   >
                     Confirm Password
                   </label>
@@ -605,7 +614,7 @@ export default function LoginPage2() {
                     id="confirmPassword"
                     name="confirm-password"
                     type="password"
-                    className="mt-2 w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+                    className="input-glass mt-2"
                     placeholder="••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -618,7 +627,7 @@ export default function LoginPage2() {
               )}
 
               <div>
-                <label htmlFor="otp" className="block text-sm text-slate-700">
+                <label htmlFor="otp" className="block text-sm text-white/80">
                   OTP Code
                 </label>
                 <div className="mt-2 flex gap-2">
@@ -627,7 +636,7 @@ export default function LoginPage2() {
                     name="otp"
                     type="text"
                     inputMode="numeric"
-                    className="w-full rounded-xl border border-[#d9dde5] bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#794DFA] focus:ring-2 focus:ring-[#794DFA]/15"
+                    className="input-glass w-full"
                     placeholder="6-digit code"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value)}
@@ -662,11 +671,10 @@ export default function LoginPage2() {
                   : "Create account"}
               </button>
 
-            <p className="hidden">
-              Environment Debug: backend={API_BASE || "MISSING"} | build=
-              {IS_PROD_BUILD ? "production" : "development"}
-            </p>
-            
+              <p className="hidden">
+                Environment Debug: backend={API_BASE || "MISSING"} | build=
+                {IS_PROD_BUILD ? "production" : "development"}
+              </p>
             </form>
           </div>
         </div>

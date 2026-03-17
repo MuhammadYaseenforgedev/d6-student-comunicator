@@ -13,6 +13,7 @@
 // - Load announcements for that channel
 // - Show loading, empty, and error states
 // - Allow privileged users to create, edit, and delete announcements
+// - Apply brighter neon identity styling per channel
 
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -47,15 +48,26 @@ function asChannelKey(id?: string): ChannelKey {
 }
 
 /**
- * Return a small colored accent bar style for the active channel.
- * This gives each channel page a visual identity without changing UX.
+ * Return the stronger neon accent bar class for each channel.
  */
 function channelAccentClass(channel: ChannelKey): string {
-  if (channel === "modules") return "bg-[#4EC2F3]";
-  if (channel === "faculty") return "bg-[#7EF3E3]";
-  if (channel === "clubs") return "bg-[#794DFA]";
-  if (channel === "emergency") return "bg-[#FCA5A5]";
-  return "bg-[#49BCF3]";
+  if (channel === "modules") {
+    return "bg-[#38D5FF]";
+  }
+
+  if (channel === "faculty") {
+    return "bg-[#35FFE3]";
+  }
+
+  if (channel === "clubs") {
+    return "bg-[#7B5BFF]";
+  }
+
+  if (channel === "emergency") {
+    return "bg-[#FF3B3B]";
+  }
+
+  return "bg-[#4FA6FF]";
 }
 
 /**
@@ -69,6 +81,17 @@ function channelHeaderTone(
   if (channel === "clubs") return "clubs";
   if (channel === "emergency") return "emergency";
   return "general";
+}
+
+/**
+ * Optional channel helper text color for small supporting text blocks.
+ */
+function channelSupportGlow(channel: ChannelKey): string {
+  if (channel === "modules") return "text-[#8CEBFF]";
+  if (channel === "faculty") return "text-[#8FFFEF]";
+  if (channel === "clubs") return "text-[#B8A6FF]";
+  if (channel === "emergency") return "text-[#FF9C9C]";
+  return "text-[#8CCBFF]";
 }
 
 export default function ChannelPage(props: ChannelPageProps) {
@@ -147,13 +170,21 @@ export default function ChannelPage(props: ChannelPageProps) {
       />
 
       {/* Small visual identity bar for each channel */}
-      <div className="mt-4">
+      <div className="mt-4 flex items-center gap-3">
         <div
           className={[
-            "h-1.5 w-24 rounded-full",
+            "h-1.5 w-28 rounded-full transition-all duration-300",
             channelAccentClass(resolvedChannel),
           ].join(" ")}
         />
+        <div
+          className={[
+            "text-xs font-medium uppercase tracking-[0.22em]",
+            channelSupportGlow(resolvedChannel),
+          ].join(" ")}
+        >
+          {resolvedChannel}
+        </div>
       </div>
 
       {/* Error state */}
