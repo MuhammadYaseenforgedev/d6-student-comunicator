@@ -7,10 +7,13 @@ type Ctx = {
   lecturerToken: string;
   studentToken: string;
   parentToken: string;
+  lecturerId: string;
+  studentId: string;
   channelId: string;
   announcementId: string;
   uploadId: string;
   adminUploadId: string;
+  adminStudentUploadId: string;
   studentUploadId: string;
 };
 
@@ -43,6 +46,8 @@ describe("Announcements and uploads permissions", () => {
     ctx.lecturerToken = signJwt(lecturer);
     ctx.studentToken = signJwt(student);
     ctx.parentToken = signJwt(parent);
+    ctx.lecturerId = lecturer.id;
+    ctx.studentId = student.id;
 
     ctx.channelId = await createChannel(lecturer.id, `ann-upload-${Date.now()}`);
   });
@@ -109,10 +114,28 @@ describe("Announcements and uploads permissions", () => {
       .post("/api/uploads")
       .set(auth(ctx.adminToken))
       .field("kind", "LECTURER_MATERIAL")
+      .field("targetUserId", ctx.lecturerId)
       .attach("file", Buffer.from("admin material"), "admin-guide.txt");
     expect(adminUpload.status).toBe(201);
     ctx.adminUploadId = String(adminUpload.body?.id ?? "");
     expect(ctx.adminUploadId).toBeTruthy();
+
+    const adminStudentUpload = await request(app)
+      .post("/api/uploads")
+      .set(auth(ctx.adminToken))
+      .field("kind", "STUDENT_SUBMISSION")
+      .field("targetUserId", ctx.studentId)
+      .attach("file", Buffer.from("admin student submission"), "admin-student-submission.txt");
+    expect(adminStudentUpload.status).toBe(201);
+    ctx.adminStudentUploadId = String(adminStudentUpload.body?.id ?? "");
+    expect(ctx.adminStudentUploadId).toBeTruthy();
+
+    const adminMissingTarget = await request(app)
+      .post("/api/uploads")
+      .set(auth(ctx.adminToken))
+      .field("kind", "LECTURER_MATERIAL")
+      .attach("file", Buffer.from("missing target"), "missing-target.txt");
+    expect(adminMissingTarget.status).toBe(400);
 
     const parentUpload = await request(app)
       .post("/api/uploads")
@@ -144,6 +167,7 @@ describe("Announcements and uploads permissions", () => {
     expect(lecturerList.status).toBe(200);
     const lecturerRows = toRows(lecturerList.body);
     expect(lecturerRows.some((x) => String(x.id) === ctx.studentUploadId)).toBe(true);
+    expect(lecturerRows.some((x) => String(x.id) === ctx.adminStudentUploadId)).toBe(true);
 
     const parentList = await request(app)
       .get("/api/uploads")
@@ -153,6 +177,7 @@ describe("Announcements and uploads permissions", () => {
     expect(parentRows.some((x) => String(x.id) === ctx.uploadId)).toBe(true);
     expect(parentRows.some((x) => String(x.id) === ctx.adminUploadId)).toBe(true);
     expect(parentRows.some((x) => String(x.id) === ctx.studentUploadId)).toBe(false);
+    expect(parentRows.some((x) => String(x.id) === ctx.adminStudentUploadId)).toBe(false);
 
     const studentList = await request(app)
       .get("/api/uploads")
@@ -162,6 +187,7 @@ describe("Announcements and uploads permissions", () => {
     expect(studentRows.some((x) => String(x.id) === ctx.uploadId)).toBe(true);
     expect(studentRows.some((x) => String(x.id) === ctx.adminUploadId)).toBe(true);
     expect(studentRows.some((x) => String(x.id) === ctx.studentUploadId)).toBe(true);
+    expect(studentRows.some((x) => String(x.id) === ctx.adminStudentUploadId)).toBe(true);
 
     const parentDownload = await request(app)
       .get(`/api/uploads/${ctx.uploadId}/download`)
@@ -173,6 +199,11 @@ describe("Announcements and uploads permissions", () => {
       .set(auth(ctx.parentToken));
     expect(parentDownloadStudent.status).toBe(403);
 
+    const parentDownloadAdminStudent = await request(app)
+      .get(`/api/uploads/${ctx.adminStudentUploadId}/download`)
+      .set(auth(ctx.parentToken));
+    expect(parentDownloadAdminStudent.status).toBe(403);
+
     const studentDownload = await request(app)
       .get(`/api/uploads/${ctx.uploadId}/download`)
       .set(auth(ctx.studentToken));
@@ -182,6 +213,11 @@ describe("Announcements and uploads permissions", () => {
       .get(`/api/uploads/${ctx.studentUploadId}/download`)
       .set(auth(ctx.studentToken));
     expect(studentOwnDownload.status).toBe(200);
+
+    const studentAdminSubmissionDownload = await request(app)
+      .get(`/api/uploads/${ctx.adminStudentUploadId}/download`)
+      .set(auth(ctx.studentToken));
+    expect(studentAdminSubmissionDownload.status).toBe(200);
 
     const adminDownloadStudent = await request(app)
       .get(`/api/uploads/${ctx.studentUploadId}/download`)
@@ -207,5 +243,10 @@ describe("Announcements and uploads permissions", () => {
       .delete(`/api/uploads/${ctx.studentUploadId}`)
       .set(auth(ctx.lecturerToken));
     expect(lecturerDeleteStudentUpload.status).toBe(200);
+
+    const lecturerDeleteAdminStudentUpload = await request(app)
+      .delete(`/api/uploads/${ctx.adminStudentUploadId}`)
+      .set(auth(ctx.lecturerToken));
+    expect(lecturerDeleteAdminStudentUpload.status).toBe(200);
   });
 });

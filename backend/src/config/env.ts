@@ -2,6 +2,11 @@ import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 
+const VALID_APP_ENVS = ["development", "test", "staging", "demo", "production", "local"] as const;
+const DEFAULT_DEMO_OTP_ALLOWED_ENVS = ["test", "staging", "demo"] as const;
+
+export type AppEnv = (typeof VALID_APP_ENVS)[number];
+
 function loadEnvFile() {
   const explicit = String(process.env.ENV_FILE ?? "").trim();
   const candidates: string[] = [];
@@ -56,6 +61,85 @@ function parseBoolean(raw: string | undefined, fallback: boolean): boolean {
   return v === "true" || v === "1" || v === "yes" || v === "y";
 }
 
+function parseStrictBoolean(name: string, fallback: boolean): boolean {
+  const raw = String(process.env[name] ?? "").trim().toLowerCase();
+  if (!raw) return fallback;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw new Error(`Invalid ${name}: expected "true" or "false"`);
+}
+
+function parseAppEnvValue(raw: string, source: string): AppEnv {
+  const normalized = String(raw ?? "").trim().toLowerCase();
+  if (!normalized) {
+    throw new Error(`Invalid ${source}: value is required`);
+  }
+  if (!VALID_APP_ENVS.includes(normalized as AppEnv)) {
+    throw new Error(
+      `Invalid ${source}: expected one of ${VALID_APP_ENVS.join(", ")} but received "${raw}"`
+    );
+  }
+  return normalized as AppEnv;
+}
+
+function parseEmailList(raw: string | undefined): string[] {
+  const seen = new Set<string>();
+  const values = String(raw ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  for (const value of values) {
+    seen.add(value);
+  }
+
+  return Array.from(seen);
+}
+
+function parseAppEnvList(raw: string | undefined): AppEnv[] {
+  const values = String(raw ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (values.length === 0) {
+    return [...DEFAULT_DEMO_OTP_ALLOWED_ENVS];
+  }
+
+  const seen = new Set<AppEnv>();
+  for (const value of values) {
+    seen.add(parseAppEnvValue(value, "DEMO_OTP_ALLOWED_ENVS"));
+  }
+
+  return Array.from(seen);
+}
+
+export function getAppEnv(): AppEnv {
+  const rawAppEnv = String(process.env.APP_ENV ?? "").trim();
+  if (rawAppEnv) {
+    return parseAppEnvValue(rawAppEnv, "APP_ENV");
+  }
+
+  const rawNodeEnv = String(process.env.NODE_ENV ?? "").trim();
+  if (rawNodeEnv) {
+    return parseAppEnvValue(rawNodeEnv, "NODE_ENV");
+  }
+
+  return "development";
+}
+
+export function getAllowDemoOtpBypass(): boolean {
+  return parseStrictBoolean("ALLOW_DEMO_OTP_BYPASS", false);
+}
+
+export function getDemoOtpAllowlist(): string[] {
+  return parseEmailList(process.env.DEMO_OTP_ALLOWLIST);
+}
+
+export function getDemoOtpAllowedEnvs(): AppEnv[] {
+  return parseAppEnvList(process.env.DEMO_OTP_ALLOWED_ENVS);
+}
+
 function parseDatabaseUrl(raw: string): ParsedDatabaseUrl {
   try {
     const url = new URL(raw);
@@ -95,6 +179,9 @@ export const env = {
   NODE_ENV: process.env.NODE_ENV ?? "development",
   PORT: Number(process.env.PORT ?? "4000"),
   DATABASE_URL: DATABASE_URL || undefined,
+  get APP_ENV(): AppEnv {
+    return getAppEnv();
+  },
 
   // DB
   DB_HOST: process.env.DB_HOST ?? dbFromUrl?.host ?? "localhost",
@@ -110,4 +197,15 @@ export const env = {
   SMTP_USER,
   SMTP_PASS,
   SMTP_FROM,
+
+  // Demo OTP bypass controls
+  get ALLOW_DEMO_OTP_BYPASS(): boolean {
+    return getAllowDemoOtpBypass();
+  },
+  get DEMO_OTP_ALLOWLIST(): string[] {
+    return getDemoOtpAllowlist();
+  },
+  get DEMO_OTP_ALLOWED_ENVS(): AppEnv[] {
+    return getDemoOtpAllowedEnvs();
+  },
 };

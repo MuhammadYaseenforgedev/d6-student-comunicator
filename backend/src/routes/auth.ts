@@ -3,10 +3,12 @@ import bcrypt from "bcryptjs";
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import crypto from "crypto";
 import { pool } from "../config/db";
+import { env } from "../config/env";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/rbac";
 import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
 import { isSmtpConfigured, sendOtpEmail as sendOtpEmailViaSmtp } from "../lib/mailer";
+import { validatePassword } from "../lib/passwordPolicy";
 
 export const authRouter = Router();
 
@@ -33,9 +35,7 @@ function normEmail(v: unknown) {
 }
 
 function isProduction() {
-  const nodeEnv = String(process.env.NODE_ENV ?? "").toLowerCase();
-  const appEnv = String(process.env.APP_ENV ?? "").toLowerCase();
-  return nodeEnv === "production" || appEnv === "production";
+  return env.APP_ENV === "production";
 }
 
 function boolEnv(name: string, defaultValue: boolean) {
@@ -58,15 +58,32 @@ function boolEnv(name: string, defaultValue: boolean) {
 function authPolicy() {
   const prod = isProduction();
 
-  const requireOtp = boolEnv("AUTH_REQUIRE_OTP", prod ? true : false);
-  const allowPasswordLogin = boolEnv("AUTH_ALLOW_PASSWORD_LOGIN", prod ? false : true);
-  const allowPasswordRegister = boolEnv("AUTH_ALLOW_PASSWORD_REGISTER", prod ? false : false);
+  const requireOtp = prod ? true : boolEnv("AUTH_REQUIRE_OTP", false);
+  const allowPasswordLogin = prod ? false : boolEnv("AUTH_ALLOW_PASSWORD_LOGIN", true);
+  const allowPasswordRegister = prod ? false : boolEnv("AUTH_ALLOW_PASSWORD_REGISTER", false);
 
   return { requireOtp, allowPasswordLogin, allowPasswordRegister };
 }
 
-function shouldReturnDevCode() {
-  return !isProduction() && String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
+function shouldUseDemoOtpBypass(email: string): boolean {
+  const normalizedEmail = normEmail(email);
+  if (!normalizedEmail) return false;
+  if (!env.ALLOW_DEMO_OTP_BYPASS) return false;
+  if (env.APP_ENV === "production") return false;
+
+  const allowedEnvs = new Set(env.DEMO_OTP_ALLOWED_ENVS);
+  if (!allowedEnvs.has(env.APP_ENV)) return false;
+
+  const allowlist = new Set(env.DEMO_OTP_ALLOWLIST);
+  return allowlist.has(normalizedEmail);
+}
+
+function logDemoBypassUsage(kind: "request-otp", email: string) {
+  console.warn("[auth] Demo auth bypass used", {
+    kind,
+    email: normEmail(email),
+    appEnv: env.APP_ENV,
+  });
 }
 
 class OtpDeliveryError extends Error {
@@ -223,11 +240,13 @@ async function createOtp(
   console.info("[otp][createOtp] rate-limit checks passed", { email, purpose });
 
   const { ttlMinutes } = otpConfig();
+  let checkpoint = "init";
   let code = "";
   let codeHash = "";
   let expiresAt = "";
 
   try {
+    checkpoint = "consume_previous_otp";
     await pool.query(
       `
         UPDATE email_otps
@@ -239,11 +258,13 @@ async function createOtp(
       [email, purpose]
     );
 
+    checkpoint = "generate_code_hash";
     code = generateOtpCode();
     codeHash = await bcrypt.hash(code, 10);
     expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
     console.info("[otp][createOtp] code generated", { email, purpose, expiresAt });
 
+    checkpoint = "store_otp";
     await pool.query(
       `
         INSERT INTO email_otps (email, purpose, code_hash, expires_at, request_ip)
@@ -258,6 +279,7 @@ async function createOtp(
     console.error("[otp][createOtp] failed before SMTP send", {
       email,
       purpose,
+      checkpoint,
       message,
       stack,
     });
@@ -272,7 +294,9 @@ async function createOtp(
     skipEmailDelivery,
   });
 
-  if (isProduction() && !skipEmailDelivery) {
+  if (skipEmailDelivery) {
+    // Demo bypass intentionally suppresses email delivery and never logs OTP values.
+  } else if (isProduction()) {
     const smtpConfigured = isSmtpConfigured();
     console.info("[otp][request-otp] SMTP send begin", {
       email,
@@ -296,7 +320,6 @@ async function createOtp(
         message,
         stack,
       });
-
       let error = err;
       if (!(error instanceof OtpDeliveryError)) {
         error = new OtpDeliveryError(503, "Failed to send OTP email");
@@ -316,7 +339,11 @@ async function createOtp(
     console.log(`[OTP][${purpose}] email=${email} ip=${requestIp} code=${code} (expires ${expiresAt})`);
   }
 
-  return { expiresAt, devCode: options?.forceDevCode ? code : shouldReturnDevCode() ? code : undefined };
+  return {
+    code,
+    expiresAt,
+    devCode: options?.forceDevCode ? code : undefined,
+  };
 }
 
 /* ===============================
@@ -436,8 +463,12 @@ authRouter.post("/request-otp", async (req, res) => {
   }
 
   try {
-    const includeDevOtp = shouldReturnDevCode();
+    const includeDevOtp = shouldUseDemoOtpBypass(email);
+    if (includeDevOtp) {
+      logDemoBypassUsage("request-otp", email);
+    }
     const out = await createOtp(email, purpose, ip, {
+      skipEmailDelivery: includeDevOtp,
       forceDevCode: includeDevOtp,
     });
 
@@ -454,13 +485,6 @@ authRouter.post("/request-otp", async (req, res) => {
       expiresAt: out.expiresAt,
     });
   } catch (e: any) {
-    // TEMP DEBUG CODE: remove after production OTP diagnostics are complete.
-    console.error("[OTP_DEBUG] POST /request-otp failure", {
-      email,
-      stack: e?.stack,
-      err: e,
-    });
-
     if (e instanceof OtpDeliveryError) {
       return res.status(e.status).json({
         error: { code: "EMAIL_PROVIDER", message: e.message },
@@ -501,6 +525,11 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
 
   if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
+  }
+
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: { code: "VALIDATION", message: passwordError } });
   }
 
   if (!role) {
@@ -614,6 +643,11 @@ authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
   }
 
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: { code: "VALIDATION", message: passwordError } });
+  }
+
   if (!VALID_ROLES.includes(roleRaw as Role)) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
   }
@@ -704,52 +738,12 @@ authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
    - Password-only login: { email, password } when allowed (dev speed)
 =================================*/
 authRouter.post("/login", loginLimiter, async (req, res) => {
-  // TEMP: DEMO BYPASS (REMOVE BEFORE REAL RELEASE)
-  if (process.env.DEMO_BYPASS_LOGIN === "true") {
-    const email = String(req.body?.email ?? "").trim().toLowerCase();
-
-    const fallbackRole: Role = email.includes("+admin")
-      ? "ADMIN"
-      : email.includes("+lecturer")
-        ? "LECTURER"
-        : email.includes("+student")
-          ? "STUDENT"
-          : email.includes("+parent")
-            ? "PARENT"
-            : "STUDENT";
-
-    const userResult = await pool.query<{ id: string; email: string; role: string }>(
-      "SELECT id, email, role FROM public.users WHERE lower(email)=lower($1) LIMIT 1",
-      [email]
-    );
-    const userRow = userResult.rows[0];
-
-    if (!userRow) {
-      return res.status(401).json({ error: { code: "AUTH", message: "User not seeded" } });
-    }
-
-    const dbRole = String(userRow.role ?? "").toUpperCase();
-    const role: Role = VALID_ROLES.includes(dbRole as Role) ? (dbRole as Role) : fallbackRole;
-
-    const token = signToken({ id: userRow.id, email: userRow.email, role });
-    return res.json({ token, user: { email: userRow.email, role } });
-  }
-
   const { requireOtp, allowPasswordLogin } = authPolicy();
 
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   const otp = String(req.body?.otp ?? "").trim();
   const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
-
-  // TEMP AUTH DEBUG CODE: remove after production login diagnostics are complete.
-  console.log(
-    "[AUTH_DEBUG] policy requireOtp=%s allowPasswordLogin=%s otpProvided=%s",
-    requireOtp,
-    allowPasswordLogin,
-    Boolean(otp)
-  );
-  console.log("[AUTH_DEBUG] normalized_email=%s", email);
 
   if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
@@ -764,20 +758,9 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
 
   const result = await pool.query(`SELECT * FROM users WHERE lower(email)=lower($1) LIMIT 1`, [email]);
   const userRow = result.rows[0];
-  console.log("[AUTH_DEBUG] user_found=%s", Boolean(userRow));
   if (!userRow) return res.status(401).json({ error: { code: "AUTH", message: "Invalid credentials" } });
 
-  const passwordHash = String(userRow.password_hash ?? "");
-  const passwordHashPrefix = passwordHash.slice(0, 4);
-  console.log(
-    "[AUTH_DEBUG] user_role=%s password_hash_length=%d password_hash_prefix=%s",
-    String(userRow.role ?? ""),
-    passwordHash.length,
-    passwordHashPrefix
-  );
-
   const match = await bcrypt.compare(password, userRow.password_hash);
-  console.log("[AUTH_DEBUG] bcrypt_compare_match=%s", match);
   if (!match) return res.status(401).json({ error: { code: "AUTH", message: "Invalid credentials" } });
 
   // If OTP is provided, verify it

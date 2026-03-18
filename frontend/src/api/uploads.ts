@@ -1,7 +1,7 @@
 // frontend/src/api/uploads.ts
 
 import { apiDelete, apiDownload, apiGet, apiPostForm } from "../lib/api";
-import type { UploadKind, UploadRecord } from "../lib/types";
+import type { UploadKind, UploadRecord, UserRole } from "../lib/types";
 import { getUser } from "../lib/auth";
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -28,7 +28,17 @@ type BackendUpload = {
   storagePath: string;
   uploadedBy: string;
   uploadedByEmail?: string | null;
+  uploadedByRole?: UserRole | null;
+  targetUserId?: string | null;
+  targetUserEmail?: string | null;
+  targetUserRole?: UserRole | null;
   createdAt: string;
+};
+
+export type UploadAssignableUser = {
+  id: string;
+  email: string;
+  role: UserRole;
 };
 
 function toUiUpload(row: BackendUpload): UploadRecord {
@@ -46,7 +56,10 @@ function toUiUpload(row: BackendUpload): UploadRecord {
     dataUrl: "", // downloads handled via downloadUpload() to include Bearer token
     uploadedAt: row.createdAt,
     uploaderEmail,
-    uploaderRole: me ? me.role : "STUDENT",
+    uploaderRole: row.uploadedByRole ?? (me ? me.role : "STUDENT"),
+    targetUserId: row.targetUserId ?? null,
+    targetUserEmail: row.targetUserEmail ?? null,
+    targetUserRole: row.targetUserRole ?? null,
   };
 }
 
@@ -58,13 +71,30 @@ export async function listUploads(): Promise<UploadRecord[]> {
 }
 
 /** POST /api/uploads (multipart: file + kind) */
-export async function uploadFile(input: { file: File; kind: UploadKind }): Promise<UploadRecord> {
+export async function uploadFile(input: { file: File; kind: UploadKind; targetUserId?: string }): Promise<UploadRecord> {
   const form = new FormData();
   form.append("file", input.file);
   form.append("kind", input.kind);
+  if (input.targetUserId?.trim()) {
+    form.append("targetUserId", input.targetUserId.trim());
+  }
 
   const created = await apiPostForm<BackendUpload>("/api/uploads", form);
   return toUiUpload(created);
+}
+
+export async function listUploadAssignableUsers(roles: UserRole[]): Promise<UploadAssignableUser[]> {
+  const qs = new URLSearchParams();
+  for (const role of roles) {
+    qs.append("role", role);
+  }
+  qs.set("limit", "500");
+
+  const raw = await apiGet<unknown>(`/api/users?${qs.toString()}`);
+  const rows = unwrapList<UploadAssignableUser>(raw);
+  return rows
+    .filter((row) => row && typeof row.id === "string" && typeof row.email === "string" && typeof row.role === "string")
+    .sort((a, b) => a.email.toLowerCase().localeCompare(b.email.toLowerCase()));
 }
 
 /** GET /api/uploads/:id/download (Bearer token required) */

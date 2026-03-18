@@ -65,9 +65,8 @@ export default function ParentFinance() {
 
         setChildren(Array.isArray(list) ? list : []);
         const first =
-          (Array.isArray(list) ? list : [])
-            .map(childIdentifier)
-            .find(Boolean) ?? "";
+          (Array.isArray(list) ? list : []).map(childIdentifier).find(Boolean) ??
+          "";
         setSelectedChildId(first);
       } catch (e) {
         if (!cancelled) {
@@ -210,7 +209,9 @@ export default function ParentFinance() {
       <div className="teal-glow-card p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-lg font-semibold text-white">Account Status</div>
+            <div className="text-lg font-semibold text-white">
+              Account Status
+            </div>
             <div className="mt-1 text-sm text-white/72">
               Finance documents and status notifications.
             </div>
@@ -226,7 +227,8 @@ export default function ParentFinance() {
           </div>
         </div>
 
-        {!selectedChildId && !loadingChildren &&
+        {!selectedChildId &&
+          !loadingChildren &&
           (!hasChildren ? (
             <div className="mt-5 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
               No linked children found. Link a child first to view finance.
@@ -249,7 +251,10 @@ export default function ParentFinance() {
 
         {finance && !loadingFinance && !financeError && (
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Stat label="Balance" value={`R ${finance.balance.toFixed(2)}`} />
+            <Stat
+              label="Balance"
+              value={`${finance.currency ?? "ZAR"} ${finance.balance.toFixed(2)}`}
+            />
             <Stat label="Statements" value={`${finance.statements}`} />
             <Stat
               label="Last payment"
@@ -259,6 +264,12 @@ export default function ParentFinance() {
                   : "N/A"
               }
             />
+          </div>
+        )}
+
+        {finance?.statusNote && !loadingFinance && !financeError && (
+          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+            {finance.statusNote}
           </div>
         )}
 
@@ -310,10 +321,15 @@ export default function ParentFinance() {
                 key={n.id}
                 className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 shadow-[0_0_18px_rgba(140,235,255,0.08)]"
               >
-                <div className="text-sm font-semibold text-white">{n.title}</div>
+                <div className="text-sm font-semibold text-white">
+                  {n.title}
+                </div>
                 <div className="mt-1 text-sm text-white/72">{n.body}</div>
-                <div className="mt-2 text-xs uppercase tracking-wide text-white/55">
-                  {n.severity}
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs uppercase tracking-wide text-white/55">
+                  <span>{n.severity}</span>
+                  {n.createdAt && (
+                    <span>{new Date(n.createdAt).toLocaleString()}</span>
+                  )}
                 </div>
               </div>
             ))
@@ -344,7 +360,12 @@ export default function ParentFinance() {
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-white">{d.type}</div>
+                    <div className="text-sm font-semibold text-white">
+                      {d.title ?? d.type}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-wide text-white/55">
+                      {d.type}
+                    </div>
                     <div className="mt-1 text-xs text-white/55">
                       {d.occurredAt
                         ? new Date(d.occurredAt).toLocaleString()
@@ -355,10 +376,20 @@ export default function ParentFinance() {
                         {d.description}
                       </div>
                     )}
+                    {d.documentUrl && (
+                      <a
+                        href={d.documentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-flex text-xs font-semibold text-cyan-200 hover:text-cyan-100"
+                      >
+                        Open document
+                      </a>
+                    )}
                   </div>
 
                   <div className="text-right text-sm font-semibold text-white">
-                    R {d.amount.toFixed(2)}
+                    {finance?.currency ?? "ZAR"} {d.amount.toFixed(2)}
                   </div>
                 </div>
               </div>

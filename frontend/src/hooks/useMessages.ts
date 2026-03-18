@@ -5,7 +5,7 @@ import type { ChannelKey } from "../lib/types";
 import type { Message, MessageCreate } from "../api/messages";
 import { createMessage, deleteMessage, fetchMessages } from "../api/messages";
 
-const MODE: "mock" | "api" = import.meta.env.VITE_DATA_MODE === "api" ? "api" : "mock";
+const MODE: "api" = "api";
 
 function safeTime(s?: string) {
   const t = s ? new Date(s).getTime() : NaN;
@@ -35,13 +35,6 @@ export function useMessages(channel?: ChannelKey) {
     setLoading(true);
 
     try {
-      if (MODE === "mock") {
-        // If you have a mock message store, you can plug it here later.
-        // For now, keep mock empty so it doesn't crash builds.
-        if (mountedRef.current) setItems([]);
-        return;
-      }
-
       const key: ChannelKey = channel ?? "general";
       const rows = await fetchMessages(key);
 
@@ -56,11 +49,6 @@ export function useMessages(channel?: ChannelKey) {
 
   async function create(payload: MessageCreate) {
     setError(null);
-
-    if (MODE === "mock") {
-      // no-op for now
-      return;
-    }
 
     // optimistic
     const optimistic: Message = {
@@ -87,8 +75,6 @@ export function useMessages(channel?: ChannelKey) {
 
   async function remove(messageId: string) {
     setError(null);
-
-    if (MODE === "mock") return;
 
     const key: ChannelKey = channel ?? "general";
     const before = items;

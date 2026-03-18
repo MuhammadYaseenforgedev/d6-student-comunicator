@@ -1,11 +1,21 @@
 import { Router } from "express";
 import { pool } from "../config/db";
 import { requireRole } from "../middleware/rbac";
+import { createAttendanceNotifications } from "../lib/notifications";
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE";
 const VALID_ATTENDANCE_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE"];
 
 type AuthRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+
+type AttendanceSessionContext = {
+  id: string;
+  lecturer_id: string;
+  module_id: string;
+  attendance_date: string;
+  starts_at: string | null;
+  ends_at: string | null;
+};
 
 function err(res: any, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
@@ -38,6 +48,45 @@ async function isLecturerAssignedToModule(lecturerId: string, moduleId: string):
   return (r.rowCount ?? 0) > 0;
 }
 
+async function isStudentEnrolledInModule(studentId: string, moduleId: string): Promise<boolean> {
+  const q = `
+    SELECT 1
+    FROM student_module_enrollments
+    WHERE student_id = $1
+      AND module_id = $2
+    LIMIT 1
+  `;
+  const r = await pool.query(q, [studentId, moduleId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+function inferSuggestedStatus(startsAt: string | null, checkedInAt: string | null): AttendanceStatus {
+  if (!checkedInAt) return "ABSENT";
+  if (!startsAt) return "PRESENT";
+
+  const startsAtMs = Date.parse(startsAt);
+  const checkedInAtMs = Date.parse(checkedInAt);
+  if (!Number.isFinite(startsAtMs) || !Number.isFinite(checkedInAtMs)) return "PRESENT";
+  return checkedInAtMs > startsAtMs ? "LATE" : "PRESENT";
+}
+
+async function getAttendanceSessionContext(sessionId: string): Promise<AttendanceSessionContext | null> {
+  const r = await pool.query<AttendanceSessionContext>(
+    `
+      SELECT id, lecturer_id, module_id, attendance_date, starts_at, ends_at
+      FROM attendance_sessions
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [sessionId]
+  );
+  return (r.rowCount ?? 0) > 0 ? r.rows[0] : null;
+}
+
+async function canStaffAccessSession(user: { id: string; role: AuthRole }): Promise<boolean> {
+  return user.role === "ADMIN" || user.role === "LECTURER";
+}
+
 async function ensureParentCanAccessChild(parentId: string, childId: string): Promise<boolean> {
   const q = `
     SELECT 1
@@ -52,8 +101,8 @@ async function ensureParentCanAccessChild(parentId: string, childId: string): Pr
 
 export const attendanceRouter = Router();
 
-// Create module/faculty records (minimal admin utility for attendance setup).
-attendanceRouter.post("/attendance/modules", requireRole("ADMIN"), async (req, res) => {
+// Create module/faculty records for attendance setup.
+attendanceRouter.post("/attendance/modules", requireRole("ADMIN", "LECTURER"), async (req, res) => {
   try {
     const code = String(req.body?.code ?? "").trim().toUpperCase();
     const name = String(req.body?.name ?? "").trim();
@@ -112,7 +161,7 @@ attendanceRouter.post("/attendance/modules", requireRole("ADMIN"), async (req, r
 });
 
 // Assign lecturer to module.
-attendanceRouter.post("/attendance/modules/:moduleId/lecturers", requireRole("ADMIN"), async (req, res) => {
+attendanceRouter.post("/attendance/modules/:moduleId/lecturers", requireRole("ADMIN", "LECTURER"), async (req, res) => {
   try {
     const moduleId = String(req.params.moduleId ?? "").trim();
     const lecturerId = String(req.body?.lecturerId ?? "").trim();
@@ -154,7 +203,7 @@ attendanceRouter.post("/attendance/modules/:moduleId/lecturers", requireRole("AD
 });
 
 // Enroll student to module and expose auto-linked lecturers for attendance/messaging workflows.
-attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("ADMIN"), async (req, res) => {
+attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("ADMIN", "LECTURER"), async (req, res) => {
   try {
     const moduleId = String(req.params.moduleId ?? "").trim();
     const studentId = String(req.body?.studentId ?? "").trim();
@@ -208,21 +257,88 @@ attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("
   }
 });
 
+attendanceRouter.delete(
+  "/attendance/modules/:moduleId/enrollments/:studentId",
+  requireRole("ADMIN", "LECTURER"),
+  async (req, res) => {
+    try {
+      const moduleId = String(req.params.moduleId ?? "").trim();
+      const studentId = String(req.params.studentId ?? "").trim();
+
+      if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      if (!isUuid(studentId)) return err(res, 400, "VALIDATION", "studentId must be a UUID");
+
+      const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
+      if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
+
+      const deleted = await pool.query(
+        `
+          DELETE FROM student_module_enrollments
+          WHERE module_id = $1
+            AND student_id = $2
+        `,
+        [moduleId, studentId]
+      );
+
+      if ((deleted.rowCount ?? 0) === 0) {
+        return err(res, 404, "NOT_FOUND", "Student enrollment not found");
+      }
+
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error("[attendance] DELETE /attendance/modules/:moduleId/enrollments/:studentId error", e);
+      return err(res, 500, "INTERNAL", "Failed to remove student enrollment");
+    }
+  }
+);
+
+attendanceRouter.delete(
+  "/attendance/modules/:moduleId/lecturers/:lecturerId",
+  requireRole("ADMIN", "LECTURER"),
+  async (req, res) => {
+    try {
+      const moduleId = String(req.params.moduleId ?? "").trim();
+      const lecturerId = String(req.params.lecturerId ?? "").trim();
+
+      if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      if (!isUuid(lecturerId)) return err(res, 400, "VALIDATION", "lecturerId must be a UUID");
+
+      const deleted = await pool.query(
+        `
+          DELETE FROM lecturer_module_assignments
+          WHERE module_id = $1
+            AND lecturer_id = $2
+        `,
+        [moduleId, lecturerId]
+      );
+
+      if ((deleted.rowCount ?? 0) === 0) {
+        return err(res, 404, "NOT_FOUND", "Lecturer assignment not found");
+      }
+
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error("[attendance] DELETE /attendance/modules/:moduleId/lecturers/:lecturerId error", e);
+      return err(res, 500, "INTERNAL", "Failed to remove lecturer assignment");
+    }
+  }
+);
+
 // List modules available for attendance workflows.
-attendanceRouter.get("/attendance/modules", requireRole("LECTURER", "ADMIN"), async (req, res) => {
+attendanceRouter.get("/attendance/modules", requireRole("LECTURER", "ADMIN", "STUDENT"), async (req, res) => {
   try {
     const user = req.user!;
-    const isAdmin = user.role === "ADMIN";
+    const isStudent = user.role === "STUDENT";
 
     const params: unknown[] = [];
     const where: string[] = [];
-    if (!isAdmin) {
+    if (isStudent) {
       params.push(user.id);
       where.push(`EXISTS (
         SELECT 1
-        FROM lecturer_module_assignments lma2
-        WHERE lma2.module_id = fm.id
-          AND lma2.lecturer_id = $${params.length}
+        FROM student_module_enrollments sme2
+        WHERE sme2.module_id = fm.id
+          AND sme2.student_id = $${params.length}
       )`);
     }
 
@@ -280,17 +396,11 @@ attendanceRouter.get("/attendance/modules", requireRole("LECTURER", "ADMIN"), as
 // List students enrolled in one module.
 attendanceRouter.get("/attendance/modules/:moduleId/students", requireRole("LECTURER", "ADMIN"), async (req, res) => {
   try {
-    const user = req.user!;
     const moduleId = String(req.params.moduleId ?? "").trim();
     if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
 
     const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
-
-    if (user.role === "LECTURER") {
-      const ok = await isLecturerAssignedToModule(user.id, moduleId);
-      if (!ok) return err(res, 403, "FORBIDDEN", "Lecturer is not assigned to this module");
-    }
 
     const rows = await pool.query<{
       id: string;
@@ -336,7 +446,6 @@ attendanceRouter.get("/attendance/modules/:moduleId/students", requireRole("LECT
 attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), async (req, res) => {
   try {
     const user = req.user!;
-    const role = String(user.role ?? "").toUpperCase() as AuthRole;
 
     const moduleId = String(req.body?.moduleId ?? "").trim();
     if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
@@ -345,16 +454,12 @@ attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), 
     const startsAt = String(req.body?.startsAt ?? "").trim() || null;
     const endsAt = String(req.body?.endsAt ?? "").trim() || null;
 
-    let lecturerId = user.id;
-    if (role === "ADMIN") {
-      lecturerId = String(req.body?.lecturerId ?? "").trim();
-      if (!isUuid(lecturerId)) {
-        return err(res, 400, "VALIDATION", "lecturerId is required for ADMIN and must be a UUID");
-      }
+    let lecturerId = String(req.body?.lecturerId ?? "").trim();
+    if (!lecturerId && user.role === "LECTURER") {
+      lecturerId = user.id;
     }
-
-    if (role === "LECTURER" && lecturerId !== user.id) {
-      return err(res, 403, "FORBIDDEN", "Lecturer can only create sessions for self");
+    if (!isUuid(lecturerId)) {
+      return err(res, 400, "VALIDATION", "lecturerId is required and must be a UUID");
     }
 
     const moduleRes = await pool.query<{ id: string; code: string; name: string }>(
@@ -368,13 +473,29 @@ attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), 
     );
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
 
+    const lecturerRes = await pool.query(
+      `
+        SELECT 1
+        FROM users
+        WHERE id = $1
+          AND role = 'LECTURER'
+        LIMIT 1
+      `,
+      [lecturerId]
+    );
+    if ((lecturerRes.rowCount ?? 0) === 0) {
+      return err(res, 404, "NOT_FOUND", "Lecturer not found");
+    }
+
     const assigned = await isLecturerAssignedToModule(lecturerId, moduleId);
     if (!assigned) {
-      return err(
-        res,
-        403,
-        "FORBIDDEN",
-        "Attendance sessions can only be created for lecturers assigned to this module"
+      await pool.query(
+        `
+          INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
+          VALUES ($1, $2)
+          ON CONFLICT (module_id, lecturer_id) DO NOTHING
+        `,
+        [moduleId, lecturerId]
       );
     }
 
@@ -419,7 +540,7 @@ attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), 
 });
 
 // List sessions.
-attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN"), async (req, res) => {
+attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN", "STUDENT"), async (req, res) => {
   try {
     const user = req.user!;
     const moduleIdRaw = String(req.query.moduleId ?? "").trim();
@@ -427,14 +548,27 @@ attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN"), a
 
     const params: unknown[] = [];
     const where: string[] = [];
+    const currentStudentId = user.role === "STUDENT" ? user.id : null;
 
-    if (user.role === "LECTURER") {
+    params.push(currentStudentId);
+    const studentLookupParam = params.length;
+
+    if (user.role === "STUDENT") {
       params.push(user.id);
-      where.push(`s.lecturer_id = $${params.length}`);
+      where.push(`EXISTS (
+        SELECT 1
+        FROM student_module_enrollments sme
+        WHERE sme.module_id = s.module_id
+          AND sme.student_id = $${params.length}
+      )`);
     }
 
     if (moduleIdRaw) {
       if (!isUuid(moduleIdRaw)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      if (user.role === "STUDENT") {
+        const enrolled = await isStudentEnrolledInModule(user.id, moduleIdRaw);
+        if (!enrolled) return err(res, 403, "FORBIDDEN", "Student is not enrolled in this module");
+      }
       params.push(moduleIdRaw);
       where.push(`s.module_id = $${params.length}`);
     }
@@ -457,6 +591,8 @@ attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN"), a
       module_code: string;
       module_name: string;
       faculty_name: string;
+      checked_in_at: string | null;
+      checked_in_count: number;
     }>(
       `
         SELECT
@@ -469,10 +605,24 @@ attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN"), a
           s.created_at,
           fm.code AS module_code,
           fm.name AS module_name,
-          f.name AS faculty_name
+          f.name AS faculty_name,
+          my_checkin.checked_in_at,
+          COALESCE(checkin_counts.checked_in_count, 0) AS checked_in_count
         FROM attendance_sessions s
         JOIN faculty_modules fm ON fm.id = s.module_id
         JOIN faculties f ON f.id = fm.faculty_id
+        LEFT JOIN LATERAL (
+          SELECT ac.checked_in_at
+          FROM attendance_checkins ac
+          WHERE ac.session_id = s.id
+            AND ac.student_id = $${studentLookupParam}::uuid
+          LIMIT 1
+        ) my_checkin ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS checked_in_count
+          FROM attendance_checkins ac2
+          WHERE ac2.session_id = s.id
+        ) checkin_counts ON TRUE
         ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
         ORDER BY s.attendance_date DESC, s.created_at DESC
       `,
@@ -490,12 +640,156 @@ attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN"), a
       startsAt: r.starts_at,
       endsAt: r.ends_at,
       createdAt: r.created_at,
+      checkedInAt: r.checked_in_at,
+      checkedInCount: Number(r.checked_in_count ?? 0),
     }));
 
     return res.json({ value, count: value.length });
   } catch (e) {
     console.error("[attendance] GET /attendance/sessions error", e);
     return err(res, 500, "INTERNAL", "Failed to list attendance sessions");
+  }
+});
+
+attendanceRouter.get("/attendance/sessions/:id/roster", requireRole("LECTURER", "ADMIN"), async (req, res) => {
+  try {
+    const user = req.user!;
+    const sessionId = String(req.params.id ?? "").trim();
+    if (!isUuid(sessionId)) return err(res, 400, "VALIDATION", "session id must be a UUID");
+
+    const session = await getAttendanceSessionContext(sessionId);
+    if (!session) return err(res, 404, "NOT_FOUND", "Attendance session not found");
+
+    const canAccess = await canStaffAccessSession({ id: user.id, role: user.role as AuthRole });
+    if (!canAccess) return err(res, 403, "FORBIDDEN", "User cannot access this attendance session");
+
+    const rows = await pool.query<{
+      id: string;
+      email: string;
+      first_name: string | null;
+      last_name: string | null;
+      course_name: string | null;
+      public_student_id: string | null;
+      checked_in_at: string | null;
+      current_status: AttendanceStatus | null;
+      marked_at: string | null;
+    }>(
+      `
+        SELECT
+          u.id,
+          u.email,
+          u.first_name,
+          u.last_name,
+          u.course_name,
+          u.public_student_id,
+          ac.checked_in_at,
+          ar.status AS current_status,
+          ar.marked_at
+        FROM student_module_enrollments sme
+        JOIN users u ON u.id = sme.student_id
+        LEFT JOIN attendance_checkins ac
+          ON ac.session_id = $2
+         AND ac.student_id = sme.student_id
+        LEFT JOIN attendance_records ar
+          ON ar.session_id = $2
+         AND ar.student_id = sme.student_id
+        WHERE sme.module_id = $1
+        ORDER BY lower(u.email) ASC
+      `,
+      [session.module_id, sessionId]
+    );
+
+    const value = rows.rows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      courseName: row.course_name,
+      studentNumber: row.public_student_id,
+      checkedInAt: row.checked_in_at,
+      currentStatus: row.current_status,
+      markedAt: row.marked_at,
+      suggestedStatus: inferSuggestedStatus(session.starts_at, row.checked_in_at),
+    }));
+
+    return res.json({
+      session: {
+        id: session.id,
+        lecturerId: session.lecturer_id,
+        moduleId: session.module_id,
+        date: session.attendance_date,
+        startsAt: session.starts_at,
+        endsAt: session.ends_at,
+      },
+      value,
+      count: value.length,
+    });
+  } catch (e) {
+    console.error("[attendance] GET /attendance/sessions/:id/roster error", e);
+    return err(res, 500, "INTERNAL", "Failed to load attendance roster");
+  }
+});
+
+attendanceRouter.post("/attendance/sessions/:id/check-in", requireRole("STUDENT"), async (req, res) => {
+  try {
+    const user = req.user!;
+    const sessionId = String(req.params.id ?? "").trim();
+    if (!isUuid(sessionId)) return err(res, 400, "VALIDATION", "session id must be a UUID");
+
+    const session = await getAttendanceSessionContext(sessionId);
+    if (!session) return err(res, 404, "NOT_FOUND", "Attendance session not found");
+
+    const enrolled = await isStudentEnrolledInModule(user.id, session.module_id);
+    if (!enrolled) return err(res, 403, "FORBIDDEN", "Student is not enrolled in this module");
+
+    const existingRecord = await pool.query(
+      `
+        SELECT 1
+        FROM attendance_records
+        WHERE session_id = $1
+          AND student_id = $2
+        LIMIT 1
+      `,
+      [sessionId, user.id]
+    );
+    if ((existingRecord.rowCount ?? 0) > 0) {
+      return err(res, 400, "VALIDATION", "Attendance is already marked for this session");
+    }
+
+    const inserted = await pool.query<{ checked_in_at: string }>(
+      `
+        INSERT INTO attendance_checkins (session_id, student_id)
+        VALUES ($1, $2)
+        ON CONFLICT (session_id, student_id) DO NOTHING
+        RETURNING checked_in_at
+      `,
+      [sessionId, user.id]
+    );
+
+    let checkedInAt = inserted.rows[0]?.checked_in_at ?? null;
+    if (!checkedInAt) {
+      const existingCheckin = await pool.query<{ checked_in_at: string }>(
+        `
+          SELECT checked_in_at
+          FROM attendance_checkins
+          WHERE session_id = $1
+            AND student_id = $2
+          LIMIT 1
+        `,
+        [sessionId, user.id]
+      );
+      checkedInAt = existingCheckin.rows[0]?.checked_in_at ?? null;
+    }
+
+    return res.json({
+      ok: true,
+      created: (inserted.rowCount ?? 0) > 0,
+      checkedInAt,
+      suggestedStatus: inferSuggestedStatus(session.starts_at, checkedInAt),
+    });
+  } catch (e) {
+    console.error("[attendance] POST /attendance/sessions/:id/check-in error", e);
+    return err(res, 500, "INTERNAL", "Failed to record session check-in");
   }
 });
 
@@ -549,15 +843,6 @@ attendanceRouter.post("/attendance/sessions/:id/mark", requireRole("LECTURER", "
 
     if ((sessionRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Attendance session not found");
     const session = sessionRes.rows[0];
-
-    if (user.role === "LECTURER" && session.lecturer_id !== user.id) {
-      return err(res, 403, "FORBIDDEN", "Lecturer can only mark sessions assigned to self");
-    }
-
-    if (user.role === "LECTURER") {
-      const assigned = await isLecturerAssignedToModule(user.id, session.module_id);
-      if (!assigned) return err(res, 403, "FORBIDDEN", "Lecturer is not assigned to this module");
-    }
 
     const studentIds = [...new Set(marks.map((m) => m.studentId))];
     const enrolledRes = await pool.query<{ student_id: string }>(
@@ -619,6 +904,15 @@ attendanceRouter.post("/attendance/sessions/:id/mark", requireRole("LECTURER", "
       }
 
       await client.query("COMMIT");
+      await createAttendanceNotifications({
+        sessionId,
+        marks: out.map((row) => ({
+          studentId: row.studentId,
+          status: row.status,
+        })),
+      }).catch((e) => {
+        console.error("[attendance] notification fan-out failed", e);
+      });
       return res.json({ ok: true, count: out.length, value: out });
     } catch (e) {
       await client.query("ROLLBACK");

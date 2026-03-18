@@ -3,6 +3,10 @@ import crypto from "crypto";
 import { pool } from "../config/db";
 import { requireRole } from "../middleware/rbac";
 import { repos } from "../persistence";
+import {
+  createParentLinkDecisionNotification,
+  createResultNotifications,
+} from "../lib/notifications";
 
 export const parentRouter = Router();
 
@@ -104,6 +108,26 @@ async function listAssessmentResultsForStudent(studentId: string): Promise<Asses
     [studentId]
   );
   return r.rows;
+}
+
+async function getStudentResultLabel(studentId: string): Promise<string> {
+  const result = await pool.query<{ public_student_id: string | null; email: string }>(
+    `
+      SELECT public_student_id, email
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [studentId]
+  );
+
+  const row = result.rows[0];
+  if (!row) return studentId;
+
+  const publicStudentId = String(row.public_student_id ?? "").trim();
+  if (publicStudentId) return publicStudentId;
+
+  return row.email;
 }
 
 function buildResultsCsv(childId: string, rows: AssessmentResultRow[]): string {
@@ -378,6 +402,15 @@ parentRouter.post("/admin/parent/link-requests/:id/decide", requireRole("ADMIN")
       );
     }
 
+    await createParentLinkDecisionNotification({
+      requestId: id,
+      parentId: row.parent_user_id,
+      studentId: row.student_user_id,
+      decision: decision as "APPROVED" | "REJECTED",
+    }).catch((e) => {
+      console.error("[parent] parent-link notification fan-out failed", e);
+    });
+
     return res.json({ ok: true, status: decision });
   } catch (e: any) {
     console.error("[parent] POST /admin/parent/link-requests/:id/decide error", e);
@@ -546,6 +579,48 @@ parentRouter.delete("/children/:studentId", requireRole("PARENT"), async (req, r
 /**
  * -------------------------
  * RESULTS (Option A)
+ * -------------------------
+ * GET /api/parent/student/results
+ */
+parentRouter.get("/student/results", requireRole("STUDENT"), async (req, res) => {
+  try {
+    const rows = await listAssessmentResultsForStudent(req.user!.id);
+    return res.json(rows);
+  } catch (e: any) {
+    console.error("[parent] GET /student/results error", e);
+    return err(res, 500, "INTERNAL", "Failed to load results");
+  }
+});
+
+/**
+ * GET /api/parent/student/results/download
+ * Download the signed-in student's own results.
+ */
+parentRouter.get("/student/results/download", requireRole("STUDENT"), async (req, res) => {
+  try {
+    const studentId = req.user!.id;
+    const childId = await getStudentResultLabel(studentId);
+    const rows = await listAssessmentResultsForStudent(studentId);
+    const csv = buildResultsCsv(childId, rows);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const safeChildId = childId.replace(/[^a-z0-9._-]+/gi, "_");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="results-${safeChildId || "student"}-${dateStamp}.csv"`
+    );
+
+    return res.status(200).send(csv);
+  } catch (e: any) {
+    console.error("[parent] GET /student/results/download error", e);
+    return err(res, 500, "INTERNAL", "Failed to download results");
+  }
+});
+
+/**
+ * -------------------------
+ * RESULTS (Parent)
  * -------------------------
  * GET /api/parent/results?childId=STU-1001
  */
@@ -962,6 +1037,18 @@ parentRouter.post("/admin/results", requireRole("ADMIN", "LECTURER"), async (req
       [newId(), studentId, subject, score, outOf, date]
     );
 
+    await createResultNotifications({
+      resultId: created.rows[0].id,
+      studentId,
+      subject: created.rows[0].subject,
+      score: created.rows[0].score,
+      outOf: created.rows[0].outOf,
+      date: created.rows[0].date,
+      action: "PUBLISHED",
+    }).catch((e) => {
+      console.error("[parent] result notification fan-out failed", e);
+    });
+
     return res.status(201).json(created.rows[0]);
   } catch (e: any) {
     console.error("[parent] POST /admin/results error", e);
@@ -985,8 +1072,19 @@ parentRouter.post("/admin/results/:id/update", requireRole("ADMIN", "LECTURER"),
       return err(res, 400, "VALIDATION", "Provide at least one field: subject, score, outOf, date");
     }
 
-    const current = await pool.query<{ score: number; out_of: number }>(
-      `SELECT score, out_of FROM assessment_results WHERE id = $1 LIMIT 1`,
+    const current = await pool.query<{
+      student_user_id: string;
+      subject: string;
+      score: number;
+      out_of: number;
+      assessed_at: string;
+    }>(
+      `
+        SELECT student_user_id, subject, score, out_of, assessed_at
+        FROM assessment_results
+        WHERE id = $1
+        LIMIT 1
+      `,
       [id]
     );
     if ((current.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Result not found");
@@ -1036,7 +1134,20 @@ parentRouter.post("/admin/results/:id/update", requireRole("ADMIN", "LECTURER"),
       [id, subject, score, outOf, date]
     );
 
-    return res.json(updated.rows[0]);
+    const updatedRow = updated.rows[0];
+    await createResultNotifications({
+      resultId: updatedRow.id,
+      studentId: currentRow.student_user_id,
+      subject: updatedRow.subject,
+      score: updatedRow.score,
+      outOf: updatedRow.outOf,
+      date: updatedRow.date,
+      action: "UPDATED",
+    }).catch((e) => {
+      console.error("[parent] result update notification fan-out failed", e);
+    });
+
+    return res.json(updatedRow);
   } catch (e: any) {
     console.error("[parent] POST /admin/results/:id/update error", e);
     return err(res, 500, "INTERNAL", "Failed to update result");
@@ -1085,46 +1196,79 @@ parentRouter.get("/finance", requireRole("PARENT"), async (req, res) => {
     // Make sure finance account exists for the student
     await repos.finance.ensureAccount(studentId);
 
-    const summary = await repos.finance.getSummary(studentId);
-    const tx = await repos.finance.listTransactions(studentId, { limit: 50 });
+    const [summary, tx, financeDocuments, financeNotifications] = await Promise.all([
+      repos.finance.getSummary(studentId),
+      repos.finance.listTransactions(studentId, { limit: 50 }),
+      repos.finance.listDocuments(studentId, { limit: 25 }),
+      repos.finance.listNotifications(studentId, { limit: 25 }),
+    ]);
 
     // Heuristic: last payment is typically a negative amount (money received)
     const lastPayment = tx.find((t) => t.amountCents < 0) ?? null;
 
     const balance = summary.balanceCents / 100;
-    const status = summary.balanceCents > 0 ? "OVERDUE" : "OK";
+    const status = summary.accountStatus;
 
     const notifications =
-      status === "OVERDUE"
-        ? [
-            {
-              id: "overdue",
-              title: "Account overdue",
-              body: `Outstanding balance: R ${balance.toFixed(2)}`,
-              severity: "warning",
-            },
-          ]
-        : [{ id: "ok", title: "Account up to date", body: "No outstanding balance.", severity: "info" }];
+      financeNotifications.length > 0
+        ? financeNotifications.map((entry) => ({
+            id: entry.id,
+            title: entry.title,
+            body: entry.body,
+            severity: entry.severity.toLowerCase(),
+            createdAt: entry.createdAt,
+          }))
+        : status === "OVERDUE"
+          ? [
+              {
+                id: "overdue",
+                title: "Account overdue",
+                body: `Outstanding balance: R ${balance.toFixed(2)}`,
+                severity: "warning",
+              },
+            ]
+          : [{ id: "ok", title: "Account up to date", body: "No outstanding balance.", severity: "info" }];
 
-    const statementsCount = tx.filter((t) => /statement/i.test(t.description)).length;
+    const statementsCount =
+      financeDocuments.filter((entry) => entry.type === "STATEMENT").length +
+      tx.filter((t) => /statement/i.test(t.description)).length;
+
+    const documents = [
+      ...financeDocuments.map((entry) => ({
+        id: entry.id,
+        kind: entry.type,
+        type: entry.type,
+        title: entry.title,
+        amount: entry.amountCents == null ? 0 : entry.amountCents / 100,
+        occurredAt: entry.issuedAt,
+        description: entry.description ?? null,
+        documentUrl: entry.documentUrl ?? null,
+      })),
+      ...tx.slice(0, 12).map((t) => {
+        const kind = /statement/i.test(t.description) ? "STATEMENT" : "TRANSACTION";
+        return {
+          id: t.id,
+          kind,
+          type: kind,
+          title: kind === "STATEMENT" ? "Statement transaction" : "Finance transaction",
+          amount: t.amountCents / 100,
+          occurredAt: t.occurredAt,
+          description: t.description ?? null,
+          documentUrl: null,
+        };
+      }),
+    ]
+      .sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt)))
+      .slice(0, 20);
 
     return res.json({
       balance,
       statements: statementsCount,
       lastPayment: lastPayment?.occurredAt ?? null,
       status,
-      documents: tx.slice(0, 12).map((t) => {
-        const kind = /statement/i.test(t.description) ? "STATEMENT" : "TRANSACTION";
-        return {
-          id: t.id,
-          // frontend may be expecting "type", so we provide it too
-          kind,
-          type: kind,
-          amount: t.amountCents / 100,
-          occurredAt: t.occurredAt,
-          description: t.description ?? null,
-        };
-      }),
+      statusNote: summary.statusNote,
+      currency: summary.currency,
+      documents,
       notifications,
     });
   } catch (e: any) {

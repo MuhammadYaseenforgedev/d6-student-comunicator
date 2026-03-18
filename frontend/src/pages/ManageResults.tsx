@@ -41,6 +41,16 @@ function toFormEditor(r: Result): EditorState {
   };
 }
 
+function performanceTone(percent: number): string {
+  if (percent >= 75) {
+    return "border-[rgba(52,211,153,0.30)] bg-[rgba(52,211,153,0.14)] text-[#d9fff1]";
+  }
+  if (percent >= 50) {
+    return "border-[rgba(255,196,87,0.30)] bg-[rgba(255,196,87,0.14)] text-[#ffecc2]";
+  }
+  return "border-[rgba(255,102,146,0.30)] bg-[rgba(255,102,146,0.14)] text-[#ffdbe6]";
+}
+
 export default function ManageResults() {
   const [childIdInput, setChildIdInput] = useState("");
   const [activeChildId, setActiveChildId] = useState("");
@@ -250,16 +260,30 @@ export default function ManageResults() {
     <div className="space-y-6">
       <PageHeader
         title="Manage Results"
-        subtitle="Admin and Lecturer can create, edit, delete, and download student results."
+        subtitle="Admins and lecturers can create, edit, delete, and download student results."
       />
 
-      <div className="teal-glow-card p-5">
-        <div className="text-lg font-semibold text-white">Select Student</div>
-        <div className="mt-1 text-sm text-white/72">
-          Enter student public ID (e.g. STU-1001) or student email.
+      <section className="teal-glow-card p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-lg font-semibold text-white">
+              Select Student
+            </div>
+            <div className="mt-1 text-sm text-white/72">
+              Enter student public ID such as STU-1001 or a student email.
+            </div>
+          </div>
+
+          {hasActiveChild && (
+            <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+              Active: {activeChildId}
+            </div>
+          )}
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto]">
+        <div className="divider-soft my-5" />
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto]">
           <input
             value={childIdInput}
             onChange={(e) => setChildIdInput(e.target.value)}
@@ -273,7 +297,7 @@ export default function ManageResults() {
             type="button"
             onClick={onLoad}
             disabled={!canLoad || loading}
-            className="btn-primary px-5 py-3 text-sm"
+            className="btn-primary min-w-[110px]"
             title="Load student results"
             aria-label="Load student results"
           >
@@ -284,7 +308,7 @@ export default function ManageResults() {
             type="button"
             onClick={onDownload}
             disabled={!hasActiveChild || loading || downloading}
-            className="btn-secondary inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold disabled:opacity-60"
+            className="btn-secondary inline-flex items-center justify-center gap-2 disabled:opacity-60"
             title="Download results"
             aria-label="Download results"
           >
@@ -308,14 +332,19 @@ export default function ManageResults() {
         </div>
 
         {downloadError && <div className="error-banner mt-4">{downloadError}</div>}
-      </div>
+      </section>
 
-      <div className="teal-glow-card p-5">
+      <section className="teal-glow-card p-5">
         <div className="text-lg font-semibold text-white">Create Result</div>
+        <div className="mt-1 text-sm text-white/72">
+          Add a new published result for the selected student.
+        </div>
+
+        <div className="divider-soft my-5" />
 
         <form
           onSubmit={onCreate}
-          className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4"
+          className="grid grid-cols-1 gap-3 sm:grid-cols-4"
         >
           <input
             value={newSubject}
@@ -357,7 +386,7 @@ export default function ManageResults() {
             <button
               type="submit"
               disabled={!hasActiveChild || busy}
-              className="btn-primary px-5 py-2 text-sm"
+              className="btn-primary"
               title="Add result"
               aria-label="Add result"
             >
@@ -367,25 +396,31 @@ export default function ManageResults() {
         </form>
 
         {error && <div className="error-banner mt-4">{error}</div>}
-      </div>
+      </section>
 
-      <div className="teal-glow-card p-5">
-        <div className="text-lg font-semibold text-white">Results List</div>
-        <div className="mt-2 text-sm text-white/72">
-          {hasActiveChild
-            ? `Showing results for ${activeChildId}`
-            : "Load a student to view results."}
+      <section className="teal-glow-card p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-lg font-semibold text-white">Results List</div>
+            <div className="mt-1 text-sm text-white/72">
+              {hasActiveChild
+                ? `Showing results for ${activeChildId}`
+                : "Load a student to view results."}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+            {sortedResults.length} record(s)
+          </div>
         </div>
 
-        <div className="mt-4 space-y-3">
+        <div className="divider-soft my-5" />
+
+        <div className="space-y-3">
           {loading ? (
-            <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
-              Loading results...
-            </div>
+            <div className="info-banner">Loading results...</div>
           ) : sortedResults.length === 0 ? (
-            <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
-              No results found.
-            </div>
+            <div className="info-banner">No results found.</div>
           ) : (
             sortedResults.map((r) => {
               const isEditing = editing?.id === r.id;
@@ -395,16 +430,30 @@ export default function ManageResults() {
               return (
                 <div
                   key={r.id}
-                  className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 text-white transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)] hover:shadow-[0_0_18px_rgba(140,235,255,0.10)]"
+                  className="glass-panel p-4 transition-all duration-200 hover:-translate-y-[1px]"
                 >
                   {!isEditing ? (
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
                         <div className="font-semibold text-white">
                           {r.subject}
                         </div>
-                        <div className="mt-1 text-xs text-white/65">
-                          {r.score}/{max} ({pct}%) - {r.date || "Unknown date"}
+                        <div className="mt-1 text-xs text-white/60">
+                          {r.score}/{max} ({pct}%) • {r.date || "Unknown date"}
+                        </div>
+                        <div className="mt-2">
+                          <span
+                            className={[
+                              "inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                              performanceTone(pct),
+                            ].join(" ")}
+                          >
+                            {pct >= 75
+                              ? "Excellent"
+                              : pct >= 50
+                              ? "Pass"
+                              : "Needs attention"}
+                          </span>
                         </div>
                       </div>
 
@@ -412,7 +461,7 @@ export default function ManageResults() {
                         <button
                           type="button"
                           onClick={() => startEdit(r)}
-                          className="btn-secondary px-3 py-1 text-xs"
+                          className="btn-secondary"
                           title="Edit result"
                           aria-label="Edit result"
                         >
@@ -423,7 +472,7 @@ export default function ManageResults() {
                           type="button"
                           onClick={() => onDelete(r.id)}
                           disabled={busy}
-                          className="btn-danger px-3 py-1 text-xs disabled:opacity-60"
+                          className="btn-danger disabled:opacity-60"
                           title="Delete result"
                           aria-label="Delete result"
                         >
@@ -479,7 +528,7 @@ export default function ManageResults() {
                           type="button"
                           onClick={saveEdit}
                           disabled={busy}
-                          className="btn-primary px-4 py-2 text-xs"
+                          className="btn-primary"
                           title="Save changes"
                           aria-label="Save changes"
                         >
@@ -489,7 +538,7 @@ export default function ManageResults() {
                         <button
                           type="button"
                           onClick={cancelEdit}
-                          className="btn-secondary px-4 py-2 text-xs"
+                          className="btn-secondary"
                           title="Cancel editing"
                           aria-label="Cancel editing"
                         >
@@ -503,7 +552,7 @@ export default function ManageResults() {
             })
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

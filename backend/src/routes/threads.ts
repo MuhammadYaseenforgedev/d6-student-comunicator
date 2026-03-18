@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool } from "../config/db";
 import { pgThreadRepo } from "../repos/pgThreadRepo";
 import { canMessage, toMessagingRole } from "../lib/messagingRbac";
+import { createThreadMessageNotifications } from "../lib/notifications";
 
 function err(res: any, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
@@ -36,18 +37,7 @@ threadRouter.get("/", async (req, res) => {
       nextBefore: out.nextBefore,
     });
   } catch (e: any) {
-    // TEMP DEBUG: remove after Render 500 diagnostics are complete.
-    console.error("[THREADS_DEBUG] GET /api/threads failed", {
-      err: e,
-      stack: e?.stack,
-      user: {
-        id: req.user?.id,
-        email: req.user?.email,
-        role: req.user?.role,
-      },
-      path: req.path,
-      query: req.query,
-    });
+    console.error("[threads] GET /threads error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });
@@ -196,6 +186,14 @@ threadRouter.post("/:id/messages", async (req, res) => {
     const body = req.body?.body;
 
     const msg = await pgThreadRepo.createMessage(threadId, userId, body);
+    await createThreadMessageNotifications({
+      threadId,
+      messageId: msg.id,
+      senderId: userId,
+      body: msg.body,
+    }).catch((e) => {
+      console.error("[threads] notification fan-out failed", e);
+    });
     return res.status(201).json(msg);
   } catch (e: any) {
     const code = e?.code;

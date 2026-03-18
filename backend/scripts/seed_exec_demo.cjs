@@ -36,104 +36,161 @@ function utcAt(daysFromNow, hour, minute = 0) {
   return d.toISOString();
 }
 
+function dateOnly(daysFromNow) {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+  d.setUTCDate(d.getUTCDate() + daysFromNow);
+  return d.toISOString().slice(0, 10);
+}
+
 const DEMO_USERS = {
   admin: {
-    email: "admin.exec.demo@d6demo.co.za",
-    password: "D6ExecAdmin!2026",
+    email: "demo+admin@co.za",
+    password: "DemoPass123",
     role: "ADMIN",
     studentNumber: null,
     southAfricanId: null,
   },
   lecturer: {
-    email: "lecturer.exec.demo@d6demo.co.za",
-    password: "D6ExecLecturer!2026",
+    email: "demo+lecturer@co.za",
+    password: "DemoPass123",
     role: "LECTURER",
     studentNumber: null,
     southAfricanId: null,
   },
-  student: {
-    email: "student.exec.demo@d6demo.co.za",
-    password: "D6ExecStudent!2026",
+  student1: {
+    email: "demo+student1@replace-with-real-inbox.com",
+    password: "DemoPass123",
     role: "STUDENT",
-    studentNumber: "STU-EXEC-1001",
+    studentNumber: "20231771",
     southAfricanId: "0101015009087",
   },
   parent: {
-    email: "parent.exec.demo@d6demo.co.za",
-    password: "D6ExecParent!2026",
+    email: "demo+parent@co.za",
+    password: "DemoPass123",
     role: "PARENT",
     studentNumber: null,
     southAfricanId: null,
   },
+  student2: {
+    email: "demo+student2@replace-with-real-inbox.com",
+    password: "DemoPass123",
+    role: "STUDENT",
+    studentNumber: "20231772",
+    southAfricanId: "0101015009088",
+  },
 };
 
 const RESULT_SEEDS = [
-  { id: "f9cf5ca6-4ed2-4d86-9f7d-7e4d95fef101", subject: "Mathematics", score: 88, outOf: 100, date: "2026-02-17" },
-  { id: "f9cf5ca6-4ed2-4d86-9f7d-7e4d95fef102", subject: "English", score: 81, outOf: 100, date: "2026-02-18" },
-  { id: "f9cf5ca6-4ed2-4d86-9f7d-7e4d95fef103", subject: "Science", score: 91, outOf: 100, date: "2026-02-19" },
-  { id: "f9cf5ca6-4ed2-4d86-9f7d-7e4d95fef104", subject: "History", score: 77, outOf: 100, date: "2026-02-20" },
+  { id: "e4ed8dca-22b0-4cec-a1b8-3ae2a5bf1101", subject: "Mathematics", score: 86, outOf: 100, date: "2026-03-01" },
+  { id: "e4ed8dca-22b0-4cec-a1b8-3ae2a5bf1102", subject: "English", score: 79, outOf: 100, date: "2026-03-02" },
+  { id: "e4ed8dca-22b0-4cec-a1b8-3ae2a5bf1103", subject: "Computer Science", score: 92, outOf: 100, date: "2026-03-03" },
+  { id: "e4ed8dca-22b0-4cec-a1b8-3ae2a5bf1104", subject: "Life Sciences", score: 81, outOf: 100, date: "2026-03-04" },
 ];
 
 const FINANCE_SEEDS = [
   {
-    id: "45f5d95e-4f65-4df1-9594-f8ca1f6a1101",
+    id: "7ac6f990-9e3a-4b04-babc-7f6a912f1101",
     amountCents: 250000,
-    description: "EXEC DEMO: Tuition Fee Term 1",
+    description: "DEMO SEED: Tuition Fee Term 1",
     occurredAt: utcAt(-20, 8, 0),
   },
   {
-    id: "45f5d95e-4f65-4df1-9594-f8ca1f6a1102",
+    id: "7ac6f990-9e3a-4b04-babc-7f6a912f1102",
     amountCents: 45000,
-    description: "EXEC DEMO: Statement 2026-01",
+    description: "DEMO SEED: Statement 2026-01",
     occurredAt: utcAt(-15, 10, 30),
   },
   {
-    id: "45f5d95e-4f65-4df1-9594-f8ca1f6a1103",
+    id: "7ac6f990-9e3a-4b04-babc-7f6a912f1103",
     amountCents: 47000,
-    description: "EXEC DEMO: Statement 2026-02",
+    description: "DEMO SEED: Statement 2026-02",
     occurredAt: utcAt(-8, 9, 15),
   },
   {
-    id: "45f5d95e-4f65-4df1-9594-f8ca1f6a1104",
+    id: "7ac6f990-9e3a-4b04-babc-7f6a912f1104",
     amountCents: -150000,
-    description: "EXEC DEMO: EFT Payment",
+    description: "DEMO SEED: EFT Payment",
     occurredAt: utcAt(-5, 12, 0),
   },
 ];
 
-const CHANNEL_ANNOUNCEMENTS = [
-  { title: "EXEC DEMO: Launch", body: "Welcome to the executive self-test environment.", pinned: true },
-  { title: "EXEC DEMO: Parent Meeting", body: "Parent meeting starts at 18:00 in Main Hall.", pinned: false },
-  { title: "EXEC DEMO: Assessment Week", body: "Continuous assessment submissions are open this week.", pinned: false },
+const CHANNEL_SEEDS = [
+  { key: "general", name: "General", type: "MODULE", isPrivate: false },
+  { key: "modules", name: "Modules", type: "MODULE", isPrivate: false },
+  { key: "faculty", name: "Faculty", type: "FACULTY", isPrivate: false },
+  { key: "clubs", name: "Clubs", type: "CLUB", isPrivate: false },
+  { key: "emergency", name: "Emergency", type: "EMERGENCY", isPrivate: false },
 ];
 
-const CHANNEL_MESSAGES = [
-  { body: "EXEC DEMO: Lecturer welcome message.", actor: "lecturer" },
-  { body: "EXEC DEMO: Student acknowledgement.", actor: "student" },
-  { body: "EXEC DEMO: Lecturer assignment reminder.", actor: "lecturer" },
-  { body: "EXEC DEMO: Student asks for clarification.", actor: "student" },
-  { body: "EXEC DEMO: Lecturer follow-up response.", actor: "lecturer" },
-  { body: "EXEC DEMO: Student thanks lecturer.", actor: "student" },
+const CHANNEL_ANNOUNCEMENT_SEEDS = [
+  {
+    channelKey: "general",
+    title: "DEMO SEED: Welcome",
+    body: "Welcome to the D6 Student Communicator production demo.",
+    pinned: true,
+  },
+  {
+    channelKey: "modules",
+    title: "DEMO SEED: Module Briefing",
+    body: "CS101 weekly briefing is available in the modules feed.",
+    pinned: false,
+  },
+  {
+    channelKey: "faculty",
+    title: "DEMO SEED: Faculty Notice",
+    body: "Faculty consultation hours are open this week.",
+    pinned: false,
+  },
+  {
+    channelKey: "clubs",
+    title: "DEMO SEED: Clubs Signup",
+    body: "Student clubs signup remains open until Friday.",
+    pinned: false,
+  },
+  {
+    channelKey: "emergency",
+    title: "DEMO SEED: Safety Drill",
+    body: "Campus safety drill is scheduled for next Tuesday.",
+    pinned: false,
+  },
+];
+
+const CHANNEL_MESSAGE_SEEDS = [
+  { channelKey: "general", body: "DEMO SEED: Lecturer welcome message.", actor: "lecturer" },
+  { channelKey: "general", body: "DEMO SEED: Student acknowledgement.", actor: "student1" },
+  { channelKey: "modules", body: "DEMO SEED: Please review CS101 assignment scope.", actor: "lecturer" },
 ];
 
 const CHANNEL_EVENT_SEEDS = [
   {
-    title: "EXEC DEMO: Parent Meeting",
-    description: "Executive demo channel event.",
+    channelKey: "general",
+    title: "DEMO SEED: Parent Meeting",
+    description: "Parent meeting for progress feedback.",
     location: "Main Hall",
     startsAt: utcAt(2, 18, 0),
     endsAt: utcAt(2, 19, 0),
   },
   {
-    title: "EXEC DEMO: Assessment Deadline",
-    description: "Executive demo assessment deadline.",
+    channelKey: "modules",
+    title: "DEMO SEED: CS101 Assessment Deadline",
+    description: "CS101 continuous assessment submission deadline.",
     location: "Online Portal",
     startsAt: utcAt(5, 16, 0),
     endsAt: utcAt(5, 17, 0),
   },
   {
-    title: "EXEC DEMO: General Event",
-    description: "Executive demo school event.",
+    channelKey: "faculty",
+    title: "DEMO SEED: Faculty Consultation Hour",
+    description: "Lecturer consultation for enrolled students.",
+    location: "Faculty Office",
+    startsAt: utcAt(3, 11, 0),
+    endsAt: utcAt(3, 12, 0),
+  },
+  {
+    channelKey: "clubs",
+    title: "DEMO SEED: Clubs Showcase",
+    description: "Clubs showcase for new members.",
     location: "Sports Field",
     startsAt: utcAt(7, 10, 0),
     endsAt: utcAt(7, 12, 0),
@@ -142,69 +199,80 @@ const CHANNEL_EVENT_SEEDS = [
 
 const CALENDAR_SEEDS = [
   {
-    id: "8a6a9f5d-c2d3-4cf7-89bf-a2a9f7b4a101",
-    actor: "student",
-    title: "EXEC DEMO: Student Consultation",
+    id: "a80d1252-e44b-49cb-a805-2da766341101",
+    actor: "student1",
+    title: "DEMO SEED: Student Consultation",
     description: "One-on-one consultation.",
     location: "Lab 2",
     startsAt: utcAt(1, 10, 0),
     endsAt: utcAt(1, 11, 0),
   },
   {
-    id: "8a6a9f5d-c2d3-4cf7-89bf-a2a9f7b4a102",
-    actor: "student",
-    title: "EXEC DEMO: Student Assignment Due",
+    id: "a80d1252-e44b-49cb-a805-2da766341102",
+    actor: "student1",
+    title: "DEMO SEED: Student Assignment Due",
     description: "Submit assignment in portal.",
     location: "Online Portal",
     startsAt: utcAt(3, 14, 0),
     endsAt: utcAt(3, 15, 0),
   },
   {
-    id: "8a6a9f5d-c2d3-4cf7-89bf-a2a9f7b4a103",
+    id: "a80d1252-e44b-49cb-a805-2da766341103",
     actor: "lecturer",
-    title: "EXEC DEMO: Lecturer Office Hour",
+    title: "DEMO SEED: Lecturer Office Hour",
     description: "Open support session.",
     location: "Faculty Office",
     startsAt: utcAt(2, 9, 0),
     endsAt: utcAt(2, 10, 0),
   },
-  {
-    id: "8a6a9f5d-c2d3-4cf7-89bf-a2a9f7b4a104",
-    actor: "lecturer",
-    title: "EXEC DEMO: Lecturer Planning",
-    description: "Weekly planning block.",
-    location: "Staff Room",
-    startsAt: utcAt(4, 13, 0),
-    endsAt: utcAt(4, 14, 0),
-  },
 ];
 
 const UPLOAD_SEEDS = [
   {
-    id: "4a8d020d-4b2e-4cb0-8db2-beb5be4ab101",
+    id: "c57e59f0-8646-453a-a5bc-f11e2aaa1101",
     actor: "lecturer",
     kind: "LECTURER_MATERIAL",
-    originalName: "exec-demo-lecturer-material-1.txt",
-    fileName: "exec-demo-lecturer-material-1.txt",
-    content: "Executive demo lecturer material 1.",
+    originalName: "demo-seed-lecturer-material.txt",
+    fileName: "demo-seed-lecturer-material.txt",
+    content: "Demo seed lecturer material for production readiness checks.",
   },
   {
-    id: "4a8d020d-4b2e-4cb0-8db2-beb5be4ab102",
-    actor: "lecturer",
-    kind: "LECTURER_MATERIAL",
-    originalName: "exec-demo-lecturer-material-2.txt",
-    fileName: "exec-demo-lecturer-material-2.txt",
-    content: "Executive demo lecturer material 2.",
-  },
-  {
-    id: "4a8d020d-4b2e-4cb0-8db2-beb5be4ab103",
-    actor: "student",
+    id: "c57e59f0-8646-453a-a5bc-f11e2aaa1102",
+    actor: "student1",
     kind: "STUDENT_SUBMISSION",
-    originalName: "exec-demo-student-submission-1.txt",
-    fileName: "exec-demo-student-submission-1.txt",
-    content: "Executive demo student submission 1.",
+    originalName: "demo-seed-student-submission.txt",
+    fileName: "demo-seed-student-submission.txt",
+    content: "Demo seed student submission for uploads verification.",
   },
 ];
+
+const ATTENDANCE_SEED = {
+  facultyName: "Engineering",
+  moduleCode: "CS101",
+  moduleName: "Introduction to Computer Science",
+  sessions: [
+    {
+      id: "f4cfd0f7-1905-4cca-b82c-9cb0b9e11101",
+      attendanceDate: dateOnly(-2),
+      startsAt: utcAt(-2, 8, 0),
+      endsAt: utcAt(-2, 9, 0),
+      records: [
+        { actor: "student1", status: "PRESENT" },
+        { actor: "student2", status: "LATE" },
+      ],
+    },
+    {
+      id: "f4cfd0f7-1905-4cca-b82c-9cb0b9e11102",
+      attendanceDate: dateOnly(-1),
+      startsAt: utcAt(-1, 8, 0),
+      endsAt: utcAt(-1, 9, 0),
+      records: [
+        { actor: "student1", status: "ABSENT" },
+        { actor: "student2", status: "PRESENT" },
+      ],
+    },
+  ],
+};
 
 async function upsertDemoUser(pool, userSpec, summary) {
   const email = normalizeEmail(userSpec.email);
@@ -306,10 +374,17 @@ async function ensureChannel(pool, pgRepos, input, summary) {
   return channelId;
 }
 
-async function ensureAnnouncements(pgRepos, channelId, createdBy, summary) {
-  const existing = await pgRepos.announcements.listByChannel(channelId);
+async function ensureAnnouncements(pgRepos, channelIdsByKey, createdBy, summary) {
+  const existingByChannel = new Map();
 
-  for (const seed of CHANNEL_ANNOUNCEMENTS) {
+  for (const seed of CHANNEL_ANNOUNCEMENT_SEEDS) {
+    const channelId = channelIdsByKey[seed.channelKey];
+    if (!channelId) continue;
+
+    if (!existingByChannel.has(channelId)) {
+      existingByChannel.set(channelId, await pgRepos.announcements.listByChannel(channelId));
+    }
+    const existing = existingByChannel.get(channelId);
     const found = existing.find((a) => String(a.title) === seed.title);
     if (!found) {
       await pgRepos.announcements.create({
@@ -336,11 +411,18 @@ async function ensureAnnouncements(pgRepos, channelId, createdBy, summary) {
   }
 }
 
-async function ensureChannelMessages(pgRepos, channelId, usersByKey, summary) {
-  const existing = await pgRepos.messages.listByChannel(channelId);
+async function ensureChannelMessages(pgRepos, channelIdsByKey, usersByKey, summary) {
+  const existingByChannel = new Map();
 
-  for (const seed of CHANNEL_MESSAGES) {
-    const authorId = usersByKey[seed.actor].id;
+  for (const seed of CHANNEL_MESSAGE_SEEDS) {
+    const channelId = channelIdsByKey[seed.channelKey];
+    const authorId = usersByKey[seed.actor]?.id;
+    if (!channelId || !authorId) continue;
+
+    if (!existingByChannel.has(channelId)) {
+      existingByChannel.set(channelId, await pgRepos.messages.listByChannel(channelId));
+    }
+    const existing = existingByChannel.get(channelId);
     const found = existing.find((m) => String(m.body) === seed.body && String(m.createdBy) === authorId);
     if (found) continue;
 
@@ -353,9 +435,17 @@ async function ensureChannelMessages(pgRepos, channelId, usersByKey, summary) {
   }
 }
 
-async function ensureChannelEvents(pgRepos, channelId, createdBy, summary) {
-  const existing = await pgRepos.events.listByChannel(channelId);
+async function ensureChannelEvents(pgRepos, channelIdsByKey, createdBy, summary) {
+  const existingByChannel = new Map();
+
   for (const seed of CHANNEL_EVENT_SEEDS) {
+    const channelId = channelIdsByKey[seed.channelKey];
+    if (!channelId) continue;
+
+    if (!existingByChannel.has(channelId)) {
+      existingByChannel.set(channelId, await pgRepos.events.listByChannel(channelId));
+    }
+    const existing = existingByChannel.get(channelId);
     const found = existing.find((e) => String(e.title) === seed.title);
     if (!found) {
       await pgRepos.events.create({
@@ -390,26 +480,6 @@ async function ensureChannelEvents(pgRepos, channelId, createdBy, summary) {
   }
 }
 
-async function removeParentStudentThreads(pool, parentId, studentId, summary) {
-  const rows = await pool.query(
-    `
-      SELECT tp.thread_id
-      FROM thread_participants tp
-      GROUP BY tp.thread_id
-      HAVING COUNT(*) = 2
-         AND BOOL_OR(tp.user_id = $1::uuid)
-         AND BOOL_OR(tp.user_id = $2::uuid)
-    `,
-    [parentId, studentId]
-  );
-
-  const threadIds = rows.rows.map((r) => String(r.thread_id));
-  if (threadIds.length === 0) return;
-
-  const deleted = await pool.query(`DELETE FROM threads WHERE id = ANY($1::uuid[])`, [threadIds]);
-  summary.threads.parentStudentRemoved += Number(deleted.rowCount || 0);
-}
-
 async function ensureThreadWithMessages(pgRepos, input, summary) {
   const created = await pgRepos.threads.createThread(input.starterId, [input.participantEmail]);
   const threadId = String(created.thread.id);
@@ -422,6 +492,129 @@ async function ensureThreadWithMessages(pgRepos, input, summary) {
     if (found) continue;
     await pgRepos.threads.createMessage(threadId, msg.authorId, msg.body);
     summary.threadMessages.created += 1;
+  }
+}
+
+async function ensurePendingParentLinkRequest(pool, parentId, studentId, summary) {
+  const inserted = await pool.query(
+    `
+      INSERT INTO parent_link_requests (id, parent_user_id, student_user_id, status)
+      VALUES (gen_random_uuid(), $1, $2, 'PENDING')
+      ON CONFLICT (parent_user_id, student_user_id, status) DO NOTHING
+      RETURNING id
+    `,
+    [parentId, studentId]
+  );
+  if ((inserted.rowCount || 0) > 0) summary.linkRequests.created += 1;
+}
+
+async function ensureAttendance(pool, usersByKey, summary) {
+  const faculty = await pool.query(
+    `
+      INSERT INTO faculties (name)
+      VALUES ($1)
+      ON CONFLICT (name)
+      DO UPDATE SET name = EXCLUDED.name
+      RETURNING id
+    `,
+    [ATTENDANCE_SEED.facultyName]
+  );
+  const facultyId = faculty.rows[0].id;
+
+  const moduleRow = await pool.query(
+    `
+      INSERT INTO faculty_modules (faculty_id, code, name)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (code)
+      DO UPDATE SET
+        faculty_id = EXCLUDED.faculty_id,
+        name = EXCLUDED.name
+      RETURNING id
+    `,
+    [facultyId, ATTENDANCE_SEED.moduleCode, ATTENDANCE_SEED.moduleName]
+  );
+  const moduleId = moduleRow.rows[0].id;
+
+  await pool.query(
+    `
+      INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
+      VALUES ($1, $2)
+      ON CONFLICT (module_id, lecturer_id) DO NOTHING
+    `,
+    [moduleId, usersByKey.lecturer.id]
+  );
+
+  const enrolled = await pool.query(
+    `
+      INSERT INTO student_module_enrollments (module_id, student_id)
+      SELECT $1, x
+      FROM unnest($2::uuid[]) AS x
+      ON CONFLICT (module_id, student_id) DO NOTHING
+    `,
+    [moduleId, [usersByKey.student1.id, usersByKey.student2.id]]
+  );
+  summary.attendance.enrollmentsAdded += Number(enrolled.rowCount || 0);
+
+  for (const session of ATTENDANCE_SEED.sessions) {
+    const sessionExists = await pool.query(`SELECT 1 FROM attendance_sessions WHERE id = $1 LIMIT 1`, [session.id]);
+    await pool.query(
+      `
+        INSERT INTO attendance_sessions (
+          id, lecturer_id, module_id, attendance_date, starts_at, ends_at, created_by, created_at
+        )
+        VALUES ($1, $2, $3, $4::date, $5::timestamptz, $6::timestamptz, $7, now())
+        ON CONFLICT (id) DO UPDATE
+        SET
+          lecturer_id = EXCLUDED.lecturer_id,
+          module_id = EXCLUDED.module_id,
+          attendance_date = EXCLUDED.attendance_date,
+          starts_at = EXCLUDED.starts_at,
+          ends_at = EXCLUDED.ends_at,
+          created_by = EXCLUDED.created_by
+      `,
+      [
+        session.id,
+        usersByKey.lecturer.id,
+        moduleId,
+        session.attendanceDate,
+        session.startsAt,
+        session.endsAt,
+        usersByKey.lecturer.id,
+      ]
+    );
+    if ((sessionExists.rowCount || 0) === 0) summary.attendance.sessionsCreated += 1;
+    else summary.attendance.sessionsUpdated += 1;
+
+    for (const record of session.records) {
+      const studentId = usersByKey[record.actor]?.id;
+      if (!studentId) continue;
+
+      const recordExists = await pool.query(
+        `
+          SELECT 1
+          FROM attendance_records
+          WHERE session_id = $1 AND student_id = $2
+          LIMIT 1
+        `,
+        [session.id, studentId]
+      );
+
+      await pool.query(
+        `
+          INSERT INTO attendance_records (session_id, student_id, status, marked_by)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (session_id, student_id)
+          DO UPDATE SET
+            status = EXCLUDED.status,
+            marked_at = now(),
+            marked_by = EXCLUDED.marked_by
+        `,
+        [session.id, studentId, record.status, usersByKey.lecturer.id]
+      );
+
+      if ((recordExists.rowCount || 0) === 0) summary.attendance.recordsCreated += 1;
+      else summary.attendance.recordsUpdated += 1;
+    }
   }
 }
 
@@ -449,17 +642,6 @@ async function ensureResults(pool, studentId, summary) {
 
 async function ensureFinance(pool, pgRepos, studentId, summary) {
   await pgRepos.finance.ensureAccount(studentId);
-
-  const txIds = FINANCE_SEEDS.map((x) => x.id);
-  await pool.query(
-    `
-      DELETE FROM finance_transactions
-      WHERE user_id = $1
-        AND description LIKE 'EXEC DEMO:%'
-        AND id <> ALL($2::uuid[])
-    `,
-    [studentId, txIds]
-  );
 
   for (const seed of FINANCE_SEEDS) {
     const exists = await pool.query(`SELECT 1 FROM finance_transactions WHERE id = $1 LIMIT 1`, [seed.id]);
@@ -502,19 +684,6 @@ async function ensureFinance(pool, pgRepos, studentId, summary) {
 }
 
 async function ensureCalendar(pool, usersByKey, summary) {
-  const seedIds = CALENDAR_SEEDS.map((x) => x.id);
-  const ownerIds = [usersByKey.student.id, usersByKey.lecturer.id];
-
-  await pool.query(
-    `
-      DELETE FROM calendar_entries
-      WHERE user_id = ANY($1::uuid[])
-        AND title LIKE 'EXEC DEMO:%'
-        AND id <> ALL($2::uuid[])
-    `,
-    [ownerIds, seedIds]
-  );
-
   for (const seed of CALENDAR_SEEDS) {
     const userId = usersByKey[seed.actor].id;
     const exists = await pool.query(`SELECT 1 FROM calendar_entries WHERE id = $1 LIMIT 1`, [seed.id]);
@@ -542,16 +711,6 @@ async function ensureUploads(pool, usersByKey, summary) {
   const projectRoot = path.resolve(__dirname, "..");
   const uploadDir = path.resolve(projectRoot, String(process.env.UPLOAD_DIR || "").trim() || "uploads");
   fs.mkdirSync(uploadDir, { recursive: true });
-
-  const seedIds = UPLOAD_SEEDS.map((x) => x.id);
-  await pool.query(
-    `
-      DELETE FROM uploads
-      WHERE original_name LIKE 'exec-demo-%'
-        AND id <> ALL($1::uuid[])
-    `,
-    [seedIds]
-  );
 
   for (const seed of UPLOAD_SEEDS) {
     const uploadedBy = usersByKey[seed.actor].id;
@@ -600,13 +759,15 @@ async function run() {
   const summary = {
     users: { created: 0, updated: 0 },
     links: { created: 0 },
+    linkRequests: { created: 0 },
     channels: { created: 0, updated: 0 },
     channelMembers: { added: 0 },
     announcements: { created: 0, updated: 0 },
     channelMessages: { created: 0 },
     events: { created: 0, updated: 0 },
-    threads: { created: 0, reused: 0, parentStudentRemoved: 0 },
+    threads: { created: 0, reused: 0 },
     threadMessages: { created: 0 },
+    attendance: { sessionsCreated: 0, sessionsUpdated: 0, recordsCreated: 0, recordsUpdated: 0, enrollmentsAdded: 0 },
     results: { created: 0, updated: 0 },
     finance: { transactionsCreated: 0, transactionsUpdated: 0, totalTransactions: 0, statementLike: 0 },
     calendar: { created: 0, updated: 0 },
@@ -627,41 +788,32 @@ async function run() {
         VALUES ($1, $2)
         ON CONFLICT (parent_user_id, student_user_id) DO NOTHING
       `,
-      [usersByKey.parent.id, usersByKey.student.id]
+      [usersByKey.parent.id, usersByKey.student1.id]
     );
     summary.links.created += Number(link.rowCount || 0);
 
-    const publicChannelId = await ensureChannel(
-      pool,
-      pgRepos,
-      {
-        name: "EXEC DEMO - General",
-        type: "MODULE",
-        isPrivate: false,
-        createdBy: usersByKey.admin.id,
-        memberIds: [usersByKey.lecturer.id, usersByKey.student.id, usersByKey.parent.id],
-      },
-      summary
-    );
+    await ensurePendingParentLinkRequest(pool, usersByKey.parent.id, usersByKey.student2.id, summary);
 
-    const privateChannelId = await ensureChannel(
-      pool,
-      pgRepos,
-      {
-        name: "EXEC DEMO - Private Class",
-        type: "FACULTY",
-        isPrivate: true,
-        createdBy: usersByKey.admin.id,
-        memberIds: [usersByKey.lecturer.id, usersByKey.student.id],
-      },
-      summary
-    );
+    const channelIdsByKey = {};
+    for (const channelSeed of CHANNEL_SEEDS) {
+      const channelId = await ensureChannel(
+        pool,
+        pgRepos,
+        {
+          name: channelSeed.name,
+          type: channelSeed.type,
+          isPrivate: channelSeed.isPrivate,
+          createdBy: usersByKey.admin.id,
+          memberIds: [usersByKey.admin.id, usersByKey.lecturer.id, usersByKey.student1.id, usersByKey.parent.id],
+        },
+        summary
+      );
+      channelIdsByKey[channelSeed.key] = channelId;
+    }
 
-    await ensureAnnouncements(pgRepos, publicChannelId, usersByKey.admin.id, summary);
-    await ensureChannelMessages(pgRepos, publicChannelId, usersByKey, summary);
-    await ensureChannelEvents(pgRepos, publicChannelId, usersByKey.lecturer.id, summary);
-
-    await removeParentStudentThreads(pool, usersByKey.parent.id, usersByKey.student.id, summary);
+    await ensureAnnouncements(pgRepos, channelIdsByKey, usersByKey.admin.id, summary);
+    await ensureChannelMessages(pgRepos, channelIdsByKey, usersByKey, summary);
+    await ensureChannelEvents(pgRepos, channelIdsByKey, usersByKey.lecturer.id, summary);
 
     await ensureThreadWithMessages(
       pgRepos,
@@ -669,8 +821,8 @@ async function run() {
         starterId: usersByKey.parent.id,
         participantEmail: usersByKey.lecturer.email,
         messages: [
-          { authorId: usersByKey.parent.id, body: "EXEC DEMO: Parent message to lecturer." },
-          { authorId: usersByKey.lecturer.id, body: "EXEC DEMO: Lecturer reply to parent." },
+          { authorId: usersByKey.parent.id, body: "DEMO SEED: Parent message to lecturer." },
+          { authorId: usersByKey.lecturer.id, body: "DEMO SEED: Lecturer reply to parent." },
         ],
       },
       summary
@@ -679,35 +831,51 @@ async function run() {
     await ensureThreadWithMessages(
       pgRepos,
       {
-        starterId: usersByKey.student.id,
+        starterId: usersByKey.student1.id,
         participantEmail: usersByKey.lecturer.email,
         messages: [
-          { authorId: usersByKey.student.id, body: "EXEC DEMO: Student message to lecturer." },
-          { authorId: usersByKey.lecturer.id, body: "EXEC DEMO: Lecturer reply to student." },
+          { authorId: usersByKey.student1.id, body: "DEMO SEED: Student message to lecturer." },
+          { authorId: usersByKey.lecturer.id, body: "DEMO SEED: Lecturer reply to student." },
         ],
       },
       summary
     );
 
-    await ensureResults(pool, usersByKey.student.id, summary);
-    await ensureFinance(pool, pgRepos, usersByKey.student.id, summary);
+    await ensureThreadWithMessages(
+      pgRepos,
+      {
+        starterId: usersByKey.admin.id,
+        participantEmail: usersByKey.lecturer.email,
+        messages: [
+          { authorId: usersByKey.admin.id, body: "DEMO SEED: Admin message to lecturer." },
+          { authorId: usersByKey.lecturer.id, body: "DEMO SEED: Lecturer response to admin." },
+        ],
+      },
+      summary
+    );
+
+    await ensureAttendance(pool, usersByKey, summary);
+    await ensureResults(pool, usersByKey.student1.id, summary);
+    await ensureFinance(pool, pgRepos, usersByKey.student1.id, summary);
     await ensureCalendar(pool, usersByKey, summary);
     await ensureUploads(pool, usersByKey, summary);
 
     console.log("");
-    console.log("=== EXEC DEMO SEED SUMMARY ===");
+    console.log("=== DEMO SEED SUMMARY ===");
     console.log(JSON.stringify(summary, null, 2));
     console.log("");
-    console.log("=== EXEC DEMO CREDENTIALS ===");
+    console.log("=== DEMO CREDENTIALS ===");
     console.log(`ADMIN    ${DEMO_USERS.admin.email} / ${DEMO_USERS.admin.password}`);
     console.log(`LECTURER ${DEMO_USERS.lecturer.email} / ${DEMO_USERS.lecturer.password}`);
     console.log(
-      `STUDENT  ${DEMO_USERS.student.email} / ${DEMO_USERS.student.password} (studentNumber=${DEMO_USERS.student.studentNumber})`
+      `STUDENT  ${DEMO_USERS.student1.email} / ${DEMO_USERS.student1.password} (studentNumber=${DEMO_USERS.student1.studentNumber})`
+    );
+    console.log(
+      `STUDENT2 ${DEMO_USERS.student2.email} / ${DEMO_USERS.student2.password} (studentNumber=${DEMO_USERS.student2.studentNumber})`
     );
     console.log(`PARENT   ${DEMO_USERS.parent.email} / ${DEMO_USERS.parent.password}`);
     console.log("");
     console.log("THREADS_MODE should be D6 in production.");
-    console.log(`Private channel seeded: ${privateChannelId}`);
   } finally {
     await pool.end();
   }

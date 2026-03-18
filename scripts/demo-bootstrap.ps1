@@ -314,6 +314,33 @@ function Try-AdminCredsFromEnv() {
   }
 }
 
+function Try-StaffRegisterPasswordFromEnv() {
+  $envPath = Join-Path (Join-Path (RepoRoot) "backend") ".env"
+  $cfg = Read-DotEnv $envPath
+  if (-not $cfg.ContainsKey("AUTH_STAFF_REGISTER_PASSWORD")) {
+    return [pscustomobject]@{
+      ok = $false
+      password = ""
+      source = ""
+    }
+  }
+
+  $password = [string]$cfg.AUTH_STAFF_REGISTER_PASSWORD
+  if ([string]::IsNullOrWhiteSpace($password)) {
+    return [pscustomobject]@{
+      ok = $false
+      password = ""
+      source = ""
+    }
+  }
+
+  return [pscustomobject]@{
+    ok = $true
+    password = $password
+    source = "backend/.env (AUTH_STAFF_REGISTER_PASSWORD)"
+  }
+}
+
 function Get-StudentIdentity([string]$email) {
   $key = [string]$email
   if (-not $key) { return $null }
@@ -329,10 +356,16 @@ function Otp([string]$email, [string]$purpose) {
     Add-Warn "OTP request failed for ${email}/${purpose}: $(Err $r)"
     return ""
   }
-  if ($r.body -and (@($r.body.PSObject.Properties.Name) -contains "devCode")) {
-    return [string]$r.body.devCode
+  if ($r.body) {
+    $props = @($r.body.PSObject.Properties.Name)
+    if ($props -contains "devOtp") {
+      return [string]$r.body.devOtp
+    }
+    if ($props -contains "devCode") {
+      return [string]$r.body.devCode
+    }
   }
-  Add-Missing "OTP required for $purpose but devCode not returned for $email. Set OTP_RETURN_DEV_CODE=true."
+  Add-Missing "OTP required for $purpose but no dev OTP was returned for $email. For local demo bootstrap, start the backend with AUTH_REQUIRE_OTP=false or enable demo OTP bypass for this email."
   return ""
 }
 function AuthFromResponse([object]$r, [string]$ctx) {
@@ -429,6 +462,52 @@ function RegisterParent([string]$email, [string]$pass) {
   return [pscustomobject]@{ ok = $false; exists = $false; reason = $er }
 }
 
+function RegisterStaffSelfService([string]$role, [string]$email, [string]$pass, [string]$staffRegisterPassword) {
+  if ([string]::IsNullOrWhiteSpace($staffRegisterPassword)) {
+    return [pscustomobject]@{ ok = $false; exists = $false; reason = "Missing AUTH_STAFF_REGISTER_PASSWORD" }
+  }
+
+  $body = @{
+    email = $email
+    password = $pass
+    role = $role
+    staffRegisterPassword = $staffRegisterPassword
+  }
+
+  $r = Api POST "/api/auth/register" "" $body
+  if ($r.ok) {
+    $parsed = AuthFromResponse $r "Register"
+    if ($parsed.ok) {
+      return [pscustomobject]@{ ok = $true; token = [string]$parsed.token; user = $parsed.user; exists = $false; reason = "" }
+    }
+    return [pscustomobject]@{ ok = $false; exists = $false; reason = $parsed.reason }
+  }
+
+  $er = Err $r
+  if ($r.status -eq 400 -and $er -match "(?i)already exists") {
+    return [pscustomobject]@{ ok = $false; exists = $true; reason = $er }
+  }
+
+  if ($r.status -eq 400) {
+    $otp = Otp $email "REGISTER"
+    if ($otp) {
+      $body.otp = $otp
+      $r2 = Api POST "/api/auth/register" "" $body
+      if ($r2.ok) {
+        $parsed2 = AuthFromResponse $r2 "Register"
+        if ($parsed2.ok) {
+          return [pscustomobject]@{ ok = $true; token = [string]$parsed2.token; user = $parsed2.user; exists = $false; reason = "" }
+        }
+        return [pscustomobject]@{ ok = $false; exists = $false; reason = $parsed2.reason }
+      }
+      $er2 = Err $r2
+      return [pscustomobject]@{ ok = $false; exists = ($r2.status -eq 400 -and $er2 -match "(?i)already exists"); reason = $er2 }
+    }
+  }
+
+  return [pscustomobject]@{ ok = $false; exists = $false; reason = $er }
+}
+
 function EnsureParent([string]$email, [string]$pass) {
   $l = Login $email $pass
   if ($l.ok) { return $l }
@@ -510,7 +589,7 @@ function SaveUser([string]$key, [string]$fallback, [object]$auth) {
 }
 
 function ParentChildren([string]$t) {
-  $r = Api GET "/api/parent/parent/children" $t
+  $r = Api GET "/api/parent/children" $t
   if (-not $r.ok) {
     Add-Warn "parent children failed: $(Err $r)"
     return @()
@@ -655,7 +734,7 @@ function EnsureResults([string]$staffToken, [string]$parentToken, [string]$child
     }
   }
 
-  $pr = Api GET "/api/parent/parent/results?childId=$ek" $parentToken
+  $pr = Api GET "/api/parent/results?childId=$ek" $parentToken
   if (-not $pr.ok) {
     Add-Warn "parent results verification failed: $(Err $pr)"
     return 0
@@ -665,7 +744,7 @@ function EnsureResults([string]$staffToken, [string]$parentToken, [string]$child
 
 function EnsureFinance([string]$parentToken, [string]$childKey) {
   $ek = [System.Uri]::EscapeDataString($childKey)
-  $f = Api GET "/api/parent/parent/finance?childId=$ek" $parentToken
+  $f = Api GET "/api/parent/finance?childId=$ek" $parentToken
   if (-not $f.ok) {
     Add-Warn "parent finance verification failed: $(Err $f)"
     return 0
@@ -984,6 +1063,23 @@ try {
       Add-Warn "Bootstrap user role is $($boot.user.role), expected ADMIN."
     } else {
       Add-Warn "Bootstrap admin login failed: $($boot.reason)"
+    }
+  }
+
+  if (-not $admin.ok) {
+    $staffCreds = Try-StaffRegisterPasswordFromEnv
+    if ($staffCreds.ok) {
+      Write-Host ("Attempting demo admin self-registration using {0}" -f [string]$staffCreds.source)
+      $selfReg = RegisterStaffSelfService "ADMIN" $demo.ADMIN $demoPass ([string]$staffCreds.password)
+      if ($selfReg.ok) {
+        $admin = $selfReg
+      } elseif ($selfReg.exists) {
+        $admin = Login $demo.ADMIN $demoPass
+      } else {
+        Add-Warn "Demo admin self-registration failed: $($selfReg.reason)"
+      }
+    } else {
+      Add-Warn "AUTH_STAFF_REGISTER_PASSWORD is not available from backend/.env; cannot self-register the first demo admin."
     }
   }
 

@@ -4,12 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChannelKey } from "../lib/types";
 import { createEvent, fetchEvents, type UiEvent } from "../api/events";
 
-const MODE: "mock" | "api" =
-  (typeof import.meta !== "undefined" &&
-    typeof (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_DATA_MODE === "string" &&
-    (import.meta as unknown as { env: Record<string, string> }).env.VITE_DATA_MODE === "api")
-    ? "api"
-    : "mock";
+const MODE: "api" = "api";
 
 function safeTime(s?: string) {
   const t = s ? new Date(s).getTime() : NaN;
@@ -38,13 +33,6 @@ export function useEvents(channel?: ChannelKey) {
     setLoading(true);
 
     try {
-      if (MODE === "mock") {
-        // If you have a mock store for calendar, plug it in here.
-        // For now, mock mode just shows no events.
-        if (mountedRef.current) setItems([]);
-        return;
-      }
-
       const key: ChannelKey = channel ?? "general";
       const rows = await fetchEvents(key);
 
@@ -66,11 +54,6 @@ export function useEvents(channel?: ChannelKey) {
     endsAt: string;
   }) {
     setError(null);
-
-    if (MODE === "mock") {
-      setError("Mock mode is enabled. Set VITE_DATA_MODE=api to save events.");
-      return;
-    }
 
     // optimistic UI
     const optimistic: UiEvent = {

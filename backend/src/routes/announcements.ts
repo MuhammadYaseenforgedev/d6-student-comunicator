@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireRole } from "../middleware/rbac";
 import { repos } from "../persistence";
 import { pool } from "../config/db";
+import { createAnnouncementNotifications } from "../lib/notifications";
 
 export const announcementRouter = Router();
 
@@ -120,6 +121,15 @@ announcementRouter.post(
         body: body.trim(),
         pinned: Boolean(pinned),
         createdBy: req.user!.id,
+      });
+
+      await createAnnouncementNotifications({
+        announcementId: created.id,
+        channelId,
+        actorId: req.user!.id,
+        title: created.title,
+      }).catch((e) => {
+        console.error("[announcements] notification fan-out failed", e);
       });
 
       return res.status(201).json(created);

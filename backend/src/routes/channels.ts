@@ -5,8 +5,33 @@ import type { ChannelType } from "../models/channel";
 
 export const channelRouter = Router();
 
+const CORE_CHANNELS: Array<{ name: string; type: ChannelType }> = [
+  { name: "General", type: "MODULE" },
+  { name: "Modules", type: "MODULE" },
+  { name: "Faculty", type: "FACULTY" },
+  { name: "Clubs", type: "CLUB" },
+  { name: "Emergency", type: "EMERGENCY" },
+];
+
 function err(res: any, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
+}
+
+async function ensureCoreChannels(createdBy: string) {
+  let list = await repos.channels.list();
+  if (list.length > 0) return list;
+
+  for (const channel of CORE_CHANNELS) {
+    await repos.channels.create({
+      name: channel.name,
+      type: channel.type,
+      isPrivate: false,
+      createdBy,
+    });
+  }
+
+  list = await repos.channels.list();
+  return list;
 }
 
 // List channels (all logged-in roles)
@@ -15,7 +40,10 @@ channelRouter.get("/", requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"), as
     const user = req.user!;
     const role = String(user.role ?? "").toUpperCase();
 
-    const list = await repos.channels.list();
+    const list =
+      role === "ADMIN" || role === "LECTURER"
+        ? await ensureCoreChannels(user.id)
+        : await repos.channels.list();
 
     // ADMIN/LECTURER can see everything
     if (role === "ADMIN" || role === "LECTURER") {

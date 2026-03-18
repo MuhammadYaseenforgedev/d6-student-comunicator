@@ -1,8 +1,12 @@
 // src/hooks/useUploads.ts
 import { useEffect, useState } from "react";
 import type { UploadKind, UploadRecord } from "../lib/types";
-import { addUpload, deleteUpload, listUploadsForRole } from "../lib/uploadStore";
 import { getUser } from "../lib/auth";
+import {
+  deleteUpload as deleteUploadApi,
+  listUploads,
+  uploadFile,
+} from "../api/uploads";
 
 export function useUploads() {
   const user = getUser();
@@ -17,9 +21,11 @@ export function useUploads() {
     setLoading(true);
     setError(null);
     try {
-      setItems(listUploadsForRole(role, email));
+      const rows = await listUploads();
+      setItems(Array.isArray(rows) ? rows : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load uploads");
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -27,18 +33,14 @@ export function useUploads() {
 
   async function upload(file: File, kind: UploadKind) {
     setError(null);
-    await addUpload({ file, kind, uploaderEmail: email, uploaderRole: role });
+    await uploadFile({ file, kind });
     await load();
   }
 
   async function remove(id: string) {
     setError(null);
     try {
-      await deleteUpload({
-        id,
-        requesterRole: role,
-        requesterEmail: email,
-      });
+      await deleteUploadApi({ uploadId: id });
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete upload");

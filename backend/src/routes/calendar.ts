@@ -77,18 +77,7 @@ calendarRouter.get("/calendar", async (req, res) => {
     });
     return res.json({ value: entries, count: entries.length });
   } catch (e: any) {
-    // TEMP DEBUG: remove after Render 500 diagnostics are complete.
-    console.error("[CALENDAR_DEBUG] GET /api/calendar failed", {
-      err: e,
-      stack: e?.stack,
-      user: {
-        id: req.user?.id,
-        email: req.user?.email,
-        role: req.user?.role,
-      },
-      path: req.path,
-      query: req.query,
-    });
+    console.error("[calendar] GET /calendar error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
 });

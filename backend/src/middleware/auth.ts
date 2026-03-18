@@ -21,15 +21,14 @@ declare global {
 const VALID_ROLES: Role[] = ["ADMIN", "LECTURER", "STUDENT", "PARENT"];
 
 function getBearerToken(req: Request): string | null {
-  const header = req.headers.authorization;
+  const rawHeader = req.headers.authorization;
+  const header = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
   if (!header) return null;
+  const match = header.trim().match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
 
-  // Expect: "Bearer <token>" (case-insensitive for safety)
-  const [type, token] = header.split(" ");
-  if (!type || !token) return null;
-
-  if (type.toLowerCase() !== "bearer") return null;
-  return token;
+  const token = match[1]?.trim();
+  return token ? token : null;
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {

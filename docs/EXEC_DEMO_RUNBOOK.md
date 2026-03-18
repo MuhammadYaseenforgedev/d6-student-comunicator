@@ -7,6 +7,7 @@
 
 ### Render (backend service)
 - `NODE_ENV=production`
+- `APP_ENV=production`
 - `DATABASE_URL=<neon-connection-string>`
 - `JWT_SECRET=<strong-random-secret>`
 - `CORS_ORIGIN=https://<your-vercel-production-domain>`
@@ -16,11 +17,13 @@
 - `AUTH_ALLOW_PASSWORD_LOGIN=false`
 - `AUTH_ALLOW_PASSWORD_REGISTER=false`
 - `AUTH_STAFF_REGISTER_PASSWORD=<staff-registration-password>`
-- `OTP_RETURN_DEV_CODE=false`
-- `OTP_EMAIL_PROVIDER=resend`
-- `RESEND_API_KEY=<resend-api-key>`
-- `OTP_EMAIL_FROM=<verified-sender@your-domain>`
-- `OTP_EMAIL_REPLY_TO=<optional-reply-to@your-domain>`
+- `ALLOW_DEMO_OTP_BYPASS=false`
+- `SMTP_HOST=<smtp-hostname>`
+- `SMTP_PORT=587`
+- `SMTP_SECURE=false`
+- `SMTP_USER=<smtp-username>`
+- `SMTP_PASS=<smtp-password>`
+- `SMTP_FROM=<verified-sender@your-domain>`
 
 ## 2) Deploy + Seed
 
@@ -39,10 +42,11 @@ Frontend deploy settings:
 
 ## 3) Demo Accounts
 
-- Admin: `admin.exec.demo@d6demo.co.za` / `D6ExecAdmin!2026`
-- Lecturer: `lecturer.exec.demo@d6demo.co.za` / `D6ExecLecturer!2026`
-- Student: `student.exec.demo@d6demo.co.za` / `D6ExecStudent!2026` / student number `STU-EXEC-1001`
-- Parent: `parent.exec.demo@d6demo.co.za` / `D6ExecParent!2026`
+- Admin: `demo+admin@co.za` / `DemoPass123`
+- Lecturer: `demo+lecturer@co.za` / `DemoPass123`
+- Student: `demo+student1@replace-with-real-inbox.com` / `DemoPass123` / student number `20231771`
+- Student 2: `demo+student2@replace-with-real-inbox.com` / `DemoPass123` / student number `20231772`
+- Parent: `demo+parent@co.za` / `DemoPass123`
 
 ## 4) Demo-Day Smoke Checklist (10 minutes)
 
@@ -52,13 +56,13 @@ Frontend deploy settings:
 
 ### OTP login behavior
 - `POST /api/auth/request-otp` returns `200` when provider is configured.
-- In production, response does not include `devCode`.
+- In production, response does not include `devOtp`.
 - If provider keys are missing, `/api/auth/request-otp` returns `503` with `Email provider not configured`.
 
 ### Role login checks
 - Admin login returns `200` + token.
 - Lecturer login returns `200` + token.
-- Student login (`studentNumber=STU-EXEC-1001`) returns `200` + token.
+- Student login (`studentNumber=20231771`) returns `200` + token.
 - Parent login returns `200` + token.
 
 ### D6 messaging policy checks
@@ -74,7 +78,7 @@ Note:
 $BaseUrl = "https://d6-student-comunicator.onrender.com"
 
 # Login as lecturer
-$lecturerBody = @{ email = "lecturer.exec.demo@d6demo.co.za"; password = "D6ExecLecturer!2026"; otp = (Read-Host "Lecturer OTP") } | ConvertTo-Json
+$lecturerBody = @{ email = "demo+lecturer@co.za"; password = "DemoPass123"; otp = (Read-Host "Lecturer OTP") } | ConvertTo-Json
 $lecturerResp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/login" -ContentType "application/json" -Body $lecturerBody
 $lecturerToken = $lecturerResp.token
 
@@ -88,9 +92,9 @@ curl.exe -sS -X POST "$BaseUrl/api/uploads" `
 
 # Login as student
 $studentBody = @{
-  email = "student.exec.demo@d6demo.co.za"
-  password = "D6ExecStudent!2026"
-  studentNumber = "STU-EXEC-1001"
+  email = "demo+student1@replace-with-real-inbox.com"
+  password = "DemoPass123"
+  studentNumber = "20231771"
   otp = (Read-Host "Student OTP")
 } | ConvertTo-Json
 $studentResp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/login" -ContentType "application/json" -Body $studentBody
@@ -116,8 +120,8 @@ Expected outcomes:
 - Download request: HTTP `200` with file output.
 
 ### Data non-empty checks
-- Parent results: `GET /api/parent/parent/results?childId=STU-EXEC-1001` returns `count >= 4`.
-- Parent finance: `GET /api/parent/parent/finance?childId=STU-EXEC-1001` returns non-empty `documents`.
+- Parent results: `GET /api/parent/results?childId=20231771` returns `count >= 4`.
+- Parent finance: `GET /api/parent/finance?childId=20231771` returns non-empty `documents`.
 - Calendar endpoints for student/lecturer return seeded rows.
 
 ## 5) Send-to-Execs Template

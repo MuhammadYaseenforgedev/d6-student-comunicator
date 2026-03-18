@@ -1,11 +1,11 @@
 // src/pages/Login-Page2.tsx
-// Real authentication page.
-// Supports:
-// - Login
-// - Registration
-// - OTP requests
-// - Student-specific fields
-// - Role-aware registration rules
+// REAL AUTH (backend + JWT + OTP).
+// Flow:
+// 1) Request OTP: POST /api/auth/request-otp
+// 2) Register: POST /api/auth/register with otp
+//    - STUDENT requires southAfricanId + studentNumber
+// 3) Login: POST /api/auth/login with password + otp in production
+//    - STUDENT requires studentNumber
 //
 // Styling updated for the neon glass theme with:
 // - dark glass login card
@@ -44,6 +44,7 @@ const API_TARGET = String(import.meta.env.VITE_API_TARGET ?? "")
 const API_BASE =
   API_TARGET === "secondary" && API_SECONDARY ? API_SECONDARY : API_PRIMARY;
 const IS_PROD_BUILD = Boolean(import.meta.env.PROD);
+const LOGIN_REQUIRES_OTP = IS_PROD_BUILD;
 const ENV_CONFIG_ERROR = !API_BASE
   ? "Environment misconfigured: VITE_API_URL is missing. Contact support."
   : null;
@@ -308,6 +309,11 @@ export default function LoginPage2() {
         "OTP is required for registration. Request OTP first, then enter the code."
       );
     }
+    if (mode === "login" && LOGIN_REQUIRES_OTP && !otp.trim()) {
+      return setError(
+        "OTP is required for production login. Click 'Request OTP' first, then enter the code."
+      );
+    }
 
     try {
       setBusy(true);
@@ -350,9 +356,11 @@ export default function LoginPage2() {
   }
 
   const canRequestOtp = !ENV_CONFIG_ERROR && !!email.trim() && !busy;
+  const hasOtp = !!otp.trim();
   const canSubmit =
     !ENV_CONFIG_ERROR &&
-    (mode === "login" || !!otp.trim()) &&
+    ((mode === "login" && (!LOGIN_REQUIRES_OTP || hasOtp)) ||
+      (mode === "register" && hasOtp)) &&
     !busy &&
     (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
     (!roleNeedsStudentIdentity ||
@@ -433,22 +441,12 @@ export default function LoginPage2() {
 
             <h2 className="mt-6 text-xl font-semibold text-white">{title}</h2>
 
-            {info && (
-              <div className="info-banner mt-4">
-                {info}
-              </div>
-            )}
+            {info && <div className="info-banner mt-4">{info}</div>}
 
-            {error && (
-              <div className="error-banner mt-4">
-                {error}
-              </div>
-            )}
+            {error && <div className="error-banner mt-4">{error}</div>}
 
             {ENV_CONFIG_ERROR && (
-              <div className="error-banner mt-4">
-                {ENV_CONFIG_ERROR}
-              </div>
+              <div className="error-banner mt-4">{ENV_CONFIG_ERROR}</div>
             )}
 
             <form
@@ -655,6 +653,18 @@ export default function LoginPage2() {
                     Request OTP
                   </button>
                 </div>
+
+                {mode === "login" ? (
+                  <p className="mt-2 text-xs text-white/55">
+                    {LOGIN_REQUIRES_OTP
+                      ? "Production sign-in requires password + OTP. Request OTP, then enter the 6-digit code."
+                      : "Request OTP if this environment requires it."}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-white/55">
+                    Registration requires OTP. Request OTP, then enter the 6-digit code.
+                  </p>
+                )}
               </div>
 
               <button

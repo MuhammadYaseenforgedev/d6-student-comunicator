@@ -18,19 +18,18 @@ function isLocalLoopbackIp(ip: string): boolean {
   );
 }
 
-function shouldSkipRateLimit(req: Request): boolean {
-  if (isProductionEnv()) return false;
-
-  const cfConnectingIp = req.header("cf-connecting-ip");
-  const candidateIps = [cfConnectingIp, req.ip];
-  return candidateIps.some((ip) => isLocalLoopbackIp(String(ip ?? "")));
-}
-
 function stableRateLimitKey(req: Request): string {
   const cfConnectingIp = req.header("cf-connecting-ip");
   const fallbackIp = req.ip;
   const key = String(cfConnectingIp ?? fallbackIp ?? "").trim();
   return key || "unknown-ip";
+}
+
+function shouldSkipRateLimit(req: Request): boolean {
+  if (isProductionEnv()) return false;
+  const cfConnectingIp = req.header("cf-connecting-ip");
+  const candidateIps = [cfConnectingIp, req.ip];
+  return candidateIps.some((ip) => isLocalLoopbackIp(String(ip ?? "")));
 }
 
 function createLimiter(windowMs: number, max: number) {

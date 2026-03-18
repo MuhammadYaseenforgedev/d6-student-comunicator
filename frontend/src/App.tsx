@@ -26,8 +26,12 @@ import ThreadPage from "./pages/ThreadPage";
 import Uploads from "./pages/Uploads1";
 import Calendar from "./pages/Calendar";
 import ManageResults from "./pages/ManageResults";
+import StudentResults from "./pages/StudentResults";
 import AdminParentLinks from "./pages/AdminParentLinks";
+import AdminFinance from "./pages/AdminFinance";
+import AdminUsers from "./pages/AdminUsers";
 import Attendance from "./pages/Attendance";
+import Notifications from "./pages/Notifications";
 
 import ParentPortalLayout from "./pages/parent/ParentPortalLayout";
 import ParentOverview from "./pages/parent/ParentOverview";
@@ -50,10 +54,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="relative flex min-h-screen flex-col overflow-hidden text-white">
-
         {/* GLOBAL BACKGROUND */}
         <div className="pointer-events-none absolute inset-0 z-0">
-
           {/* Background image */}
           <img
             src={forgeBg}
@@ -68,8 +70,8 @@ export default function App() {
           <div className="absolute inset-0 bg-gradient-to-br from-[#081A44]/88 via-[#020C2A]/80 to-[#020C2A]/92" />
 
           {/* ambient neon halos */}
-          <div className="absolute -top-28 -left-20 h-[28rem] w-[28rem] rounded-full bg-[#8CEBFF]/12 blur-3xl" />
-          <div className="absolute top-10 right-[-6rem] h-[32rem] w-[32rem] rounded-full bg-[#8C5BFF]/14 blur-3xl" />
+          <div className="absolute -left-20 -top-28 h-[28rem] w-[28rem] rounded-full bg-[#8CEBFF]/12 blur-3xl" />
+          <div className="absolute right-[-6rem] top-10 h-[32rem] w-[32rem] rounded-full bg-[#8C5BFF]/14 blur-3xl" />
           <div className="absolute bottom-[-8rem] left-1/3 h-[24rem] w-[24rem] rounded-full bg-[#2F7BFF]/10 blur-3xl" />
           <div className="absolute bottom-[-6rem] right-20 h-[18rem] w-[18rem] rounded-full bg-[#FF5EDB]/8 blur-3xl" />
         </div>
@@ -97,6 +99,10 @@ export default function App() {
                   <Route path="attendance" element={<Attendance />} />
                 </Route>
 
+                <Route element={<RequireRole roles={["STUDENT"]} />}>
+                  <Route path="results" element={<StudentResults />} />
+                </Route>
+
                 <Route
                   element={
                     <RequireRole
@@ -106,6 +112,7 @@ export default function App() {
                 >
                   <Route path="messages" element={<Inbox />} />
                   <Route path="messages/:id" element={<ThreadPage />} />
+                  <Route path="notifications" element={<Notifications />} />
                 </Route>
 
                 <Route path="uploads" element={<Uploads />} />
@@ -116,10 +123,12 @@ export default function App() {
                 </Route>
 
                 <Route element={<RequireRole roles={["ADMIN"]} />}>
+                  <Route path="admin/finance" element={<AdminFinance />} />
                   <Route
                     path="admin/parent-links"
                     element={<AdminParentLinks />}
                   />
+                  <Route path="admin/users" element={<AdminUsers />} />
                 </Route>
 
                 <Route element={<RequireRole roles={["PARENT"]} />}>
