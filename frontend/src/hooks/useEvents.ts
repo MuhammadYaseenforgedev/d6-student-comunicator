@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChannelKey } from "../lib/types";
 import { createEvent, fetchEvents, type UiEvent } from "../api/events";
 
-const MODE: "api" = "api";
+const MODE = "api" as const;
 
 function safeTime(s?: string) {
   const t = s ? new Date(s).getTime() : NaN;

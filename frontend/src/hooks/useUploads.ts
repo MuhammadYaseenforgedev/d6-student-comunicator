@@ -49,7 +49,6 @@ export function useUploads() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, email]);
 
   return { items, loading, error, reload: load, upload, remove, role, email };

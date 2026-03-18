@@ -5,7 +5,7 @@ import type { ChannelKey } from "../lib/types";
 import type { Message, MessageCreate } from "../api/messages";
 import { createMessage, deleteMessage, fetchMessages } from "../api/messages";
 
-const MODE: "api" = "api";
+const MODE = "api" as const;
 
 function safeTime(s?: string) {
   const t = s ? new Date(s).getTime() : NaN;
