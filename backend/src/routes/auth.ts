@@ -46,8 +46,8 @@ function boolEnv(name: string, defaultValue: boolean) {
 
 /**
  * Auth policy flags:
- * - In production: default require OTP.
- * - In development: default allow password-only login to keep you moving fast.
+ * - In production: require OTP and block password-only auth shortcuts.
+ * - In non-production: still default to OTP unless explicitly relaxed.
  *
  * You can override with env:
  * - AUTH_REQUIRE_OTP=true/false
@@ -58,8 +58,8 @@ function boolEnv(name: string, defaultValue: boolean) {
 function authPolicy() {
   const prod = isProduction();
 
-  const requireOtp = prod ? true : boolEnv("AUTH_REQUIRE_OTP", false);
-  const allowPasswordLogin = prod ? false : boolEnv("AUTH_ALLOW_PASSWORD_LOGIN", true);
+  const requireOtp = prod ? true : boolEnv("AUTH_REQUIRE_OTP", true);
+  const allowPasswordLogin = prod ? false : boolEnv("AUTH_ALLOW_PASSWORD_LOGIN", false);
   const allowPasswordRegister = prod ? false : boolEnv("AUTH_ALLOW_PASSWORD_REGISTER", false);
 
   return { requireOtp, allowPasswordLogin, allowPasswordRegister };
@@ -236,9 +236,6 @@ async function createOtp(
   requestIp: string,
   options?: { skipEmailDelivery?: boolean; forceDevCode?: boolean }
 ) {
-  console.info("[otp][createOtp] enter", { email, purpose, requestIp });
-  console.info("[otp][createOtp] rate-limit checks passed", { email, purpose });
-
   const { ttlMinutes } = otpConfig();
   let checkpoint = "init";
   let code = "";
@@ -262,7 +259,6 @@ async function createOtp(
     code = generateOtpCode();
     codeHash = await bcrypt.hash(code, 10);
     expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
-    console.info("[otp][createOtp] code generated", { email, purpose, expiresAt });
 
     checkpoint = "store_otp";
     await pool.query(
@@ -272,7 +268,6 @@ async function createOtp(
       `,
       [email, purpose, codeHash, expiresAt, requestIp]
     );
-    console.info("[otp][createOtp] otp stored", { email, purpose });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
@@ -287,30 +282,17 @@ async function createOtp(
   }
 
   const skipEmailDelivery = Boolean(options?.skipEmailDelivery);
-  console.info("[otp][createOtp] before delivery branch", {
-    email,
-    purpose,
-    production: isProduction(),
-    skipEmailDelivery,
-  });
 
   if (skipEmailDelivery) {
     // Demo bypass intentionally suppresses email delivery and never logs OTP values.
   } else if (isProduction()) {
     const smtpConfigured = isSmtpConfigured();
-    console.info("[otp][request-otp] SMTP send begin", {
-      email,
-      purpose,
-      smtpConfigured,
-      production: true,
-    });
 
     try {
       if (!smtpConfigured) {
         throw new OtpDeliveryError(503, "OTP email service is not configured");
       }
       await sendOtpEmailViaSmtp({ to: email, code, expiresAt });
-      console.info("[otp][request-otp] SMTP send success", { email, purpose });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const stack = err instanceof Error ? err.stack : undefined;
@@ -335,8 +317,6 @@ async function createOtp(
       );
       throw error;
     }
-  } else {
-    console.log(`[OTP][${purpose}] email=${email} ip=${requestIp} code=${code} (expires ${expiresAt})`);
   }
 
   return {
@@ -421,14 +401,6 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
 authRouter.post("/request-otp", async (req, res) => {
   const email = normEmail(req.body?.email);
   const purpose = parsePurpose(req.body?.purpose);
-  const production = isProduction();
-  const smtpConfigured = isSmtpConfigured();
-  console.info("[otp][request-otp] start", {
-    email,
-    purpose: purpose ?? null,
-    production,
-    smtpConfigured,
-  });
 
   if (!email || !purpose) {
     return res.status(400).json({

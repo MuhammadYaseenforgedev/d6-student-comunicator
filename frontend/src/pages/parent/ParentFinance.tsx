@@ -288,16 +288,6 @@ export default function ParentFinance() {
           <div className="error-banner mt-4 p-4 text-sm">{downloadError}</div>
         )}
 
-        {import.meta.env.DEV && (
-          <details className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-3">
-            <summary className="cursor-pointer text-xs text-white/65">
-              Debug: finance payload
-            </summary>
-            <pre className="mt-2 max-h-56 overflow-auto text-xs text-white/80">
-              {JSON.stringify(finance, null, 2)}
-            </pre>
-          </details>
-        )}
       </div>
 
       <div className="teal-glow-card p-5">

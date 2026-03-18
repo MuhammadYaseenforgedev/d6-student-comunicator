@@ -681,10 +681,6 @@ export default function LoginPage2() {
                   : "Create account"}
               </button>
 
-              <p className="hidden">
-                Environment Debug: backend={API_BASE || "MISSING"} | build=
-                {IS_PROD_BUILD ? "production" : "development"}
-              </p>
             </form>
           </div>
         </div>

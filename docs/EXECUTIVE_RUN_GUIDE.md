@@ -34,7 +34,7 @@ What this does:
 1. Verifies env files.
 2. Installs dependencies if `node_modules` is missing.
 3. Runs backend migrations (`npm --prefix backend run migrate`).
-4. Starts backend with local demo auth overrides (`AUTH_REQUIRE_OTP=false`, `AUTH_ALLOW_PASSWORD_REGISTER=true`) and waits for `/api/health`.
+4. Starts backend with local demo auth overrides (`AUTH_REQUIRE_OTP=false`, `AUTH_ALLOW_PASSWORD_LOGIN=true`, `AUTH_ALLOW_PASSWORD_REGISTER=true`) and waits for `/api/health`.
 5. Runs idempotent seed/bootstrap (`scripts/demo-bootstrap.ps1`).
 6. Starts frontend (`npm --prefix frontend run dev`).
 

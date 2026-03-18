@@ -36,13 +36,6 @@ function getTransporter(): Transporter {
   }
 
   if (!transporter) {
-    console.info("[mailer] Creating SMTP transporter", {
-      host: env.SMTP_HOST ?? null,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_SECURE,
-      hasUser: Boolean(env.SMTP_USER),
-    });
-
     transporter = nodemailer.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,

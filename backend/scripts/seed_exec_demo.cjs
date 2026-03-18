@@ -115,6 +115,40 @@ const FINANCE_SEEDS = [
   },
 ];
 
+const FINANCE_DOCUMENT_SEEDS = [
+  {
+    id: "7ac6f990-9e3a-4b04-babc-7f6a912f1201",
+    type: "STATEMENT",
+    title: "March fee statement",
+    description: "Statement covering the March tuition balance.",
+    amountCents: 145000,
+    issuedAt: utcAt(-4, 8, 0),
+  },
+  {
+    id: "7ac6f990-9e3a-4b04-babc-7f6a912f1202",
+    type: "NOTICE",
+    title: "Payment plan reminder",
+    description: "Final installment is due before month end.",
+    amountCents: 100000,
+    issuedAt: utcAt(-2, 9, 30),
+  },
+];
+
+const FINANCE_NOTIFICATION_SEEDS = [
+  {
+    id: "7ac6f990-9e3a-4b04-babc-7f6a912f1301",
+    title: "Payment reminder",
+    body: "Please settle the remaining March balance before month end.",
+    severity: "WARNING",
+  },
+  {
+    id: "7ac6f990-9e3a-4b04-babc-7f6a912f1302",
+    title: "Statement published",
+    body: "The latest statement is now available in the finance portal.",
+    severity: "INFO",
+  },
+];
+
 const CHANNEL_SEEDS = [
   { key: "general", name: "General", type: "MODULE", isPrivate: false },
   { key: "modules", name: "Modules", type: "MODULE", isPrivate: false },
@@ -672,11 +706,58 @@ async function ensureFinance(pool, pgRepos, studentId, summary) {
           0
         ),
         currency = 'ZAR',
+        account_status = 'OUTSTANDING',
+        status_note = 'March fees are partially settled. Final payment is due this month.',
         updated_at = now()
       WHERE user_id = $1
     `,
     [studentId]
   );
+
+  for (const seed of FINANCE_DOCUMENT_SEEDS) {
+    const exists = await pool.query(`SELECT 1 FROM finance_documents WHERE id = $1 LIMIT 1`, [seed.id]);
+    await pool.query(
+      `
+        INSERT INTO finance_documents (
+          id, user_id, type, title, description, amount_cents, currency, issued_at, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'ZAR', $7::timestamptz, NULL)
+        ON CONFLICT (id) DO UPDATE
+        SET
+          user_id = EXCLUDED.user_id,
+          type = EXCLUDED.type,
+          title = EXCLUDED.title,
+          description = EXCLUDED.description,
+          amount_cents = EXCLUDED.amount_cents,
+          currency = EXCLUDED.currency,
+          issued_at = EXCLUDED.issued_at,
+          created_by = EXCLUDED.created_by
+      `,
+      [seed.id, studentId, seed.type, seed.title, seed.description, seed.amountCents, seed.issuedAt]
+    );
+    if ((exists.rowCount || 0) === 0) summary.finance.documentsCreated += 1;
+    else summary.finance.documentsUpdated += 1;
+  }
+
+  for (const seed of FINANCE_NOTIFICATION_SEEDS) {
+    const exists = await pool.query(`SELECT 1 FROM finance_notifications WHERE id = $1 LIMIT 1`, [seed.id]);
+    await pool.query(
+      `
+        INSERT INTO finance_notifications (id, user_id, title, body, severity, created_by)
+        VALUES ($1, $2, $3, $4, $5, NULL)
+        ON CONFLICT (id) DO UPDATE
+        SET
+          user_id = EXCLUDED.user_id,
+          title = EXCLUDED.title,
+          body = EXCLUDED.body,
+          severity = EXCLUDED.severity,
+          created_by = EXCLUDED.created_by
+      `,
+      [seed.id, studentId, seed.title, seed.body, seed.severity]
+    );
+    if ((exists.rowCount || 0) === 0) summary.finance.notificationsCreated += 1;
+    else summary.finance.notificationsUpdated += 1;
+  }
 
   const tx = await pgRepos.finance.listTransactions(studentId, { limit: 100 });
   summary.finance.totalTransactions = tx.length;
@@ -769,7 +850,16 @@ async function run() {
     threadMessages: { created: 0 },
     attendance: { sessionsCreated: 0, sessionsUpdated: 0, recordsCreated: 0, recordsUpdated: 0, enrollmentsAdded: 0 },
     results: { created: 0, updated: 0 },
-    finance: { transactionsCreated: 0, transactionsUpdated: 0, totalTransactions: 0, statementLike: 0 },
+    finance: {
+      transactionsCreated: 0,
+      transactionsUpdated: 0,
+      documentsCreated: 0,
+      documentsUpdated: 0,
+      notificationsCreated: 0,
+      notificationsUpdated: 0,
+      totalTransactions: 0,
+      statementLike: 0,
+    },
     calendar: { created: 0, updated: 0 },
     uploads: { created: 0, updated: 0 },
   };
