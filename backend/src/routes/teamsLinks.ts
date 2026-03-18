@@ -18,6 +18,7 @@ const ROLE_LINK_CONFIG: Record<TeamsRole, { envName: string; label: string }> = 
   LECTURER: { envName: "TEAMS_LINK_LECTURER", label: "Open Lecturer Workspace" },
   STUDENT: { envName: "TEAMS_LINK_STUDENT", label: "Open Class Teams" },
 };
+const DEFAULT_TEAMS_URL = "https://teams.microsoft.com/";
 
 function toRole(v: unknown): Role | null {
   const role = String(v ?? "").trim().toUpperCase();
@@ -29,14 +30,14 @@ function toRole(v: unknown): Role | null {
 
 function readTeamsLink(name: string): string | null {
   const raw = String(process.env[name] ?? "").trim();
-  if (!raw) return null;
+  if (!raw) return DEFAULT_TEAMS_URL;
 
   // Keep this strict for safety: only HTTP(S) and Teams URI links are allowed.
   if (raw.startsWith("https://") || raw.startsWith("http://") || raw.startsWith("msteams://")) {
     return raw;
   }
 
-  return null;
+  return DEFAULT_TEAMS_URL;
 }
 
 teamsLinksRouter.get("/teams-links", (req, res) => {
