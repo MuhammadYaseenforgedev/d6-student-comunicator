@@ -508,8 +508,8 @@ export default function AdminFinance() {
                 <div className="teal-glow-card p-5 space-y-4">
                   <div className="text-lg font-semibold text-white">Account</div>
 
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_120px_120px]">
-                    <div>
+                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_120px_120px]">
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-balance"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -526,7 +526,7 @@ export default function AdminFinance() {
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-currency"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -545,7 +545,7 @@ export default function AdminFinance() {
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-status"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -623,8 +623,8 @@ export default function AdminFinance() {
                     Ledger entry
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div>
+                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-tx-amount"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -641,7 +641,7 @@ export default function AdminFinance() {
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-tx-occurred-at"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -693,8 +693,8 @@ export default function AdminFinance() {
                     Send document
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div>
+                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-doc-type"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -721,7 +721,7 @@ export default function AdminFinance() {
                       </select>
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-doc-issued-at"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -756,8 +756,8 @@ export default function AdminFinance() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div>
+                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-doc-amount"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -774,7 +774,7 @@ export default function AdminFinance() {
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-doc-url"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -827,8 +827,8 @@ export default function AdminFinance() {
                     Send notification
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_160px]">
-                    <div>
+                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_160px]">
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-note-title"
                         className="mb-2 block text-sm font-medium text-white/80"
@@ -845,7 +845,7 @@ export default function AdminFinance() {
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label
                         htmlFor="finance-note-severity"
                         className="mb-2 block text-sm font-medium text-white/80"
