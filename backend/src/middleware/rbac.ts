@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { requireAuth, type AuthUser, type Role } from "./auth";
+import { requireAuth, type Role } from "./auth";
 import { hasAdminScope, type AdminScope } from "../lib/adminAccess";
 
 /**
