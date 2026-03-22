@@ -5,10 +5,11 @@ import crypto from "crypto";
 import { pool } from "../config/db";
 import { env } from "../config/env";
 import { requireAuth } from "../middleware/auth";
-import { requireRole } from "../middleware/rbac";
+import { requireAccess } from "../middleware/rbac";
 import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
 import { isSmtpConfigured, sendOtpEmail as sendOtpEmailViaSmtp } from "../lib/mailer";
 import { validatePassword } from "../lib/passwordPolicy";
+import { getEffectiveAdminScope, normalizeAdminScope, type AdminScope } from "../lib/adminAccess";
 
 export const authRouter = Router();
 
@@ -22,12 +23,17 @@ type JwtUser = {
   id: string;
   email: string;
   role: Role;
+  adminScope?: AdminScope | null;
 };
 
 function signToken(user: JwtUser) {
   const secret: Secret = (process.env.JWT_SECRET ?? "dev_secret_change_me") as Secret;
   const expiresIn = (process.env.JWT_EXPIRES_IN ?? "7d") as SignOptions["expiresIn"];
-  return jwt.sign({ id: user.id, email: user.email, role: user.role }, secret, { expiresIn });
+  return jwt.sign(
+    { id: user.id, email: user.email, role: user.role, adminScope: getEffectiveAdminScope(user) },
+    secret,
+    { expiresIn }
+  );
 }
 
 function normEmail(v: unknown) {
@@ -156,6 +162,24 @@ function parsePurpose(p: unknown): "LOGIN" | "REGISTER" | null {
 function parseRole(v: unknown): Role | null {
   const role = String(v ?? "").trim().toUpperCase();
   return VALID_ROLES.includes(role as Role) ? (role as Role) : null;
+}
+
+function toJwtUser(row: {
+  id: string;
+  email: string;
+  role: Role;
+  admin_scope?: unknown;
+  adminScope?: unknown;
+}): JwtUser {
+  return {
+    id: row.id,
+    email: row.email,
+    role: row.role,
+    adminScope: getEffectiveAdminScope({
+      role: row.role,
+      adminScope: row.admin_scope ?? row.adminScope,
+    }),
+  };
 }
 
 function normalizeStudentNumber(v: unknown): string {
@@ -572,16 +596,25 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
 
   try {
-      const result = await pool.query(
-        `
-        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, email, role
-      `,
-        [email, passwordHash, role, role === "STUDENT" ? studentNumber : null, role === "STUDENT" ? southAfricanId : null]
-      );
+    const adminScope = role === "ADMIN" ? "ACADEMIC" : null;
 
-    const user = result.rows[0] as JwtUser;
+    const result = await pool.query(
+      `
+        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id, admin_scope)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, email, role, admin_scope
+      `,
+      [
+        email,
+        passwordHash,
+        role,
+        role === "STUDENT" ? studentNumber : null,
+        role === "STUDENT" ? southAfricanId : null,
+        adminScope,
+      ]
+    );
+
+    const user = toJwtUser(result.rows[0] as JwtUser & { admin_scope?: string | null });
     const token = signToken(user);
     return res.status(201).json({ token, user });
   } catch (e: any) {
@@ -604,103 +637,122 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
    Body: { email, password, role, studentNumber?, southAfricanId? }
    Only authenticated ADMIN may create privileged roles.
 =================================*/
-authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
-  const email = normEmail(req.body?.email);
-  const password = String(req.body?.password ?? "");
-  const roleRaw = String(req.body?.role ?? "").trim().toUpperCase();
-  const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
-  const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
+authRouter.post(
+  "/admin-create",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    const email = normEmail(req.body?.email);
+    const password = String(req.body?.password ?? "");
+    const roleRaw = String(req.body?.role ?? "").trim().toUpperCase();
+    const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
+    const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
+    const adminScopeInput = normalizeAdminScope(req.body?.adminScope);
 
-  if (!email || !password || !roleRaw) {
-    return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
-  }
-
-  const passwordError = validatePassword(password);
-  if (passwordError) {
-    return res.status(400).json({ error: { code: "VALIDATION", message: passwordError } });
-  }
-
-  if (!VALID_ROLES.includes(roleRaw as Role)) {
-    return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
-  }
-
-  const role = roleRaw as Role;
-
-  if (role === "STUDENT") {
-    if (!southAfricanId) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "southAfricanId is required for student creation" },
-      });
+    if (!email || !password || !roleRaw) {
+      return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
     }
-    if (!isValidSouthAfricanId(southAfricanId)) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "southAfricanId must be exactly 13 digits" },
-      });
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ error: { code: "VALIDATION", message: passwordError } });
     }
-    if (!studentNumber) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "studentNumber is required for student creation" },
-      });
+
+    if (!VALID_ROLES.includes(roleRaw as Role)) {
+      return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
     }
-    if (studentNumber.length > 64) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "studentNumber must be 64 characters or fewer" },
-      });
+
+    const role = roleRaw as Role;
+    if (role === "ADMIN" && req.body?.adminScope !== undefined && !adminScopeInput) {
+      return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid adminScope" } });
     }
-  }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+    if (role === "STUDENT") {
+      if (!southAfricanId) {
+        return res.status(400).json({
+          error: { code: "VALIDATION", message: "southAfricanId is required for student creation" },
+        });
+      }
+      if (!isValidSouthAfricanId(southAfricanId)) {
+        return res.status(400).json({
+          error: { code: "VALIDATION", message: "southAfricanId must be exactly 13 digits" },
+        });
+      }
+      if (!studentNumber) {
+        return res.status(400).json({
+          error: { code: "VALIDATION", message: "studentNumber is required for student creation" },
+        });
+      }
+      if (studentNumber.length > 64) {
+        return res.status(400).json({
+          error: { code: "VALIDATION", message: "studentNumber must be 64 characters or fewer" },
+        });
+      }
+    }
 
-  try {
-    const result = await pool.query(
-      `
-        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, email, role
-      `,
-      [email, passwordHash, role, role === "STUDENT" ? studentNumber : null, role === "STUDENT" ? southAfricanId : null]
-    );
+    const passwordHash = await bcrypt.hash(password, 10);
 
-    return res.status(201).json({ user: result.rows[0] });
-  } catch (e: any) {
-    if (String(e?.code ?? "") === "23505") {
-      if (role === "STUDENT") {
-        try {
-          const updated = await pool.query(
-            `
-              UPDATE users
-              SET
-                role = 'STUDENT',
-                public_student_id = COALESCE(public_student_id, $2),
-                south_african_id = COALESCE(south_african_id, $3)
-              WHERE lower(email) = lower($1)
-              RETURNING id, email, role
-            `,
-            [email, studentNumber, southAfricanId]
-          );
+    try {
+      const adminScope = role === "ADMIN" ? adminScopeInput ?? "ACADEMIC" : null;
+      const result = await pool.query(
+        `
+          INSERT INTO users (email, password_hash, role, public_student_id, south_african_id, admin_scope)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id, email, role, admin_scope
+        `,
+        [
+          email,
+          passwordHash,
+          role,
+          role === "STUDENT" ? studentNumber : null,
+          role === "STUDENT" ? southAfricanId : null,
+          adminScope,
+        ]
+      );
 
-          if ((updated.rowCount ?? 0) > 0) {
-            return res.status(200).json({ user: updated.rows[0], updated: true });
-          }
-        } catch (upsertErr: any) {
-          if (String(upsertErr?.code ?? "") !== "23505") {
-            return res.status(500).json({
-              error: { code: "INTERNAL", message: "Failed to update existing student account" },
-            });
+      return res.status(201).json({ user: toJwtUser(result.rows[0] as JwtUser & { admin_scope?: string | null }) });
+    } catch (e: any) {
+      if (String(e?.code ?? "") === "23505") {
+        if (role === "STUDENT") {
+          try {
+            const updated = await pool.query(
+              `
+                UPDATE users
+                SET
+                  role = 'STUDENT',
+                  public_student_id = COALESCE(public_student_id, $2),
+                  south_african_id = COALESCE(south_african_id, $3)
+                WHERE lower(email) = lower($1)
+                RETURNING id, email, role, admin_scope
+              `,
+              [email, studentNumber, southAfricanId]
+            );
+
+            if ((updated.rowCount ?? 0) > 0) {
+              return res.status(200).json({
+                user: toJwtUser(updated.rows[0] as JwtUser & { admin_scope?: string | null }),
+                updated: true,
+              });
+            }
+          } catch (upsertErr: any) {
+            if (String(upsertErr?.code ?? "") !== "23505") {
+              return res.status(500).json({
+                error: { code: "INTERNAL", message: "Failed to update existing student account" },
+              });
+            }
           }
         }
-      }
 
-      return res.status(400).json({
-        error: {
-          code: "VALIDATION",
-          message: "Account already exists (email, student number, or South African ID)",
-        },
-      });
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION",
+            message: "Account already exists (email, student number, or South African ID)",
+          },
+        });
+      }
+      return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to create account" } });
     }
-    return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to create account" } });
   }
-});
+);
 
 /* ===============================
    LOGIN
@@ -765,7 +817,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
     }
   }
 
-  const user: JwtUser = { id: userRow.id, email: userRow.email, role: userRow.role };
+  const user = toJwtUser(userRow as JwtUser & { admin_scope?: string | null });
   const token = signToken(user);
 
   return res.json({ token, user });

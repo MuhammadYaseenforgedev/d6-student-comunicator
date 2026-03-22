@@ -1,12 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import { pool } from "../config/db";
-import { requireRole } from "../middleware/rbac";
+import { requireAccess } from "../middleware/rbac";
 import { repos } from "../persistence";
 import type { FinanceDocument, FinanceStatusNotification, FinanceSummary, FinanceTransaction } from "../persistence/types";
 import { pgFinanceRepo } from "../repos/pgFinanceRepo";
+import { isFinanceAdmin } from "../lib/adminAccess";
 
 type AuthedRequest = Request & {
-  user?: { id: string; role: string };
+  user?: { id: string; role: string; adminScope?: string | null };
 };
 
 type StudentRow = {
@@ -355,6 +356,9 @@ financeRouter.get("/finance/summary", async (req: AuthedRequest, res: Response) 
     let targetUserId = me;
 
     if (role === "ADMIN") {
+      if (!isFinanceAdmin(user)) {
+        return err(res, 403, "FORBIDDEN", "Only finance admins can access admin finance data");
+      }
       if (req.query.userId) {
         const uid = String(req.query.userId).trim();
         if (!isUuid(uid)) return err(res, 400, "VALIDATION", "userId must be a UUID");
@@ -394,6 +398,9 @@ financeRouter.get("/finance/transactions", async (req: AuthedRequest, res: Respo
     let targetUserId = me;
 
     if (role === "ADMIN") {
+      if (!isFinanceAdmin(user)) {
+        return err(res, 403, "FORBIDDEN", "Only finance admins can access admin finance data");
+      }
       if (req.query.userId) {
         const uid = String(req.query.userId).trim();
         if (!isUuid(uid)) return err(res, 400, "VALIDATION", "userId must be a UUID");
@@ -422,7 +429,10 @@ financeRouter.get("/finance/transactions", async (req: AuthedRequest, res: Respo
   }
 });
 
-financeRouter.get("/finance/admin/accounts", requireRole("ADMIN"), async (req: AuthedRequest, res: Response) => {
+financeRouter.get(
+  "/finance/admin/accounts",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  async (req: AuthedRequest, res: Response) => {
   try {
     const q = String(req.query.q ?? "").trim().toLowerCase();
     const limit = parseLimit(req.query.limit, 100, 250);
@@ -512,9 +522,13 @@ financeRouter.get("/finance/admin/accounts", requireRole("ADMIN"), async (req: A
     console.error("[finance] GET /finance/admin/accounts error", e);
     return err(res, 500, "INTERNAL", "Failed to load finance accounts");
   }
-});
+  }
+);
 
-financeRouter.get("/finance/admin/accounts/:studentId", requireRole("ADMIN"), async (req: AuthedRequest, res: Response) => {
+financeRouter.get(
+  "/finance/admin/accounts/:studentId",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  async (req: AuthedRequest, res: Response) => {
   try {
     const studentId = String(req.params.studentId ?? "").trim();
     if (!isUuid(studentId)) return err(res, 400, "VALIDATION", "studentId must be a UUID");
@@ -526,9 +540,13 @@ financeRouter.get("/finance/admin/accounts/:studentId", requireRole("ADMIN"), as
     console.error("[finance] GET /finance/admin/accounts/:studentId error", e);
     return err(res, 500, "INTERNAL", "Failed to load finance account detail");
   }
-});
+  }
+);
 
-financeRouter.patch("/finance/admin/accounts/:studentId", requireRole("ADMIN"), async (req: AuthedRequest, res: Response) => {
+financeRouter.patch(
+  "/finance/admin/accounts/:studentId",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  async (req: AuthedRequest, res: Response) => {
   try {
     const studentId = String(req.params.studentId ?? "").trim();
     if (!isUuid(studentId)) return err(res, 400, "VALIDATION", "studentId must be a UUID");
@@ -592,11 +610,12 @@ financeRouter.patch("/finance/admin/accounts/:studentId", requireRole("ADMIN"), 
     console.error("[finance] PATCH /finance/admin/accounts/:studentId error", e);
     return err(res, 500, "INTERNAL", "Failed to update finance account");
   }
-});
+  }
+);
 
 financeRouter.post(
   "/finance/admin/accounts/:studentId/transactions",
-  requireRole("ADMIN"),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
   async (req: AuthedRequest, res: Response) => {
     try {
       const studentId = String(req.params.studentId ?? "").trim();
@@ -650,7 +669,7 @@ financeRouter.post(
 
 financeRouter.post(
   "/finance/admin/accounts/:studentId/documents",
-  requireRole("ADMIN"),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
   async (req: AuthedRequest, res: Response) => {
     try {
       const studentId = String(req.params.studentId ?? "").trim();
@@ -729,7 +748,7 @@ financeRouter.post(
 
 financeRouter.post(
   "/finance/admin/accounts/:studentId/notifications",
-  requireRole("ADMIN"),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
   async (req: AuthedRequest, res: Response) => {
     try {
       const studentId = String(req.params.studentId ?? "").trim();
@@ -780,7 +799,7 @@ financeRouter.post(
 
 financeRouter.get(
   "/finance/admin/accounts/:studentId/statement",
-  requireRole("ADMIN"),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
   async (req: AuthedRequest, res: Response) => {
     try {
       const studentId = String(req.params.studentId ?? "").trim();

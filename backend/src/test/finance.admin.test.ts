@@ -13,7 +13,7 @@ describe("admin finance management", () => {
   });
 
   test("admin can manage a student finance account and the parent view reflects it", async () => {
-    const admin = await createUser("ADMIN");
+    const admin = await createUser("ADMIN", undefined, "Passw0rd!", "FINANCE");
     const parent = await createUser("PARENT");
     const student = await createUser("STUDENT");
 
@@ -116,6 +116,14 @@ describe("admin finance management", () => {
     const parentToken = signJwt(parent);
 
     const res = await request(app).get("/api/finance/admin/accounts").set(auth(parentToken));
+    expect(res.status).toBe(403);
+  });
+
+  test("non-finance admins cannot access admin finance routes", async () => {
+    const academicAdmin = await createUser("ADMIN", undefined, "Passw0rd!", "ACADEMIC");
+    const academicToken = signJwt(academicAdmin);
+
+    const res = await request(app).get("/api/finance/admin/accounts").set(auth(academicToken));
     expect(res.status).toBe(403);
   });
 });

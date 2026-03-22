@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { pool } from "../config/db";
-import { requireRole } from "../middleware/rbac";
+import { requireAccess, requireRole } from "../middleware/rbac";
 import { createAttendanceNotifications } from "../lib/notifications";
+import { isAcademicOrSuperAdmin } from "../lib/adminAccess";
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE";
 const VALID_ATTENDANCE_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE"];
@@ -84,7 +85,7 @@ async function getAttendanceSessionContext(sessionId: string): Promise<Attendanc
 }
 
 async function canStaffAccessSession(user: { id: string; role: AuthRole }): Promise<boolean> {
-  return user.role === "ADMIN" || user.role === "LECTURER";
+  return user.role === "LECTURER" || isAcademicOrSuperAdmin(user);
 }
 
 async function ensureParentCanAccessChild(parentId: string, childId: string): Promise<boolean> {
@@ -102,7 +103,10 @@ async function ensureParentCanAccessChild(parentId: string, childId: string): Pr
 export const attendanceRouter = Router();
 
 // Create module/faculty records for attendance setup.
-attendanceRouter.post("/attendance/modules", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+attendanceRouter.post(
+  "/attendance/modules",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const code = String(req.body?.code ?? "").trim().toUpperCase();
     const name = String(req.body?.name ?? "").trim();
@@ -158,10 +162,14 @@ attendanceRouter.post("/attendance/modules", requireRole("ADMIN", "LECTURER"), a
     console.error("[attendance] POST /attendance/modules error", e);
     return err(res, 500, "INTERNAL", "Failed to create module");
   }
-});
+  }
+);
 
 // Assign lecturer to module.
-attendanceRouter.post("/attendance/modules/:moduleId/lecturers", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+attendanceRouter.post(
+  "/attendance/modules/:moduleId/lecturers",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const moduleId = String(req.params.moduleId ?? "").trim();
     const lecturerId = String(req.body?.lecturerId ?? "").trim();
@@ -200,10 +208,14 @@ attendanceRouter.post("/attendance/modules/:moduleId/lecturers", requireRole("AD
     console.error("[attendance] POST /attendance/modules/:moduleId/lecturers error", e);
     return err(res, 500, "INTERNAL", "Failed to assign lecturer");
   }
-});
+  }
+);
 
 // Enroll student to module and expose auto-linked lecturers for attendance/messaging workflows.
-attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+attendanceRouter.post(
+  "/attendance/modules/:moduleId/enrollments",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const moduleId = String(req.params.moduleId ?? "").trim();
     const studentId = String(req.body?.studentId ?? "").trim();
@@ -255,11 +267,12 @@ attendanceRouter.post("/attendance/modules/:moduleId/enrollments", requireRole("
     console.error("[attendance] POST /attendance/modules/:moduleId/enrollments error", e);
     return err(res, 500, "INTERNAL", "Failed to enroll student");
   }
-});
+  }
+);
 
 attendanceRouter.delete(
   "/attendance/modules/:moduleId/enrollments/:studentId",
-  requireRole("ADMIN", "LECTURER"),
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
     try {
       const moduleId = String(req.params.moduleId ?? "").trim();
@@ -294,7 +307,7 @@ attendanceRouter.delete(
 
 attendanceRouter.delete(
   "/attendance/modules/:moduleId/lecturers/:lecturerId",
-  requireRole("ADMIN", "LECTURER"),
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
     try {
       const moduleId = String(req.params.moduleId ?? "").trim();
@@ -325,7 +338,10 @@ attendanceRouter.delete(
 );
 
 // List modules available for attendance workflows.
-attendanceRouter.get("/attendance/modules", requireRole("LECTURER", "ADMIN", "STUDENT"), async (req, res) => {
+attendanceRouter.get(
+  "/attendance/modules",
+  requireAccess({ roles: ["LECTURER", "ADMIN", "STUDENT"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const user = req.user!;
     const isStudent = user.role === "STUDENT";
@@ -391,10 +407,14 @@ attendanceRouter.get("/attendance/modules", requireRole("LECTURER", "ADMIN", "ST
     console.error("[attendance] GET /attendance/modules error", e);
     return err(res, 500, "INTERNAL", "Failed to list modules");
   }
-});
+  }
+);
 
 // List students enrolled in one module.
-attendanceRouter.get("/attendance/modules/:moduleId/students", requireRole("LECTURER", "ADMIN"), async (req, res) => {
+attendanceRouter.get(
+  "/attendance/modules/:moduleId/students",
+  requireAccess({ roles: ["LECTURER", "ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const moduleId = String(req.params.moduleId ?? "").trim();
     if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
@@ -440,10 +460,14 @@ attendanceRouter.get("/attendance/modules/:moduleId/students", requireRole("LECT
     console.error("[attendance] GET /attendance/modules/:moduleId/students error", e);
     return err(res, 500, "INTERNAL", "Failed to list module students");
   }
-});
+  }
+);
 
 // Create session.
-attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), async (req, res) => {
+attendanceRouter.post(
+  "/attendance/sessions",
+  requireAccess({ roles: ["LECTURER", "ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const user = req.user!;
 
@@ -537,10 +561,14 @@ attendanceRouter.post("/attendance/sessions", requireRole("LECTURER", "ADMIN"), 
     console.error("[attendance] POST /attendance/sessions error", e);
     return err(res, 500, "INTERNAL", "Failed to create attendance session");
   }
-});
+  }
+);
 
 // List sessions.
-attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN", "STUDENT"), async (req, res) => {
+attendanceRouter.get(
+  "/attendance/sessions",
+  requireAccess({ roles: ["LECTURER", "ADMIN", "STUDENT"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const user = req.user!;
     const moduleIdRaw = String(req.query.moduleId ?? "").trim();
@@ -649,9 +677,13 @@ attendanceRouter.get("/attendance/sessions", requireRole("LECTURER", "ADMIN", "S
     console.error("[attendance] GET /attendance/sessions error", e);
     return err(res, 500, "INTERNAL", "Failed to list attendance sessions");
   }
-});
+  }
+);
 
-attendanceRouter.get("/attendance/sessions/:id/roster", requireRole("LECTURER", "ADMIN"), async (req, res) => {
+attendanceRouter.get(
+  "/attendance/sessions/:id/roster",
+  requireAccess({ roles: ["LECTURER", "ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const user = req.user!;
     const sessionId = String(req.params.id ?? "").trim();
@@ -728,7 +760,8 @@ attendanceRouter.get("/attendance/sessions/:id/roster", requireRole("LECTURER", 
     console.error("[attendance] GET /attendance/sessions/:id/roster error", e);
     return err(res, 500, "INTERNAL", "Failed to load attendance roster");
   }
-});
+  }
+);
 
 attendanceRouter.post("/attendance/sessions/:id/check-in", requireRole("STUDENT"), async (req, res) => {
   try {
@@ -794,7 +827,10 @@ attendanceRouter.post("/attendance/sessions/:id/check-in", requireRole("STUDENT"
 });
 
 // Mark attendance.
-attendanceRouter.post("/attendance/sessions/:id/mark", requireRole("LECTURER", "ADMIN"), async (req, res) => {
+attendanceRouter.post(
+  "/attendance/sessions/:id/mark",
+  requireAccess({ roles: ["LECTURER", "ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   const sessionId = String(req.params.id ?? "").trim();
   if (!isUuid(sessionId)) return err(res, 400, "VALIDATION", "session id must be a UUID");
 
@@ -924,7 +960,8 @@ attendanceRouter.post("/attendance/sessions/:id/mark", requireRole("LECTURER", "
     console.error("[attendance] POST /attendance/sessions/:id/mark error", e);
     return err(res, 500, "INTERNAL", "Failed to mark attendance");
   }
-});
+  }
+);
 
 // Student attendance view (or parent linked-child view).
 attendanceRouter.get("/attendance/me", requireRole("STUDENT", "PARENT"), async (req, res) => {

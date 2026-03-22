@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
-import { getUser } from "../lib/auth";
+import { getUser, type AdminScope } from "../lib/auth";
+import { adminScopeLabel } from "../lib/adminAccess";
 import {
   deleteAdminAccount,
   listAdminAccounts,
@@ -20,6 +21,7 @@ const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
 ];
 
 const MIN_PASSWORD_LENGTH = 6;
+const ADMIN_SCOPE_OPTIONS: AdminScope[] = ["FINANCE", "ACADEMIC", "SUPER"];
 
 function roleTone(role: AdminAccountRole): string {
   if (role === "ADMIN") {
@@ -45,6 +47,9 @@ function secondaryMeta(account: AdminAccount): string {
   }
   if (account.role === "PARENT") {
     return account.canLinkChildren ? "Parent can link children" : "Parent account";
+  }
+  if (account.role === "ADMIN") {
+    return adminScopeLabel(account.adminScope);
   }
   return account.courseName?.trim() || account.email;
 }
@@ -80,6 +85,7 @@ export default function AdminUsers() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStudentNumber, setEditStudentNumber] = useState("");
   const [editPassword, setEditPassword] = useState("");
+  const [editAdminScope, setEditAdminScope] = useState<AdminScope>("ACADEMIC");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -149,6 +155,7 @@ export default function AdminUsers() {
     setEditingId(account.id);
     setEditStudentNumber(account.studentNumber ?? "");
     setEditPassword("");
+    setEditAdminScope(account.adminScope ?? "SUPER");
     setShowPassword(false);
     setError(null);
     setInfo(null);
@@ -158,6 +165,7 @@ export default function AdminUsers() {
     setEditingId(null);
     setEditStudentNumber("");
     setEditPassword("");
+    setEditAdminScope("ACADEMIC");
     setShowPassword(false);
   }
 
@@ -165,7 +173,11 @@ export default function AdminUsers() {
     const nextPassword = editPassword;
     const nextStudentNumber = normalizeStudentNumber(editStudentNumber);
     const currentStudentNumber = normalizeStudentNumber(account.studentNumber);
-    const payload: { password?: string; studentNumber?: string } = {};
+    const payload: {
+      password?: string;
+      studentNumber?: string;
+      adminScope?: AdminScope;
+    } = {};
 
     if (
       account.role === "STUDENT" &&
@@ -191,8 +203,12 @@ export default function AdminUsers() {
       payload.studentNumber = nextStudentNumber;
     }
 
-    if (!payload.password && !payload.studentNumber) {
-      setError("Change the student number or enter a new password first.");
+    if (account.role === "ADMIN" && editAdminScope !== (account.adminScope ?? "SUPER")) {
+      payload.adminScope = editAdminScope;
+    }
+
+    if (!payload.password && !payload.studentNumber && !payload.adminScope) {
+      setError("Change the admin access, student number, or password first.");
       return;
     }
 
@@ -206,6 +222,7 @@ export default function AdminUsers() {
       const changed: string[] = [];
       if (payload.studentNumber) changed.push("student number");
       if (payload.password) changed.push("password");
+      if (payload.adminScope) changed.push("admin access");
       setInfo(
         `Updated ${account.email}${
           changed.length ? ` (${changed.join(" and ")})` : ""
@@ -305,6 +322,12 @@ export default function AdminUsers() {
           Current passwords cannot be displayed. They are stored securely as
           hashes. Use the edit action to set a new password for an account.
         </div>
+
+        <div className="info-banner border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] text-white/80 shadow-none">
+          Finance Admin can access Finance and Messages. Academic Admin can
+          access the academic/admin tools except Finance. Super Admin can
+          access the academic/admin tools plus Tickets.
+        </div>
       </section>
 
       <section className="teal-glow-card p-5">
@@ -358,6 +381,17 @@ export default function AdminUsers() {
                         >
                           {account.role}
                         </span>
+
+                        {account.role === "ADMIN" && (
+                          <span
+                            className={[
+                              "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                              adminScopeTone(account.adminScope),
+                            ].join(" ")}
+                          >
+                            {adminScopeLabel(account.adminScope)}
+                          </span>
+                        )}
 
                         {isCurrentUser && (
                           <span className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-2.5 py-1 text-[11px] font-semibold text-white/80">
@@ -421,6 +455,32 @@ export default function AdminUsers() {
                   {editingId === account.id && (
                     <div className="mt-4 rounded-3xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.42)] p-4">
                       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        {account.role === "ADMIN" && (
+                          <div>
+                            <label
+                              htmlFor={`admin-scope-${account.id}`}
+                              className="mb-2 block text-xs font-semibold uppercase tracking-wide text-white/55"
+                            >
+                              Admin access
+                            </label>
+                            <select
+                              id={`admin-scope-${account.id}`}
+                              value={editAdminScope}
+                              onChange={(e) =>
+                                setEditAdminScope(e.target.value as AdminScope)
+                              }
+                              className="select-glass w-full"
+                              title="Admin access"
+                            >
+                              {ADMIN_SCOPE_OPTIONS.map((scope) => (
+                                <option key={scope} value={scope}>
+                                  {adminScopeLabel(scope)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
                         {account.role === "STUDENT" ? (
                           <div>
                             <label
@@ -504,4 +564,14 @@ export default function AdminUsers() {
       </section>
     </div>
   );
+}
+
+function adminScopeTone(scope: AdminScope | null): string {
+  if (scope === "FINANCE") {
+    return "border-[rgba(52,211,153,0.30)] bg-[rgba(52,211,153,0.14)] text-[#d9fff1]";
+  }
+  if (scope === "ACADEMIC") {
+    return "border-[rgba(79,166,255,0.30)] bg-[rgba(79,166,255,0.14)] text-[#d9eeff]";
+  }
+  return "border-[rgba(255,196,87,0.30)] bg-[rgba(255,196,87,0.14)] text-[#ffecc2]";
 }

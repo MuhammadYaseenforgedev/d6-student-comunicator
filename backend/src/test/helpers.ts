@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { pool } from "../config/db";
+import { getEffectiveAdminScope, type AdminScope } from "../lib/adminAccess";
 
 export type Role = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
 
@@ -10,27 +11,49 @@ function newId() {
   return crypto.randomUUID();
 }
 
-export async function createUser(role: Role, email?: string, password = "Passw0rd!") {
+export async function createUser(
+  role: Role,
+  email?: string,
+  password = "Passw0rd!",
+  adminScope?: AdminScope | null
+) {
   const safeEmail =
     email ?? `test_${role.toLowerCase()}_${Date.now()}_${Math.floor(Math.random() * 10000)}@co.za`;
 
   const passwordHash = await bcrypt.hash(password, 10);
+  const effectiveAdminScope = role === "ADMIN" ? adminScope ?? "SUPER" : null;
 
-  const result = await pool.query<{ id: string; email: string; role: Role }>(
+  const result = await pool.query<{ id: string; email: string; role: Role; admin_scope: AdminScope | null }>(
     `
-      INSERT INTO users (email, password_hash, role)
-      VALUES ($1, $2, $3)
-      RETURNING id, email, role
+      INSERT INTO users (email, password_hash, role, admin_scope)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, email, role, admin_scope
     `,
-    [safeEmail, passwordHash, role]
+    [safeEmail, passwordHash, role, effectiveAdminScope]
   );
 
-  return { ...result.rows[0], password };
+  return {
+    ...result.rows[0],
+    adminScope: getEffectiveAdminScope({
+      role: result.rows[0].role,
+      adminScope: result.rows[0].admin_scope,
+    }),
+    password,
+  };
 }
 
-export function signJwt(user: { id: string; email: string; role: Role }) {
+export function signJwt(user: { id: string; email: string; role: Role; adminScope?: AdminScope | null }) {
   const secret = process.env.JWT_SECRET ?? "dev_secret_change_me";
-  return jwt.sign({ id: user.id, email: user.email, role: user.role }, secret, { expiresIn: "7d" });
+  return jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      adminScope: getEffectiveAdminScope({ role: user.role, adminScope: user.adminScope }),
+    },
+    secret,
+    { expiresIn: "7d" }
+  );
 }
 
 export async function createChannel(createdByUserId: string, name?: string) {
@@ -129,6 +152,13 @@ export async function cleanupTestUsers() {
   // IMPORTANT:
   // Some tables store created_by / user_id as TEXT while users.id is UUID (or vice versa).
   // Cast to text to avoid "operator does not exist: text = uuid".
+
+  await pool.query(
+    `
+      DELETE FROM support_tickets
+      WHERE lower(requester_email) LIKE 'test_%@co.za'
+    `
+  );
 
   await pool.query(
     `

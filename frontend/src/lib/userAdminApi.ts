@@ -1,3 +1,4 @@
+import type { AdminScope } from "./auth";
 import { apiClient } from "./apiClient";
 
 export type AdminAccountRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
@@ -6,6 +7,7 @@ export type AdminAccount = {
   id: string;
   email: string;
   role: AdminAccountRole;
+  adminScope: AdminScope | null;
   firstName: string | null;
   lastName: string | null;
   courseName: string | null;
@@ -42,6 +44,7 @@ export async function updateAdminAccount(
   input: {
     password?: string;
     studentNumber?: string;
+    adminScope?: AdminScope;
   }
 ) {
   return apiClient.patch<{ ok: boolean; user: AdminAccount }>(`/users/admin/accounts/${encodeURIComponent(userId)}`, input);

@@ -14,8 +14,8 @@
 // - shared neon input/button styling
 
 import { useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { setAuth, type UserRole } from "../lib/auth";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { setAuth, type AuthUser, type UserRole } from "../lib/auth";
 import { type ApiClientError } from "../lib/apiClient";
 import {
   fetchAuthMe,
@@ -23,13 +23,16 @@ import {
   register as registerApi,
   requestOtp as requestOtpApi,
 } from "../lib/authService";
+import { isFinanceAdmin } from "../lib/adminAccess";
 import forgeLogo from "../assets/Forge.jpg";
 
 type LocationState = { from?: string };
 type Mode = "login" | "register";
 
-function landingFor(role: UserRole) {
-  return role === "PARENT" ? "/app/parent" : "/app";
+function landingFor(user: Pick<AuthUser, "role" | "adminScope">) {
+  if (user.role === "PARENT") return "/app/parent";
+  if (isFinanceAdmin(user)) return "/app/admin/finance";
+  return "/app";
 }
 
 const API_PRIMARY = String(import.meta.env.VITE_API_URL ?? "")
@@ -214,7 +217,7 @@ export default function LoginPage2() {
     const user = data.user ?? (await fetchMe(data.token));
     setAuth(data.token, user);
 
-    const dest = from ?? landingFor(user.role);
+    const dest = from ?? landingFor(user);
     navigate(dest, { replace: true });
   }
 
@@ -257,7 +260,7 @@ export default function LoginPage2() {
       const user = data.user ?? (await fetchMe(data.token));
       setAuth(data.token, user);
 
-      const dest = from ?? landingFor(user.role);
+      const dest = from ?? landingFor(user);
       navigate(dest, { replace: true });
       return;
     }
@@ -681,6 +684,14 @@ export default function LoginPage2() {
                   : "Create account"}
               </button>
 
+              <div className="flex items-center justify-center">
+                <Link
+                  to="/support"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] px-4 py-2 text-sm font-semibold text-[#8CEBFF] transition hover:border-[rgba(140,235,255,0.34)] hover:text-white"
+                >
+                  Send a ticket
+                </Link>
+              </div>
             </form>
           </div>
         </div>

@@ -1,10 +1,11 @@
-import type { UserRole } from "./auth";
+import type { AdminScope, UserRole } from "./auth";
 import { apiClient } from "./apiClient";
 
 export type AuthUserDTO = {
   id: string;
   email: string;
   role: UserRole;
+  adminScope?: AdminScope | null;
   firstName?: string | null;
   lastName?: string | null;
   courseName?: string | null;
@@ -24,6 +25,7 @@ export type MeProfile = {
   id: string;
   email: string;
   role: UserRole;
+  adminScope?: AdminScope | null;
   firstName: string;
   lastName: string;
   courseName: string | null;

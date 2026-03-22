@@ -11,6 +11,7 @@ const DEV_BYPASS_KEY = "dev_bypass";
  * Backend will enforce these, frontend uses them for UI + route guards.
  */
 export type UserRole = "STUDENT" | "LECTURER" | "ADMIN" | "PARENT";
+export type AdminScope = "FINANCE" | "ACADEMIC" | "SUPER";
 
 /**
  * Authenticated user shape stored on the frontend.
@@ -20,6 +21,7 @@ export type AuthUser = {
   id: string;
   email: string;
   role: UserRole;
+  adminScope?: AdminScope | null;
   campusId?: string;
   firstName?: string | null;
   lastName?: string | null;

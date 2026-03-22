@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { pool } from "../config/db";
-import { requireRole } from "../middleware/rbac";
+import { requireAccess, requireRole } from "../middleware/rbac";
 import { repos } from "../persistence";
 import {
   createParentLinkDecisionNotification,
@@ -349,7 +349,10 @@ parentRouter.get("/parent/link-requests", requireRole("PARENT"), async (req, res
  * POST /api/admin/parent/link-requests/:id/decide
  * Body: { decision: "APPROVED" | "REJECTED" }
  */
-parentRouter.post("/admin/parent/link-requests/:id/decide", requireRole("ADMIN"), async (req, res) => {
+parentRouter.post(
+  "/admin/parent/link-requests/:id/decide",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const adminId = req.user!.id;
     const { id } = req.params as { id: string };
@@ -590,7 +593,8 @@ parentRouter.get("/student/results", requireRole("STUDENT"), async (req, res) =>
     console.error("[parent] GET /student/results error", e);
     return err(res, 500, "INTERNAL", "Failed to load results");
   }
-});
+  }
+);
 
 /**
  * GET /api/parent/student/results/download
@@ -649,7 +653,10 @@ parentRouter.get("/results", requireRole("PARENT"), async (req, res) => {
  * ADMIN: list link requests (queue)
  * GET /api/admin/parent/link-requests?status=PENDING|APPROVED|REJECTED|ALL
  */
-parentRouter.get("/admin/parent/link-requests", requireRole("ADMIN"), async (req, res) => {
+parentRouter.get(
+  "/admin/parent/link-requests",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const statusRaw = String(req.query.status ?? "PENDING").trim().toUpperCase();
     const valid = new Set(["PENDING", "APPROVED", "REJECTED", "ALL"]);
@@ -711,7 +718,8 @@ parentRouter.get("/admin/parent/link-requests", requireRole("ADMIN"), async (req
     console.error("[parent] GET /admin/parent/link-requests error", e);
     return err(res, 500, "INTERNAL", "Failed to list link requests");
   }
-});
+  }
+);
 
 /**
  * GET /api/parent/results/download?childId=STU-1001
@@ -830,7 +838,10 @@ parentRouter.get("/attendance", requireRole("PARENT"), async (req, res) => {
  */
 
 // GET /api/parent/admin/results?childId=STU-1001
-parentRouter.get("/admin/results", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.get(
+  "/admin/results",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const childId = String(req.query.childId ?? "").trim();
     if (!childId) return err(res, 400, "VALIDATION", "childId query param is required");
@@ -844,10 +855,14 @@ parentRouter.get("/admin/results", requireRole("ADMIN", "LECTURER"), async (req,
     console.error("[parent] GET /admin/results error", e);
     return err(res, 500, "INTERNAL", "Failed to load results");
   }
-});
+  }
+);
 
 // GET /api/parent/admin/results/download?childId=STU-1001
-parentRouter.get("/admin/results/download", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.get(
+  "/admin/results/download",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const childId = String(req.query.childId ?? "").trim();
     if (!childId) return err(res, 400, "VALIDATION", "childId query param is required");
@@ -871,7 +886,8 @@ parentRouter.get("/admin/results/download", requireRole("ADMIN", "LECTURER"), as
     console.error("[parent] GET /admin/results/download error", e);
     return err(res, 500, "INTERNAL", "Failed to download results");
   }
-});
+  }
+);
 
 /**
  * POST /api/parent/admin/results/cleanup-demo
@@ -881,7 +897,10 @@ parentRouter.get("/admin/results/download", requireRole("ADMIN", "LECTURER"), as
  * and only for the selected children.
  * `dryRun` defaults to true for safety.
  */
-parentRouter.post("/admin/results/cleanup-demo", requireRole("ADMIN"), async (req, res) => {
+parentRouter.post(
+  "/admin/results/cleanup-demo",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const rawChildIds: unknown[] = Array.isArray(req.body?.childIds) ? req.body.childIds : [];
     const childIds: string[] = rawChildIds
@@ -996,11 +1015,15 @@ parentRouter.post("/admin/results/cleanup-demo", requireRole("ADMIN"), async (re
     console.error("[parent] POST /admin/results/cleanup-demo error", e);
     return err(res, 500, "INTERNAL", "Failed to cleanup demo results");
   }
-});
+  }
+);
 
 // POST /api/parent/admin/results
 // Body: { childId, subject, score, outOf?, date? }
-parentRouter.post("/admin/results", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.post(
+  "/admin/results",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const childId = String(req.body?.childId ?? "").trim();
     const subject = String(req.body?.subject ?? "").trim();
@@ -1054,11 +1077,15 @@ parentRouter.post("/admin/results", requireRole("ADMIN", "LECTURER"), async (req
     console.error("[parent] POST /admin/results error", e);
     return err(res, 500, "INTERNAL", "Failed to create result");
   }
-});
+  }
+);
 
 // POST /api/parent/admin/results/:id/update
 // Body: { subject?, score?, outOf?, date? }
-parentRouter.post("/admin/results/:id/update", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.post(
+  "/admin/results/:id/update",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const id = String(req.params.id ?? "").trim();
     if (!isUuid(id)) return err(res, 400, "VALIDATION", "id must be a UUID");
@@ -1152,10 +1179,14 @@ parentRouter.post("/admin/results/:id/update", requireRole("ADMIN", "LECTURER"),
     console.error("[parent] POST /admin/results/:id/update error", e);
     return err(res, 500, "INTERNAL", "Failed to update result");
   }
-});
+  }
+);
 
 // DELETE /api/parent/admin/results/:id
-parentRouter.delete("/admin/results/:id", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.delete(
+  "/admin/results/:id",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const id = String(req.params.id ?? "").trim();
     if (!isUuid(id)) return err(res, 400, "VALIDATION", "id must be a UUID");
@@ -1168,7 +1199,8 @@ parentRouter.delete("/admin/results/:id", requireRole("ADMIN", "LECTURER"), asyn
     console.error("[parent] DELETE /admin/results/:id error", e);
     return err(res, 500, "INTERNAL", "Failed to delete result");
   }
-});
+  }
+);
 
 /**
  * -------------------------

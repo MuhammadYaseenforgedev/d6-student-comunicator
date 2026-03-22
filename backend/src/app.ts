@@ -23,6 +23,7 @@ import { attendanceRouter } from "./routes/attendance";
 import { demoRouter } from "./routes/demo";
 import { teamsLinksRouter } from "./routes/teamsLinks";
 import { notificationRouter } from "./routes/notifications";
+import { supportRouter } from "./routes/support";
 
 function normalizeOrigin(origin: string): string {
   return String(origin).trim().replace(/\/+$/, "");
@@ -113,6 +114,7 @@ export function createApp() {
   app.use("/health", healthRouter);
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
+  app.use("/api/support", supportRouter);
 
   // =========================
   // Everything below requires auth

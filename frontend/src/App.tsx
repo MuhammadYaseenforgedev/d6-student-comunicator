@@ -32,6 +32,8 @@ import AdminFinance from "./pages/AdminFinance";
 import AdminUsers from "./pages/AdminUsers";
 import Attendance from "./pages/Attendance";
 import Notifications from "./pages/Notifications";
+import AdminTickets from "./pages/AdminTickets";
+import SupportDesk from "./pages/SupportDesk";
 
 import ParentPortalLayout from "./pages/parent/ParentPortalLayout";
 import ParentOverview from "./pages/parent/ParentOverview";
@@ -42,11 +44,13 @@ import ParentLinks from "./pages/parent/ParentLinks";
 import ParentAttendance from "./pages/parent/ParentAttendance";
 
 import { getUser } from "./lib/auth";
+import { isFinanceAdmin } from "./lib/adminAccess";
 import forgeBg from "./assets/forge-bg.png";
 
 function AppIndex() {
   const user = getUser();
   if (user?.role === "PARENT") return <Navigate to="/app/parent" replace />;
+  if (isFinanceAdmin(user)) return <Navigate to="/app/admin/finance" replace />;
   return <AppHome />;
 }
 
@@ -81,6 +85,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/support" element={<SupportDesk />} />
 
             <Route element={<RequireAuth />}>
               <Route path="/app" element={<AppShell />}>
@@ -88,7 +93,10 @@ export default function App() {
 
                 <Route
                   element={
-                    <RequireRole roles={["STUDENT", "LECTURER", "ADMIN"]} />
+                    <RequireRole
+                      roles={["STUDENT", "LECTURER", "ADMIN"]}
+                      adminScopes={["ACADEMIC", "SUPER"]}
+                    />
                   }
                 >
                   <Route path="modules" element={<Modules />} />
@@ -105,30 +113,86 @@ export default function App() {
 
                 <Route
                   element={
-                    <RequireRole
-                      roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]}
-                    />
+                    <RequireRole roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]} />
                   }
                 >
                   <Route path="messages" element={<Inbox />} />
                   <Route path="messages/:id" element={<ThreadPage />} />
+                </Route>
+
+                <Route
+                  element={
+                    <RequireRole
+                      roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]}
+                      adminScopes={["ACADEMIC", "SUPER"]}
+                    />
+                  }
+                >
                   <Route path="notifications" element={<Notifications />} />
                 </Route>
 
-                <Route path="uploads" element={<Uploads />} />
-                <Route path="calendar" element={<Calendar />} />
+                <Route
+                  element={
+                    <RequireRole
+                      roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]}
+                      adminScopes={["ACADEMIC", "SUPER"]}
+                    />
+                  }
+                >
+                  <Route path="uploads" element={<Uploads />} />
+                </Route>
 
-                <Route element={<RequireRole roles={["ADMIN", "LECTURER"]} />}>
+                <Route
+                  element={
+                    <RequireRole
+                      roles={["STUDENT", "LECTURER", "ADMIN"]}
+                      adminScopes={["ACADEMIC", "SUPER"]}
+                    />
+                  }
+                >
+                  <Route path="calendar" element={<Calendar />} />
+                </Route>
+
+                <Route
+                  element={
+                    <RequireRole
+                      roles={["ADMIN", "LECTURER"]}
+                      adminScopes={["ACADEMIC", "SUPER"]}
+                    />
+                  }
+                >
                   <Route path="manage-results" element={<ManageResults />} />
                 </Route>
 
-                <Route element={<RequireRole roles={["ADMIN"]} />}>
+                <Route
+                  element={
+                    <RequireRole roles={["ADMIN"]} adminScopes={["FINANCE"]} />
+                  }
+                >
                   <Route path="admin/finance" element={<AdminFinance />} />
+                </Route>
+
+                <Route
+                  element={
+                    <RequireRole
+                      roles={["ADMIN"]}
+                      adminScopes={["ACADEMIC", "SUPER"]}
+                    />
+                  }
+                >
                   <Route
                     path="admin/parent-links"
                     element={<AdminParentLinks />}
                   />
                   <Route path="admin/users" element={<AdminUsers />} />
+                </Route>
+
+                <Route
+                  element={
+                    <RequireRole roles={["ADMIN"]} adminScopes={["SUPER"]} />
+                  }
+                >
+                  <Route path="admin/tickets" element={<AdminTickets />} />
                 </Route>
 
                 <Route element={<RequireRole roles={["PARENT"]} />}>

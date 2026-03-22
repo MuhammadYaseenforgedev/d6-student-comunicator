@@ -15,6 +15,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { clearAuth, getUser, setDevBypass } from "../lib/auth";
+import { adminScopeLabel, isAcademicOrSuperAdmin, isFinanceAdmin, isSuperAdmin } from "../lib/adminAccess";
 import AppErrorBoundary from "./AppErrorBoundary";
 import { fetchMeProfile, type MeProfile } from "../lib/authService";
 import AnimatedForgeLogo from "./AnimatedForgeLogo";
@@ -104,10 +105,13 @@ export default function AppShell() {
 
   const isParent = user?.role === "PARENT";
   const isStudent = user?.role === "STUDENT";
+  const financeAdmin = isFinanceAdmin(user);
+  const academicOrSuperAdmin = isAcademicOrSuperAdmin(user);
+  const superAdmin = isSuperAdmin(user);
 
   const calendarTo =
     user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
-  const homeTo = isParent ? "/app/parent" : "/app";
+  const homeTo = isParent ? "/app/parent" : financeAdmin ? "/app/admin/finance" : "/app";
 
   const userId = user?.id ?? "";
   const userRole = user?.role ?? "";
@@ -211,22 +215,38 @@ export default function AppShell() {
         </Link>
 
         <div className="mt-6 space-y-1.5">
-          <Item to={homeTo} label="Home" onNavigate={closeMobileMenu} end />
-          <Item
-            to="/app/notifications"
-            label="Notifications"
-            badge={totalUnread}
-            onNavigate={closeMobileMenu}
-          />
+          {!financeAdmin && (
+            <>
+              <Item to={homeTo} label="Home" onNavigate={closeMobileMenu} end />
+              <Item
+                to="/app/notifications"
+                label="Notifications"
+                badge={totalUnread}
+                onNavigate={closeMobileMenu}
+              />
+            </>
+          )}
+
+          {financeAdmin && (
+            <>
+              <Item
+                to="/app/admin/finance"
+                label="Finance"
+                badge={financeBadge}
+                onNavigate={closeMobileMenu}
+              />
+              <Item
+                to="/app/messages"
+                label="Messages"
+                badge={messageBadge}
+                onNavigate={closeMobileMenu}
+              />
+            </>
+          )}
 
           {isParent ? (
             <>
               <div className="divider-soft my-3" />
-              <Item
-                to="/app/parent"
-                label="Overview"
-                onNavigate={closeMobileMenu}
-              />
               <Item
                 to="/app/parent/results"
                 label="Results"
@@ -268,7 +288,7 @@ export default function AppShell() {
                 onNavigate={closeMobileMenu}
               />
             </>
-          ) : (
+          ) : !financeAdmin ? (
             <>
               <Item
                 to="/app/modules"
@@ -325,7 +345,7 @@ export default function AppShell() {
                 />
               )}
 
-              {(user?.role === "ADMIN" || user?.role === "LECTURER") && (
+              {(academicOrSuperAdmin || user?.role === "LECTURER") && (
                 <Item
                   to="/app/manage-results"
                   label="Manage Results"
@@ -334,16 +354,7 @@ export default function AppShell() {
                 />
               )}
 
-              {user?.role === "ADMIN" && (
-                <Item
-                  to="/app/admin/finance"
-                  label="Finance"
-                  badge={financeBadge}
-                  onNavigate={closeMobileMenu}
-                />
-              )}
-
-              {user?.role === "ADMIN" && (
+              {academicOrSuperAdmin && (
                 <Item
                   to="/app/admin/users"
                   label="Accounts"
@@ -351,7 +362,7 @@ export default function AppShell() {
                 />
               )}
 
-              {user?.role === "ADMIN" && (
+              {academicOrSuperAdmin && (
                 <Item
                   to="/app/admin/parent-links"
                   label="Parent Link Approvals"
@@ -359,8 +370,16 @@ export default function AppShell() {
                   onNavigate={closeMobileMenu}
                 />
               )}
+
+              {superAdmin && (
+                <Item
+                  to="/app/admin/tickets"
+                  label="Tickets"
+                  onNavigate={closeMobileMenu}
+                />
+              )}
             </>
-          )}
+          ) : null}
         </div>
 
         <div className="mt-6 rounded-3xl border border-[rgba(140,235,255,0.14)] bg-[rgba(9,23,54,0.72)] p-4 backdrop-blur-xl shadow-[0_0_0_1px_rgba(140,235,255,0.04)_inset,0_10px_24px_rgba(3,10,28,0.28)]">
@@ -376,7 +395,9 @@ export default function AppShell() {
 
           <div className="mt-2">
             <span className="inline-flex items-center rounded-full border border-[#8CEBFF]/30 bg-[#8CEBFF]/10 px-3 py-1 text-xs font-medium text-[#8CEBFF]">
-              {user?.role ?? "Unknown"}
+              {user?.role === "ADMIN"
+                ? `${adminScopeLabel(user.adminScope)}`
+                : user?.role ?? "Unknown"}
             </span>
           </div>
 
