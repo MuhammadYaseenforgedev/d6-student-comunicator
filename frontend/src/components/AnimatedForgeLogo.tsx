@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
+import forgeLogo from "../assets/forge-logo.png";
 
 export default function AnimatedForgeLogo() {
   const [isAnimating, setIsAnimating] = useState(false);
@@ -39,94 +40,38 @@ export default function AnimatedForgeLogo() {
           <circle cx="70" cy="70" r="48" fill="#FFFFFF" />
         </svg>
 
-        <motion.svg
-          viewBox="0 0 60 60"
-          className="absolute left-[13px] top-[15px] h-[18px] w-[18px] overflow-visible"
+        <motion.img
+          src={forgeLogo}
+          alt="Forge logo"
+          className="absolute left-[8px] top-[8px] h-[36px] w-[36px] object-contain"
           animate={
             isAnimating
               ? {
-                  x: [0, 10, 34, 10, 0],
-                  y: [0, -10, 0, 10, 0],
-                  rotate: [0, 90, 280, 360, 0],
-                  scale: [1, 1.05, 1.1, 1.05, 1],
+                  rotate: [0, -10, 8, -4, 0],
+                  scale: [1, 1.08, 1.12, 1.06, 1],
+                  y: [0, -1, 1, 0],
+                  filter: [
+                    "drop-shadow(0 0 0 rgba(140,91,255,0))",
+                    "drop-shadow(0 0 10px rgba(140,91,255,0.32))",
+                    "drop-shadow(0 0 14px rgba(103,232,249,0.42))",
+                    "drop-shadow(0 0 10px rgba(140,91,255,0.28))",
+                    "drop-shadow(0 0 0 rgba(140,91,255,0))",
+                  ],
                 }
               : {
-                  x: 0,
-                  y: 0,
                   rotate: 0,
                   scale: 1,
+                  y: 0,
+                  filter: "drop-shadow(0 0 0 rgba(140,91,255,0))",
                 }
           }
           transition={{
-            duration: 1.8,
+            duration: 1.2,
             ease: "easeInOut",
-            times: [0, 0.22, 0.5, 0.78, 1],
+            times: [0, 0.2, 0.5, 0.78, 1],
           }}
           style={{ transformOrigin: "50% 50%" }}
-        >
-          <defs>
-            <linearGradient
-              id="forge-purple-gradient-small"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#A855F7" />
-              <stop offset="100%" stopColor="#7C3AED" />
-            </linearGradient>
-          </defs>
-
-          <path
-            d="M14 6C10.6863 6 8 8.68629 8 12V48C8 51.3137 10.6863 54 14 54C15.3031 54 16.5717 53.5758 17.614 52.791L42.014 34.791C43.5489 33.6568 44.4552 31.8656 44.4552 30C44.4552 28.1344 43.5489 26.3432 42.014 25.209L17.614 7.20903C16.5717 6.4242 15.3031 6 14 6Z"
-            fill="url(#forge-purple-gradient-small)"
-          />
-        </motion.svg>
-
-        <motion.svg
-          viewBox="0 0 60 60"
-          className="absolute left-[24px] top-[15px] h-[18px] w-[18px] overflow-visible"
-          animate={
-            isAnimating
-              ? {
-                  x: [0, 14, 42, 14, 0],
-                  y: [0, -6, 0, 6, 0],
-                  rotate: [0, -90, -280, -360, 0],
-                  scale: [1, 1.05, 1.1, 1.05, 1],
-                }
-              : {
-                  x: 0,
-                  y: 0,
-                  rotate: 0,
-                  scale: 1,
-                }
-          }
-          transition={{
-            duration: 1.8,
-            ease: "easeInOut",
-            times: [0, 0.22, 0.5, 0.78, 1],
-            delay: 0.05,
-          }}
-          style={{ transformOrigin: "50% 50%" }}
-        >
-          <defs>
-            <linearGradient
-              id="forge-cyan-gradient-small"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#67E8F9" />
-              <stop offset="100%" stopColor="#4DDDE0" />
-            </linearGradient>
-          </defs>
-
-          <path
-            d="M14 6C10.6863 6 8 8.68629 8 12V48C8 51.3137 10.6863 54 14 54C15.3031 54 16.5717 53.5758 17.614 52.791L42.014 34.791C43.5489 33.6568 44.4552 31.8656 44.4552 30C44.4552 28.1344 43.5489 26.3432 42.014 25.209L17.614 7.20903C16.5717 6.4242 15.3031 6 14 6Z"
-            fill="url(#forge-cyan-gradient-small)"
-          />
-        </motion.svg>
+        />
       </div>
 
       <div className="min-w-0 flex-1">

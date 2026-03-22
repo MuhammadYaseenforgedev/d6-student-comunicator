@@ -203,6 +203,14 @@ announcementRouter.delete(
       const ok = await repos.announcements.delete(announcementId, channelId);
       if (!ok) return err(res, 404, "NOT_FOUND", "Announcement not found");
 
+      await pool.query(
+        `
+          DELETE FROM user_notifications
+          WHERE source_key = $1
+        `,
+        [`announcement:${announcementId}`]
+      );
+
       return res.json({ ok: true });
     } catch (e: any) {
       console.error("[announcements] DELETE error", e);

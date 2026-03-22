@@ -207,6 +207,15 @@ userRouter.delete(
         }
       }
 
+      const authoredAnnouncementIds = await pool.query<{ id: string }>(
+        `
+          SELECT id
+          FROM announcements
+          WHERE created_by = $1
+        `,
+        [targetId]
+      );
+
       const deleted = await pool.query<UserDirectoryRow>(
         `
         DELETE FROM users
@@ -215,6 +224,17 @@ userRouter.delete(
       `,
         [targetId]
       );
+
+      const announcementSourceKeys = authoredAnnouncementIds.rows.map((row) => `announcement:${row.id}`);
+      if (announcementSourceKeys.length > 0) {
+        await pool.query(
+          `
+            DELETE FROM user_notifications
+            WHERE source_key = ANY($1::text[])
+          `,
+          [announcementSourceKeys]
+        );
+      }
 
       return res.json({ ok: true, user: deleted.rows[0] });
     } catch (e: unknown) {

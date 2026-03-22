@@ -1,7 +1,7 @@
 import request from "supertest";
 import { app } from "../app";
 import { pool } from "../config/db";
-import { cleanupTestUsers, createUser, signJwt } from "./helpers";
+import { cleanupTestUsers, createChannel, createUser, signJwt } from "./helpers";
 
 type NotificationDto = {
   id: string;
@@ -135,5 +135,49 @@ describe("Notification inbox and auth header parsing", () => {
 
     expect(financeSummaryRes.status).toBe(200);
     expect(Number(financeSummaryRes.body?.counts?.FINANCE ?? 0)).toBeGreaterThanOrEqual(1);
+  });
+
+  test("removes stale announcement notifications after the source announcement is deleted", async () => {
+    const lecturer = await createUser("LECTURER");
+    const student = await createUser("STUDENT");
+
+    const lecturerToken = signJwt(lecturer);
+    const studentToken = signJwt(student);
+    const channelId = await createChannel(lecturer.id, `notice-${Date.now()}`);
+
+    const createRes = await request(app)
+      .post(`/api/channels/${channelId}/announcements`)
+      .set(auth(lecturerToken))
+      .send({ title: `notice-${Date.now()}`, body: "important notice body" });
+
+    expect(createRes.status).toBe(201);
+    const announcementId = String(createRes.body?.id ?? "");
+    expect(announcementId).toBeTruthy();
+
+    const beforeRes = await request(app)
+      .get("/api/notifications?category=ANNOUNCEMENT")
+      .set(auth(studentToken));
+
+    expect(beforeRes.status).toBe(200);
+    const beforeItems = Array.isArray(beforeRes.body?.value) ? (beforeRes.body.value as NotificationDto[]) : [];
+    expect(
+      beforeItems.some((item) => String(item.meta?.announcementId ?? "") === announcementId)
+    ).toBe(true);
+
+    const deleteRes = await request(app)
+      .delete(`/api/channels/${channelId}/announcements/${announcementId}`)
+      .set(auth(lecturerToken));
+
+    expect(deleteRes.status).toBe(200);
+
+    const afterRes = await request(app)
+      .get("/api/notifications?category=ANNOUNCEMENT")
+      .set(auth(studentToken));
+
+    expect(afterRes.status).toBe(200);
+    const afterItems = Array.isArray(afterRes.body?.value) ? (afterRes.body.value as NotificationDto[]) : [];
+    expect(
+      afterItems.some((item) => String(item.meta?.announcementId ?? "") === announcementId)
+    ).toBe(false);
   });
 });

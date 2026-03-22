@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { pool } from "../config/db";
 import { syncFinanceStatusNotificationsForUser } from "../lib/notifications";
 import { repos } from "../persistence";
 import type { NotificationCategory } from "../persistence/types";
@@ -28,9 +29,26 @@ function normalizeCategories(raw: unknown): NotificationCategory[] {
   return out;
 }
 
+async function pruneStaleAnnouncementNotifications(userId: string): Promise<void> {
+  await pool.query(
+    `
+      DELETE FROM user_notifications un
+      WHERE un.user_id = $1
+        AND un.source_key LIKE 'announcement:%'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM announcements a
+          WHERE a.id::text = split_part(un.source_key, ':', 2)
+        )
+    `,
+    [userId]
+  );
+}
+
 notificationRouter.get("/summary", async (req, res) => {
   try {
     const user = req.user!;
+    await pruneStaleAnnouncementNotifications(user.id);
     await syncFinanceStatusNotificationsForUser(user);
     const summary = await repos.notifications.getUnreadSummary(user.id);
     return res.json(summary);
@@ -68,6 +86,7 @@ notificationRouter.post("/:id/read", async (req, res) => {
 notificationRouter.get("/", async (req, res) => {
   try {
     const user = req.user!;
+    await pruneStaleAnnouncementNotifications(user.id);
     await syncFinanceStatusNotificationsForUser(user);
 
     const limit = parseLimit(req.query.limit, 50);
