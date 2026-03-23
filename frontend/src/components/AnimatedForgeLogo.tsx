@@ -41,7 +41,7 @@ export default function AnimatedForgeLogo() {
 
         <motion.svg
           viewBox="0 0 72 72"
-          className="absolute left-[8px] top-[8px] h-[36px] w-[36px] overflow-visible"
+          className="absolute left-[7px] top-[7px] h-[38px] w-[38px] overflow-visible"
           aria-hidden="true"
           animate={
             isAnimating
@@ -71,32 +71,9 @@ export default function AnimatedForgeLogo() {
           }}
           style={{ transformOrigin: "50% 50%" }}
         >
-          <defs>
-            <linearGradient
-              id="forge-purple-gradient-mark"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#B56DFF" />
-              <stop offset="100%" stopColor="#7C3AED" />
-            </linearGradient>
-            <linearGradient
-              id="forge-cyan-gradient-mark"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#86F7FF" />
-              <stop offset="100%" stopColor="#42D4F5" />
-            </linearGradient>
-          </defs>
-
           <motion.path
             d="M13 10C9.686 10 7 12.686 7 16V56C7 59.314 9.686 62 13 62C14.41 62 15.781 61.503 16.868 60.597L43.268 38.597C44.64 37.454 45.428 35.761 45.428 34C45.428 32.239 44.64 30.546 43.268 29.403L16.868 7.403C15.781 6.497 14.41 6 13 6Z"
-            fill="url(#forge-purple-gradient-mark)"
+            fill="#8E5CFF"
             animate={
               isAnimating
                 ? {
@@ -113,7 +90,7 @@ export default function AnimatedForgeLogo() {
 
           <motion.path
             d="M24 10C20.686 10 18 12.686 18 16V56C18 59.314 20.686 62 24 62C25.41 62 26.781 61.503 27.868 60.597L54.268 38.597C55.64 37.454 56.428 35.761 56.428 34C56.428 32.239 55.64 30.546 54.268 29.403L27.868 7.403C26.781 6.497 25.41 6 24 6Z"
-            fill="url(#forge-cyan-gradient-mark)"
+            fill="#67E8F9"
             animate={
               isAnimating
                 ? {
