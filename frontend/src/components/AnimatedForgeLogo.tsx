@@ -40,69 +40,91 @@ export default function AnimatedForgeLogo() {
         </svg>
 
         <motion.svg
-          viewBox="0 0 72 72"
-          className="absolute left-[7px] top-[7px] h-[38px] w-[38px] overflow-visible"
-          aria-hidden="true"
+          viewBox="0 0 60 60"
+          className="absolute left-[13px] top-[15px] h-[18px] w-[18px] overflow-visible"
           animate={
             isAnimating
               ? {
-                  rotate: [0, -12, 8, -5, 0],
-                  scale: [1, 1.08, 1.12, 1.06, 1],
-                  y: [0, -1, 1, 0],
-                  filter: [
-                    "drop-shadow(0 0 0 rgba(140,91,255,0))",
-                    "drop-shadow(0 0 10px rgba(140,91,255,0.32))",
-                    "drop-shadow(0 0 14px rgba(103,232,249,0.42))",
-                    "drop-shadow(0 0 10px rgba(140,91,255,0.28))",
-                    "drop-shadow(0 0 0 rgba(140,91,255,0))",
-                  ],
+                  x: [0, 10, 34, 10, 0],
+                  y: [0, -10, 0, 10, 0],
+                  rotate: [0, 90, 280, 360, 0],
+                  scale: [1, 1.05, 1.1, 1.05, 1],
                 }
               : {
+                  x: 0,
+                  y: 0,
                   rotate: 0,
                   scale: 1,
-                  y: 0,
-                  filter: "drop-shadow(0 0 0 rgba(140,91,255,0))",
                 }
           }
           transition={{
-            duration: 1.2,
+            duration: 1.8,
             ease: "easeInOut",
-            times: [0, 0.2, 0.5, 0.78, 1],
+            times: [0, 0.22, 0.5, 0.78, 1],
           }}
           style={{ transformOrigin: "50% 50%" }}
         >
-          <motion.path
-            d="M13 10C9.686 10 7 12.686 7 16V56C7 59.314 9.686 62 13 62C14.41 62 15.781 61.503 16.868 60.597L43.268 38.597C44.64 37.454 45.428 35.761 45.428 34C45.428 32.239 44.64 30.546 43.268 29.403L16.868 7.403C15.781 6.497 14.41 6 13 6Z"
-            fill="#8E5CFF"
-            animate={
-              isAnimating
-                ? {
-                    x: [0, -1, 1, 0],
-                    scale: [1, 1.02, 1.04, 1],
-                  }
-                : {
-                    x: 0,
-                    scale: 1,
-                  }
-            }
-            transition={{ duration: 1.2, ease: "easeInOut" }}
-          />
+          <defs>
+            <linearGradient
+              id="forge-purple-gradient-small"
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#A855F7" />
+              <stop offset="100%" stopColor="#7C3AED" />
+            </linearGradient>
+          </defs>
 
-          <motion.path
-            d="M24 10C20.686 10 18 12.686 18 16V56C18 59.314 20.686 62 24 62C25.41 62 26.781 61.503 27.868 60.597L54.268 38.597C55.64 37.454 56.428 35.761 56.428 34C56.428 32.239 55.64 30.546 54.268 29.403L27.868 7.403C26.781 6.497 25.41 6 24 6Z"
-            fill="#67E8F9"
-            animate={
-              isAnimating
-                ? {
-                    x: [0, 1, -1, 0],
-                    scale: [1, 1.03, 1.05, 1],
-                  }
-                : {
-                    x: 0,
-                    scale: 1,
-                  }
-            }
-            transition={{ duration: 1.2, ease: "easeInOut", delay: 0.04 }}
+          <path
+            d="M14 6C10.6863 6 8 8.68629 8 12V48C8 51.3137 10.6863 54 14 54C15.3031 54 16.5717 53.5758 17.614 52.791L42.014 34.791C43.5489 33.6568 44.4552 31.8656 44.4552 30C44.4552 28.1344 43.5489 26.3432 42.014 25.209L17.614 7.20903C16.5717 6.4242 15.3031 6 14 6Z"
+            fill="url(#forge-purple-gradient-small)"
+          />
+        </motion.svg>
+
+        <motion.svg
+          viewBox="0 0 60 60"
+          className="absolute left-[24px] top-[15px] h-[18px] w-[18px] overflow-visible"
+          animate={
+            isAnimating
+              ? {
+                  x: [0, 14, 42, 14, 0],
+                  y: [0, -6, 0, 6, 0],
+                  rotate: [0, -90, -280, -360, 0],
+                  scale: [1, 1.05, 1.1, 1.05, 1],
+                }
+              : {
+                  x: 0,
+                  y: 0,
+                  rotate: 0,
+                  scale: 1,
+                }
+          }
+          transition={{
+            duration: 1.8,
+            ease: "easeInOut",
+            times: [0, 0.22, 0.5, 0.78, 1],
+            delay: 0.05,
+          }}
+          style={{ transformOrigin: "50% 50%" }}
+        >
+          <defs>
+            <linearGradient
+              id="forge-cyan-gradient-small"
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#67E8F9" />
+              <stop offset="100%" stopColor="#4DDDE0" />
+            </linearGradient>
+          </defs>
+
+          <path
+            d="M14 6C10.6863 6 8 8.68629 8 12V48C8 51.3137 10.6863 54 14 54C15.3031 54 16.5717 53.5758 17.614 52.791L42.014 34.791C43.5489 33.6568 44.4552 31.8656 44.4552 30C44.4552 28.1344 43.5489 26.3432 42.014 25.209L17.614 7.20903C16.5717 6.4242 15.3031 6 14 6Z"
+            fill="url(#forge-cyan-gradient-small)"
           />
         </motion.svg>
       </div>
