@@ -180,7 +180,7 @@ export default function AdminTickets() {
                       : "border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)] hover:border-[rgba(140,235,255,0.24)]",
                   ].join(" ")}
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-3">
                     <div>
                       <div className="text-sm font-semibold text-white">
                         {ticket.requesterEmail}
@@ -192,6 +192,7 @@ export default function AdminTickets() {
                         {when(ticket.createdAt)}
                       </div>
                     </div>
+                    <div className="flex justify-start">
                     <span
                       className={[
                         "inline-flex min-h-8 min-w-[110px] shrink-0 self-start items-center justify-center rounded-full border px-3 py-1 text-center text-[11px] font-semibold leading-none whitespace-nowrap sm:self-auto",
@@ -200,6 +201,7 @@ export default function AdminTickets() {
                     >
                       {ticket.status.replace(/_/g, " ")}
                     </span>
+                    </div>
                   </div>
                 </button>
               ))

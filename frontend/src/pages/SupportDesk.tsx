@@ -252,7 +252,7 @@ export default function SupportDesk() {
                   ) : (
                     tickets.map((ticket) => (
                       <div key={ticket.id} className="glass-panel p-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-3">
                           <div>
                             <div className="text-sm font-semibold text-white">
                               {ISSUE_TYPES.find((option) => option.value === ticket.issueType)?.label ?? ticket.issueType}
@@ -266,6 +266,7 @@ export default function SupportDesk() {
                               </div>
                             )}
                           </div>
+                          <div className="flex justify-start">
                           <span
                             className={[
                               "inline-flex min-h-8 min-w-[110px] shrink-0 self-start items-center justify-center rounded-full border px-3 py-1 text-center text-[11px] font-semibold leading-none whitespace-nowrap sm:self-auto",
@@ -274,6 +275,7 @@ export default function SupportDesk() {
                           >
                             {ticket.status.replace(/_/g, " ")}
                           </span>
+                          </div>
                         </div>
                       </div>
                     ))
