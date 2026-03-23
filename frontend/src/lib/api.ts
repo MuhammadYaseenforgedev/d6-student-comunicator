@@ -1,5 +1,7 @@
 // frontend/src/lib/api.ts
 
+import { getToken } from "./auth";
+
 const API_URL = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
 export const API_CONFIG_ERROR = !API_URL
   ? "VITE_API_URL is missing. Set it to your backend origin (for example: https://d6-student-comunicator.onrender.com)."
@@ -8,10 +10,6 @@ export const API_CONFIG_ERROR = !API_URL
 function requireApiUrl(): string {
   if (API_CONFIG_ERROR) throw new Error(API_CONFIG_ERROR);
   return API_URL;
-}
-
-function getToken(): string | null {
-  return localStorage.getItem("token");
 }
 
 function buildHeaders(extra?: HeadersInit): HeadersInit {

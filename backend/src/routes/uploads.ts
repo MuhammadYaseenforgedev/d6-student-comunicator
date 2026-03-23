@@ -20,8 +20,29 @@ function err(res: Response, status: number, code: string, message: string) {
  * Override with UPLOAD_DIR for cloud/container environments.
  */
 const PROJECT_ROOT = path.resolve(__dirname, "../..");
-const UPLOAD_DIR = path.resolve(PROJECT_ROOT, String(process.env.UPLOAD_DIR ?? "").trim() || "uploads");
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const RAW_UPLOAD_DIR = String(process.env.UPLOAD_DIR ?? "").trim();
+const UPLOAD_DIR = path.resolve(PROJECT_ROOT, RAW_UPLOAD_DIR || "uploads");
+const IS_PRODUCTION = String(process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
+
+try {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  fs.accessSync(UPLOAD_DIR, fs.constants.R_OK | fs.constants.W_OK);
+} catch (e: unknown) {
+  const message = e instanceof Error ? e.message : String(e);
+  throw new Error(`[uploads] UPLOAD_DIR is not writable: ${UPLOAD_DIR}. ${message}`);
+}
+
+if (IS_PRODUCTION) {
+  if (!RAW_UPLOAD_DIR) {
+    console.warn(
+      `[uploads] UPLOAD_DIR is not set. Files are being stored on local application disk at ${UPLOAD_DIR} and may be lost on restart. Point UPLOAD_DIR to a persistent mounted path in production.`
+    );
+  } else if (!path.isAbsolute(RAW_UPLOAD_DIR)) {
+    console.warn(
+      `[uploads] UPLOAD_DIR is relative (${RAW_UPLOAD_DIR}). In production, prefer an absolute persistent mounted path. Resolved path: ${UPLOAD_DIR}`
+    );
+  }
+}
 
 const storage = multer.diskStorage({
   destination: (
@@ -45,8 +66,37 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
 });
 
-// Matches your pgUploadRepo list rules
-function canAccessUpload(
+async function canParentAccessUpload(
+  parentUserId: string,
+  u: { kind: UploadKind; uploadedBy: string; targetUserId?: string | null }
+) {
+  if (u.kind !== "STUDENT_SUBMISSION") return false;
+
+  const linkedStudentIds = Array.from(
+    new Set(
+      [u.uploadedBy, u.targetUserId]
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => value && isUuid(value))
+    )
+  );
+
+  if (linkedStudentIds.length === 0) return false;
+
+  const result = await pool.query(
+    `
+      SELECT 1
+      FROM parent_links
+      WHERE parent_user_id = $1
+        AND student_user_id = ANY($2::uuid[])
+      LIMIT 1
+    `,
+    [parentUserId, linkedStudentIds]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+async function canAccessUpload(
   user: { id: string; role: string },
   u: { kind: UploadKind; uploadedBy: string; uploadedByRole?: string | null; targetUserId?: string | null }
 ) {
@@ -54,7 +104,7 @@ function canAccessUpload(
   const isStaffMaterial = u.kind === "LECTURER_MATERIAL" && (uploaderRole === "ADMIN" || uploaderRole === "LECTURER");
 
   if (user.role === "ADMIN" || user.role === "LECTURER") return true;
-  if (user.role === "PARENT") return isStaffMaterial;
+  if (user.role === "PARENT") return canParentAccessUpload(user.id, u);
   // STUDENT
   return isStaffMaterial || (u.kind === "STUDENT_SUBMISSION" && (u.uploadedBy === user.id || u.targetUserId === user.id));
 }
@@ -226,6 +276,26 @@ function withDownloadUrl<T extends { id: string }>(req: Request, item: T): T & {
   return { ...item, downloadUrl };
 }
 
+function getExistingUploadPath(storagePath: string): string | null {
+  const absPath = resolveUploadPath(storagePath);
+  if (!absPath) return null;
+  if (!fs.existsSync(absPath)) return null;
+  return absPath;
+}
+
+async function pruneUnavailableUpload(item: { id: string; storagePath: string }) {
+  if (getExistingUploadPath(item.storagePath)) return false;
+  try {
+    await repos.uploads.delete(item.id);
+  } catch (e: unknown) {
+    console.error("[uploads] failed to prune missing upload metadata", {
+      uploadId: item.id,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
+  return true;
+}
+
 /**
  * POST /api/uploads
  * multipart/form-data
@@ -292,7 +362,14 @@ uploadRouter.get("/", requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"), asy
   try {
     const user = req.user!;
     const items = await repos.uploads.listForUser({ id: user.id, role: user.role });
-    return res.json(items.map((u) => withDownloadUrl(req, u)));
+    const available: typeof items = [];
+
+    for (const item of items) {
+      if (await pruneUnavailableUpload(item)) continue;
+      available.push(item);
+    }
+
+    return res.json(available.map((u) => withDownloadUrl(req, u)));
   } catch (e: unknown) {
     console.error("[uploads] GET / error", e);
     return err(res, 500, "INTERNAL", "Failed to list uploads");
@@ -315,7 +392,7 @@ uploadRouter.get(
       const u = await repos.uploads.getById(id);
       if (!u) return err(res, 404, "NOT_FOUND", "Not found");
 
-      if (!canAccessUpload(user, u)) {
+      if (!(await canAccessUpload(user, u))) {
         return err(res, 403, "FORBIDDEN", "You do not have permission to download this file.");
       }
 
@@ -325,6 +402,7 @@ uploadRouter.get(
       }
 
       if (!fs.existsSync(absPath)) {
+        await repos.uploads.delete(u.id);
         return err(res, 404, "NOT_FOUND", "File missing on disk");
       }
 

@@ -194,7 +194,7 @@ export default function AdminTickets() {
                     </div>
                     <span
                       className={[
-                        "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                        "inline-flex min-h-8 min-w-[110px] items-center justify-center rounded-full border px-3 py-1 text-center text-[11px] font-semibold leading-none whitespace-nowrap",
                         statusTone(ticket.status),
                       ].join(" ")}
                     >

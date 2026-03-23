@@ -110,11 +110,14 @@ export default function Uploads1() {
       return "Upload lecturer materials or student submissions for a selected lecturer or student.";
     }
     if (canDelete) return "Upload and share lecturer materials.";
+    if (role === "PARENT") {
+      return "View submissions and shared files tied to your approved child links.";
+    }
     if (canUpload) {
       return "Upload your submission and view shared lecturer materials.";
     }
     return "View and download shared lecturer materials.";
-  }, [canDelete, canUpload, isAdmin]);
+  }, [canDelete, canUpload, isAdmin, role]);
 
   async function onUpload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -315,6 +318,8 @@ export default function Uploads1() {
               <div className="mt-1 text-sm text-white/72">
                 {canDelete
                   ? "You can see all uploads."
+                  : role === "PARENT"
+                    ? "You can view uploads linked to your approved children."
                   : canUpload
                     ? "You can view staff uploads and your own submissions."
                     : "You can view materials your role is allowed to access."}
@@ -339,7 +344,9 @@ export default function Uploads1() {
               <div className="text-white/75">Loading...</div>
             ) : items.length === 0 ? (
               <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-6 text-white/80">
-                No files yet.
+                {role === "PARENT"
+                  ? "No uploads are linked to your approved children yet."
+                  : "No files yet."}
               </div>
             ) : (
               items.map((u) => (

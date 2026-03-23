@@ -100,10 +100,19 @@ export const pgUploadRepo: UploadRepo = {
         FROM uploads up
         JOIN users uploader ON uploader.id = up.uploaded_by
         LEFT JOIN users target_user ON target_user.id = up.target_user_id
-        WHERE up.kind = 'LECTURER_MATERIAL'
-          AND uploader.role IN ('ADMIN', 'LECTURER')
+        WHERE up.kind = 'STUDENT_SUBMISSION'
+          AND EXISTS (
+            SELECT 1
+            FROM parent_links pl
+            WHERE pl.parent_user_id = $1
+              AND (
+                pl.student_user_id = up.uploaded_by
+                OR pl.student_user_id = up.target_user_id
+              )
+          )
         ORDER BY up.created_at DESC
-        `
+        `,
+        [user.id]
       );
       return result.rows.map(mapRow);
     }

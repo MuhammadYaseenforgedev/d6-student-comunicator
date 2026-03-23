@@ -97,7 +97,6 @@ export default function ParentOverview() {
         }
       } catch (e) {
         if (!cancelled) {
-          console.error(e);
           setError(
             e instanceof Error ? e.message : "Failed to load linked children"
           );
@@ -133,7 +132,6 @@ export default function ParentOverview() {
         setFinance(nextFinance);
       } catch (e) {
         if (!cancelled) {
-          console.error(e);
           setResults([]);
           setFinance(null);
           setError(
@@ -177,7 +175,6 @@ export default function ParentOverview() {
 
       await refreshChildrenAndRequests(created.childId);
     } catch (e) {
-      console.error(e);
       setLinkError(
         e instanceof Error ? e.message : "Failed to submit link request"
       );

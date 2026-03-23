@@ -112,6 +112,7 @@ export default function AppShell() {
   const calendarTo =
     user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
   const homeTo = isParent ? "/app/parent" : financeAdmin ? "/app/admin/finance" : "/app";
+  const homeLabel = isParent ? "Parent Portal" : "Home";
 
   const userId = user?.id ?? "";
   const userRole = user?.role ?? "";
@@ -217,7 +218,7 @@ export default function AppShell() {
         <div className="mt-6 space-y-1.5">
           {!financeAdmin && (
             <>
-              <Item to={homeTo} label="Home" onNavigate={closeMobileMenu} end />
+              <Item to={homeTo} label={homeLabel} onNavigate={closeMobileMenu} end />
               <Item
                 to="/app/notifications"
                 label="Notifications"
@@ -270,12 +271,12 @@ export default function AppShell() {
                 badge={attendanceBadge}
                 onNavigate={closeMobileMenu}
               />
-              <Item
-                to="/app/parent/children"
-                label="Links"
-                badge={parentLinkBadge}
-                onNavigate={closeMobileMenu}
-              />
+                <Item
+                  to="/app/parent/children"
+                  label="Children"
+                  badge={parentLinkBadge}
+                  onNavigate={closeMobileMenu}
+                />
               <Item
                 to="/app/uploads"
                 label="Uploads"

@@ -58,8 +58,8 @@ OTP_IP_MAX_PER_WINDOW=25
 # Comma-separated allowlist (no spaces required)
 CORS_ORIGIN=https://<your-vercel-app>.vercel.app,https://<your-custom-frontend-domain>
 
-# Optional upload location override inside container
-UPLOAD_DIR=backend/uploads
+# Persistent upload directory mounted on the host/container
+UPLOAD_DIR=/var/lib/d6/uploads
 ```
 
 ## 3) Deploy Frontend on Vercel
@@ -93,14 +93,27 @@ CORS_ORIGIN=https://d6-communicator.vercel.app,https://demo.yourdomain.com
 
 The backend accepts a comma-separated list and trims entries automatically.
 
-## 5) Upload Persistence Warning (Free Hosts)
+## 5) Upload Persistence
 
-Current upload storage is filesystem-based (`backend/uploads` by default). On free hosts, container files are ephemeral:
+Current upload storage is filesystem-based. That is acceptable for production only if `UPLOAD_DIR` points to a persistent mounted directory.
 
-1. Uploaded files can be lost on restart/redeploy.
+Recommended production setup:
+
+1. Create or mount a persistent directory on the backend host, for example:
+   1. `/var/lib/d6/uploads`
+   2. `/mnt/d6-uploads`
+2. Give the backend process read/write access to that directory.
+3. Set:
+```env
+UPLOAD_DIR=/var/lib/d6/uploads
+```
+
+If you leave `UPLOAD_DIR` blank, the app falls back to `backend/uploads` inside the app filesystem:
+
+1. Uploaded files can be lost on restart/redeploy on ephemeral hosts.
 2. Metadata in Postgres may remain while file blobs disappear.
 
-For production persistence, switch uploads to object storage (for example S3-compatible storage) and keep DB metadata as-is.
+The current app now prunes broken upload metadata when files are missing, but that is cleanup protection, not durable storage.
 
 ## 6) After URLs Go Live
 
@@ -113,4 +126,5 @@ After first successful deploy:
    1. `GET /api/health` from backend URL.
    2. Login/register flow from frontend.
    3. Role-restricted routes.
-   4. File upload/download behavior (with ephemeral-storage expectation).
+   4. File upload/download behavior.
+   5. Restart the backend once and confirm previously uploaded files still download.

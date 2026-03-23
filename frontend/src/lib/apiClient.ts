@@ -1,3 +1,5 @@
+import { getToken } from "./auth";
+
 type ApiEnv = {
   VITE_API_URL?: string;
   VITE_API_URL_SECONDARY?: string;
@@ -31,10 +33,6 @@ function requireApiOrigin(): string {
     );
   }
   return origin;
-}
-
-function getToken(): string | null {
-  return localStorage.getItem("token");
 }
 
 function isJsonContentType(contentType: string | null): boolean {
