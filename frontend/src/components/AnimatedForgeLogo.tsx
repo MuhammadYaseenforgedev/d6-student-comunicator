@@ -1,8 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { motion } from "framer-motion";
 
 export default function AnimatedForgeLogo() {
   const [isAnimating, setIsAnimating] = useState(false);
+  const gradientSeed = useId().replace(/[:]/g, "");
+  const purpleGradientId = `forge-purple-gradient-small-${gradientSeed}`;
+  const cyanGradientId = `forge-cyan-gradient-small-${gradientSeed}`;
 
   const triggerAnimation = useCallback(() => {
     if (isAnimating) return;
@@ -66,7 +69,7 @@ export default function AnimatedForgeLogo() {
         >
           <defs>
             <linearGradient
-              id="forge-purple-gradient-small"
+              id={purpleGradientId}
               x1="0%"
               y1="0%"
               x2="100%"
@@ -79,7 +82,7 @@ export default function AnimatedForgeLogo() {
 
           <path
             d="M14 6C10.6863 6 8 8.68629 8 12V48C8 51.3137 10.6863 54 14 54C15.3031 54 16.5717 53.5758 17.614 52.791L42.014 34.791C43.5489 33.6568 44.4552 31.8656 44.4552 30C44.4552 28.1344 43.5489 26.3432 42.014 25.209L17.614 7.20903C16.5717 6.4242 15.3031 6 14 6Z"
-            fill="url(#forge-purple-gradient-small)"
+            fill={`url(#${purpleGradientId})`}
           />
         </motion.svg>
 
@@ -111,7 +114,7 @@ export default function AnimatedForgeLogo() {
         >
           <defs>
             <linearGradient
-              id="forge-cyan-gradient-small"
+              id={cyanGradientId}
               x1="0%"
               y1="0%"
               x2="100%"
@@ -124,7 +127,7 @@ export default function AnimatedForgeLogo() {
 
           <path
             d="M14 6C10.6863 6 8 8.68629 8 12V48C8 51.3137 10.6863 54 14 54C15.3031 54 16.5717 53.5758 17.614 52.791L42.014 34.791C43.5489 33.6568 44.4552 31.8656 44.4552 30C44.4552 28.1344 43.5489 26.3432 42.014 25.209L17.614 7.20903C16.5717 6.4242 15.3031 6 14 6Z"
-            fill="url(#forge-cyan-gradient-small)"
+            fill={`url(#${cyanGradientId})`}
           />
         </motion.svg>
       </div>
