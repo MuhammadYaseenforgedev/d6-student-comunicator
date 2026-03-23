@@ -56,7 +56,10 @@ export const pgCalendarRepo = {
           'CALENDAR_ENTRY'::text AS source
         FROM calendar_entries ce
         WHERE ce.user_id = $1
-          AND ($3::date IS NULL OR ce.starts_at::date = $3::date)
+          AND (
+            ($3::date IS NOT NULL AND ce.starts_at::date = $3::date)
+            OR ($3::date IS NULL AND ce.ends_at >= now())
+          )
 
         UNION ALL
 
@@ -79,7 +82,10 @@ export const pgCalendarRepo = {
           OR ($4::text = 'PARENT' AND COALESCE(c.is_private, false) = false)
           OR ($4::text = 'STUDENT' AND (COALESCE(c.is_private, false) = false OR cm.user_id IS NOT NULL))
         )
-          AND ($3::date IS NULL OR e.starts_at::date = $3::date)
+          AND (
+            ($3::date IS NOT NULL AND e.starts_at::date = $3::date)
+            OR ($3::date IS NULL AND e.ends_at >= now())
+          )
       )
       SELECT id, user_id, title, description, location, starts_at, ends_at, created_at, channel_id, source
       FROM combined

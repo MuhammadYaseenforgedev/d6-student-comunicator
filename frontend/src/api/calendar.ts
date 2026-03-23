@@ -26,14 +26,6 @@ function unwrapList<T>(data: unknown): T[] {
   return [];
 }
 
-function todayDateParam() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 /**
  * For PARENT role: pass childId to view that child's calendar
  * For others: omit childId (backend ignores it anyway for non-parent)
@@ -45,7 +37,7 @@ export async function listCalendar(params?: {
 }): Promise<CalendarEntry[]> {
   const qs = new URLSearchParams();
 
-  qs.set("date", params?.date ?? todayDateParam());
+  if (params?.date) qs.set("date", params.date);
 
   const limit = params?.limit ?? 100;
   qs.set("limit", String(limit));

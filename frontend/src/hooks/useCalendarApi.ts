@@ -26,14 +26,6 @@ function fromLocalInputValue(v: string) {
   return d.toISOString();
 }
 
-function todayDateParam() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 function isDateOnly(v: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
@@ -69,7 +61,7 @@ export function useCalendarApi(date?: string, childId?: string) {
       }
 
       const list = await listCalendar({
-        date: resolvedDate ?? todayDateParam(),
+        date: resolvedDate ?? undefined,
         limit: 100,
         childId: role === "PARENT" ? resolvedChildId : undefined,
       });
