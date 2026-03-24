@@ -3,6 +3,7 @@ import { pool } from "../config/db";
 import { requireAccess, requireRole } from "../middleware/rbac";
 import { createAttendanceNotifications } from "../lib/notifications";
 import { isAcademicOrSuperAdmin } from "../lib/adminAccess";
+import { isStudentActiveInCourse, isStudentAllowedForModule } from "../lib/courseAccess";
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE";
 const VALID_ATTENDANCE_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE"];
@@ -50,15 +51,7 @@ async function isLecturerAssignedToModule(lecturerId: string, moduleId: string):
 }
 
 async function isStudentEnrolledInModule(studentId: string, moduleId: string): Promise<boolean> {
-  const q = `
-    SELECT 1
-    FROM student_module_enrollments
-    WHERE student_id = $1
-      AND module_id = $2
-    LIMIT 1
-  `;
-  const r = await pool.query(q, [studentId, moduleId]);
-  return (r.rowCount ?? 0) > 0;
+  return isStudentAllowedForModule(pool, studentId, moduleId);
 }
 
 function inferSuggestedStatus(startsAt: string | null, checkedInAt: string | null): AttendanceStatus {
@@ -110,11 +103,16 @@ attendanceRouter.post(
   try {
     const code = String(req.body?.code ?? "").trim().toUpperCase();
     const name = String(req.body?.name ?? "").trim();
+    const courseId = String(req.body?.courseId ?? "").trim();
     const facultyIdRaw = String(req.body?.facultyId ?? "").trim();
     const facultyName = String(req.body?.facultyName ?? "").trim();
 
     if (!code) return err(res, 400, "VALIDATION", "code is required");
     if (!name) return err(res, 400, "VALIDATION", "name is required");
+    if (!isUuid(courseId)) return err(res, 400, "VALIDATION", "courseId must be a UUID");
+
+    const courseRes = await pool.query(`SELECT 1 FROM courses WHERE id = $1 LIMIT 1`, [courseId]);
+    if ((courseRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Course not found");
 
     let facultyId = facultyIdRaw;
     if (facultyId) {
@@ -140,18 +138,25 @@ attendanceRouter.post(
       }
     }
 
-    const created = await pool.query<{ id: string; faculty_id: string; code: string; name: string }>(
+    const created = await pool.query<{
+      id: string;
+      faculty_id: string;
+      course_id: string;
+      code: string;
+      name: string;
+    }>(
       `
-        INSERT INTO faculty_modules (faculty_id, code, name)
-        VALUES ($1, $2, $3)
-        RETURNING id, faculty_id, code, name
+        INSERT INTO faculty_modules (faculty_id, course_id, code, name)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, faculty_id, course_id, code, name
       `,
-      [facultyId, code, name]
+      [facultyId, courseId, code, name]
     );
 
     return res.status(201).json({
       id: created.rows[0].id,
       facultyId: created.rows[0].faculty_id,
+      courseId: created.rows[0].course_id,
       code: created.rows[0].code,
       name: created.rows[0].name,
     });
@@ -177,7 +182,15 @@ attendanceRouter.post(
     if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
     if (!isUuid(lecturerId)) return err(res, 400, "VALIDATION", "lecturerId must be a UUID");
 
-    const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
+    const moduleRes = await pool.query<{ course_id: string }>(
+      `
+        SELECT course_id
+        FROM faculty_modules
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [moduleId]
+    );
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
 
     const lecturer = await pool.query(
@@ -223,7 +236,15 @@ attendanceRouter.post(
     if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
     if (!isUuid(studentId)) return err(res, 400, "VALIDATION", "studentId must be a UUID");
 
-    const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
+    const moduleRes = await pool.query<{ course_id: string }>(
+      `
+        SELECT course_id
+        FROM faculty_modules
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [moduleId]
+    );
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
 
     const student = await pool.query(
@@ -237,6 +258,15 @@ attendanceRouter.post(
       [studentId]
     );
     if ((student.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Student not found");
+
+    const activeInCourse = await isStudentActiveInCourse(
+      pool,
+      studentId,
+      moduleRes.rows[0].course_id
+    );
+    if (!activeInCourse) {
+      return err(res, 400, "VALIDATION", "Student must be enrolled in the module's course first");
+    }
 
     const inserted = await pool.query(
       `
@@ -353,6 +383,10 @@ attendanceRouter.get(
       where.push(`EXISTS (
         SELECT 1
         FROM student_module_enrollments sme2
+        JOIN student_courses sc2
+          ON sc2.student_user_id = sme2.student_id
+         AND sc2.course_id = fm.course_id
+         AND sc2.status = 'ACTIVE'
         WHERE sme2.module_id = fm.id
           AND sme2.student_id = $${params.length}
       )`);
@@ -361,10 +395,13 @@ attendanceRouter.get(
     const sql = `
       SELECT
         fm.id,
+        fm.course_id,
         fm.code,
         fm.name,
+        c.code AS course_code,
+        c.name AS course_name,
         f.name AS faculty_name,
-        COUNT(DISTINCT sme.student_id)::int AS enrolled_count,
+        COUNT(DISTINCT sc_count.student_user_id)::int AS enrolled_count,
         COALESCE(
           json_agg(
             DISTINCT jsonb_build_object(
@@ -376,18 +413,26 @@ attendanceRouter.get(
         ) AS lecturers
       FROM faculty_modules fm
       JOIN faculties f ON f.id = fm.faculty_id
+      JOIN courses c ON c.id = fm.course_id
       LEFT JOIN student_module_enrollments sme ON sme.module_id = fm.id
+      LEFT JOIN student_courses sc_count
+        ON sc_count.student_user_id = sme.student_id
+       AND sc_count.course_id = fm.course_id
+       AND sc_count.status = 'ACTIVE'
       LEFT JOIN lecturer_module_assignments lma ON lma.module_id = fm.id
       LEFT JOIN users lu ON lu.id = lma.lecturer_id
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-      GROUP BY fm.id, fm.code, fm.name, f.name
+      GROUP BY fm.id, fm.course_id, fm.code, fm.name, c.code, c.name, f.name
       ORDER BY f.name ASC, fm.code ASC
     `;
 
     const rows = await pool.query<{
       id: string;
+      course_id: string;
       code: string;
       name: string;
+      course_code: string;
+      course_name: string;
       faculty_name: string;
       enrolled_count: number;
       lecturers: unknown;
@@ -395,8 +440,11 @@ attendanceRouter.get(
 
     const value = rows.rows.map((row) => ({
       id: row.id,
+      courseId: row.course_id,
       code: row.code,
       name: row.name,
+      courseCode: row.course_code,
+      courseName: row.course_name,
       facultyName: row.faculty_name,
       enrolledCount: Number(row.enrolled_count ?? 0),
       lecturers: Array.isArray(row.lecturers) ? row.lecturers : [],
@@ -436,11 +484,18 @@ attendanceRouter.get(
           u.email,
           u.first_name,
           u.last_name,
-          u.course_name,
+          c.name AS course_name,
           u.public_student_id
-        FROM student_module_enrollments sme
+        FROM faculty_modules fm
+        JOIN courses c ON c.id = fm.course_id
+        JOIN student_module_enrollments sme
+          ON sme.module_id = fm.id
+        JOIN student_courses sc
+          ON sc.student_user_id = sme.student_id
+         AND sc.course_id = fm.course_id
+         AND sc.status = 'ACTIVE'
         JOIN users u ON u.id = sme.student_id
-        WHERE sme.module_id = $1
+        WHERE fm.id = $1
         ORDER BY lower(u.email) ASC
       `,
       [moduleId]
@@ -586,6 +641,10 @@ attendanceRouter.get(
       where.push(`EXISTS (
         SELECT 1
         FROM student_module_enrollments sme
+        JOIN student_courses sc
+          ON sc.student_user_id = sme.student_id
+         AND sc.course_id = fm.course_id
+         AND sc.status = 'ACTIVE'
         WHERE sme.module_id = s.module_id
           AND sme.student_id = $${params.length}
       )`);
@@ -712,20 +771,27 @@ attendanceRouter.get(
           u.email,
           u.first_name,
           u.last_name,
-          u.course_name,
+          c.name AS course_name,
           u.public_student_id,
           ac.checked_in_at,
           ar.status AS current_status,
           ar.marked_at
-        FROM student_module_enrollments sme
+        FROM faculty_modules fm
+        JOIN courses c ON c.id = fm.course_id
+        JOIN student_module_enrollments sme
+          ON sme.module_id = fm.id
+        JOIN student_courses sc
+          ON sc.student_user_id = sme.student_id
+         AND sc.course_id = fm.course_id
+         AND sc.status = 'ACTIVE'
         JOIN users u ON u.id = sme.student_id
         LEFT JOIN attendance_checkins ac
           ON ac.session_id = $2
-         AND ac.student_id = sme.student_id
+          AND ac.student_id = sme.student_id
         LEFT JOIN attendance_records ar
           ON ar.session_id = $2
-         AND ar.student_id = sme.student_id
-        WHERE sme.module_id = $1
+          AND ar.student_id = sme.student_id
+        WHERE fm.id = $1
         ORDER BY lower(u.email) ASC
       `,
       [session.module_id, sessionId]
@@ -881,15 +947,21 @@ attendanceRouter.post(
     const session = sessionRes.rows[0];
 
     const studentIds = [...new Set(marks.map((m) => m.studentId))];
-    const enrolledRes = await pool.query<{ student_id: string }>(
-      `
-        SELECT student_id
-        FROM student_module_enrollments
-        WHERE module_id = $1
-          AND student_id = ANY($2::uuid[])
-      `,
-      [session.module_id, studentIds]
-    );
+      const enrolledRes = await pool.query<{ student_id: string }>(
+        `
+          SELECT sme.student_id
+          FROM faculty_modules fm
+          JOIN student_module_enrollments sme
+            ON sme.module_id = fm.id
+          JOIN student_courses sc
+            ON sc.student_user_id = sme.student_id
+           AND sc.course_id = fm.course_id
+           AND sc.status = 'ACTIVE'
+          WHERE fm.id = $1
+            AND sme.student_id = ANY($2::uuid[])
+        `,
+        [session.module_id, studentIds]
+      );
 
     const enrolled = new Set(enrolledRes.rows.map((r) => r.student_id));
     const missing = studentIds.filter((id) => !enrolled.has(id));
@@ -1034,12 +1106,17 @@ attendanceRouter.get("/attendance/me", requireRole("STUDENT", "PARENT"), async (
           ar.marked_at,
           u.first_name,
           u.last_name,
-          u.course_name,
+          c.name AS course_name,
           u.email,
           u.public_student_id
         FROM attendance_records ar
         JOIN attendance_sessions s ON s.id = ar.session_id
         JOIN faculty_modules fm ON fm.id = s.module_id
+        JOIN courses c ON c.id = fm.course_id
+        JOIN student_courses sc
+          ON sc.student_user_id = ar.student_id
+         AND sc.course_id = fm.course_id
+         AND sc.status = 'ACTIVE'
         JOIN faculties f ON f.id = fm.faculty_id
         JOIN users u ON u.id = ar.student_id
         WHERE ar.student_id = $1

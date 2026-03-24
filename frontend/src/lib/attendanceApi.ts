@@ -4,6 +4,9 @@ export type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE";
 
 export type AttendanceModule = {
   id: string;
+  courseId: string;
+  courseCode: string;
+  courseName: string;
   code: string;
   name: string;
   facultyName: string;
@@ -114,6 +117,7 @@ export async function listAttendanceDirectoryUsers(params?: {
 }
 
 export async function createAttendanceModule(input: {
+  courseId: string;
   code: string;
   name: string;
   facultyName: string;
@@ -121,6 +125,7 @@ export async function createAttendanceModule(input: {
   return apiClient.post<{
     id: string;
     facultyId: string;
+    courseId: string;
     code: string;
     name: string;
   }>("/attendance/modules", input);

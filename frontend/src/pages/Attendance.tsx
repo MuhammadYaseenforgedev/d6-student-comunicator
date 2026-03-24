@@ -25,6 +25,7 @@ import {
   type AttendanceSessionRosterStudent,
   type AttendanceStatus,
 } from "../lib/attendanceApi";
+import { listCourses, type CourseRecord } from "../lib/courseApi";
 
 type MarkMap = Record<string, AttendanceStatus>;
 
@@ -105,6 +106,7 @@ function LecturerAttendanceView({
   currentUserId: string;
 }) {
   const [modules, setModules] = useState<AttendanceModule[]>([]);
+  const [courses, setCourses] = useState<CourseRecord[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [moduleStudents, setModuleStudents] = useState<AttendanceModuleStudent[]>(
     []
@@ -130,6 +132,7 @@ function LecturerAttendanceView({
   const [newModuleCode, setNewModuleCode] = useState("");
   const [newModuleName, setNewModuleName] = useState("");
   const [newFacultyName, setNewFacultyName] = useState("");
+  const [newCourseId, setNewCourseId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -212,6 +215,14 @@ function LecturerAttendanceView({
     setCandidateLecturers(sortDirectoryUsers(lecturersRes));
   }
 
+  async function loadCourses() {
+    const rows = (await listCourses()).filter((course) => course.isActive);
+    setCourses(rows);
+    setNewCourseId((current) =>
+      rows.some((course) => course.id === current) ? current : (rows[0]?.id ?? "")
+    );
+  }
+
   async function refreshCurrentModuleData(currentModuleId: string) {
     await Promise.all([
       loadModules(),
@@ -223,7 +234,7 @@ function LecturerAttendanceView({
   useEffect(() => {
     void (async () => {
       try {
-        await Promise.all([loadModules(), loadDirectoryUsers()]);
+        await Promise.all([loadModules(), loadDirectoryUsers(), loadCourses()]);
       } catch (e) {
         setError(
           e instanceof Error ? e.message : "Failed to load attendance modules"
@@ -334,8 +345,8 @@ function LecturerAttendanceView({
     const name = newModuleName.trim();
     const facultyName = newFacultyName.trim();
 
-    if (!code || !name || !facultyName) {
-      setError("Faculty name, module code, and module name are required.");
+    if (!newCourseId || !code || !name || !facultyName) {
+      setError("Course, faculty name, module code, and module name are required.");
       return;
     }
 
@@ -344,7 +355,12 @@ function LecturerAttendanceView({
       setError(null);
       setInfo(null);
 
-      const created = await createAttendanceModule({ code, name, facultyName });
+      const created = await createAttendanceModule({
+        courseId: newCourseId,
+        code,
+        name,
+        facultyName,
+      });
       setNewModuleCode("");
       setNewModuleName("");
       setNewFacultyName("");
@@ -477,7 +493,7 @@ function LecturerAttendanceView({
           <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-3 text-sm text-white/75">
             Staff module selection is global. If the module you need does not
             exist yet, create it below and pick any lecturer directly from the
-            full lecturer list.
+            full lecturer list. Each module must belong to a course.
           </div>
 
           <Field label="Module" htmlFor="attendance-module">
@@ -494,7 +510,7 @@ function LecturerAttendanceView({
               ) : (
                 modules.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.code} - {m.name} ({m.enrolledCount} students)
+                    {m.code} - {m.name} | {m.courseName} ({m.enrolledCount} students)
                   </option>
                 ))
               )}
@@ -687,11 +703,32 @@ function LecturerAttendanceView({
           <div className="text-lg font-semibold text-white">Module Setup</div>
           <div className="mt-1 text-sm text-white/72">
             Create attendance modules here so they appear in the global module
-            picker immediately.
+            picker immediately. Modules must be attached to a course first.
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+          <Field label="Course" htmlFor="attendance-course-id">
+            <select
+              id="attendance-course-id"
+              title="Module course"
+              aria-label="Module course"
+              value={newCourseId}
+              onChange={(e) => setNewCourseId(e.target.value)}
+              className="select-glass"
+            >
+              {courses.length === 0 ? (
+                <option value="">No courses available</option>
+              ) : (
+                courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.code} - {course.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </Field>
+
           <Field label="Faculty name" htmlFor="attendance-faculty-name">
             <input
               id="attendance-faculty-name"
@@ -746,7 +783,8 @@ function LecturerAttendanceView({
           </div>
           <div className="mt-1 text-sm text-white/72">
             Students must be linked to a module before they can see or join its
-            attendance sessions. Their session check-in time appears in the
+            attendance sessions, and they must already be enrolled in the
+            module's parent course. Their session check-in time appears in the
             roster for staff marking.
           </div>
         </div>
@@ -1079,7 +1117,7 @@ function StudentAttendanceView() {
                     {module.code} - {module.name}
                   </div>
                   <div className="mt-1 text-xs text-white/60">
-                    {module.facultyName}
+                    {module.facultyName} | {module.courseName}
                   </div>
                   <div className="mt-3 text-xs text-white/70">
                     Lecturers:{" "}

@@ -83,6 +83,7 @@ describe("Demo core seed endpoint", () => {
     await pool.query(`DELETE FROM lecturer_module_assignments WHERE module_id IN (SELECT id FROM faculty_modules WHERE code = 'DEMO-CS101')`);
     await pool.query(`DELETE FROM faculty_modules WHERE code = 'DEMO-CS101'`);
     await pool.query(`DELETE FROM faculties WHERE name = 'Demo Faculty'`);
+    await pool.query(`DELETE FROM courses WHERE code = ANY($1::text[])`, [["DEMO-CS", "DEMO-BIZ"]]);
     await pool.query(`DELETE FROM finance_notifications WHERE id = ANY($1::uuid[])`, [FINANCE_NOTIFICATION_IDS]);
     await pool.query(`DELETE FROM finance_documents WHERE id = ANY($1::uuid[])`, [FINANCE_DOCUMENT_IDS]);
     await pool.query(`DELETE FROM finance_transactions WHERE id = ANY($1::uuid[])`, [FINANCE_TRANSACTION_IDS]);
@@ -156,6 +157,23 @@ describe("Demo core seed endpoint", () => {
       [RESULT_IDS]
     );
     expect(resultsRes.rows[0]?.count).toBe(RESULT_IDS.length);
+
+    const courseRes = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM courses WHERE code = ANY($1::text[])`,
+      [["DEMO-CS", "DEMO-BIZ"]]
+    );
+    expect(courseRes.rows[0]?.count).toBeGreaterThanOrEqual(2);
+
+    const courseEnrollmentRes = await pool.query(
+      `
+        SELECT COUNT(*)::int AS count
+        FROM student_courses
+        WHERE student_user_id = $1
+          AND status = 'ACTIVE'
+      `,
+      [seededStudent.rows[0].id]
+    );
+    expect(courseEnrollmentRes.rows[0]?.count).toBeGreaterThan(0);
 
     const financeDocsRes = await pool.query(
       `SELECT COUNT(*)::int AS count FROM finance_documents WHERE id = ANY($1::uuid[])`,

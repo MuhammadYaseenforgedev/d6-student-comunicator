@@ -43,9 +43,24 @@ meRouter.get("/me", async (req, res) => {
       course_name: string | null;
     }>(
       `
-        SELECT id, email, role, first_name, last_name, course_name
-        FROM users
-        WHERE id = $1
+        SELECT
+          u.id,
+          u.email,
+          u.role,
+          u.first_name,
+          u.last_name,
+          COALESCE(active_course.name, u.course_name) AS course_name
+        FROM users u
+        LEFT JOIN LATERAL (
+          SELECT c.name
+          FROM student_courses sc
+          JOIN courses c ON c.id = sc.course_id
+          WHERE sc.student_user_id = u.id
+            AND sc.status = 'ACTIVE'
+          ORDER BY sc.enrolled_at DESC, lower(c.name) ASC
+          LIMIT 1
+        ) active_course ON u.role = 'STUDENT'
+        WHERE u.id = $1
         LIMIT 1
       `,
       [userId]

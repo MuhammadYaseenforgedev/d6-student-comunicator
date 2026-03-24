@@ -27,6 +27,7 @@ describe("Demo attendance seed endpoint", () => {
 
     await pool.query(`DELETE FROM faculty_modules WHERE code = 'DEMO-CS101'`);
     await pool.query(`DELETE FROM faculties WHERE name = 'Demo Faculty'`);
+    await pool.query(`DELETE FROM courses WHERE code = 'DEMO-CS'`);
     await pool.query(
       `
         DELETE FROM users
@@ -60,6 +61,7 @@ describe("Demo attendance seed endpoint", () => {
     expect(typeof res.body?.lecturerId).toBe("string");
     expect(Array.isArray(res.body?.studentIds)).toBe(true);
     expect(typeof res.body?.sessionId).toBe("string");
+    expect(typeof res.body?.courseId).toBe("string");
     expect(Array.isArray(res.body?.marked)).toBe(true);
   });
 });

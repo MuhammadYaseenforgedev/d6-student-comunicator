@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { pool } from "../config/db";
 import { requireRole } from "../middleware/rbac";
+import { syncStudentCourseNames } from "../lib/courseAccess";
 
 function err(res: any, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
@@ -185,6 +186,8 @@ demoRouter.post("/seed-attendance", requireRole("ADMIN"), async (_req, res) => {
   }
 
   const FACULTY_NAME = "Demo Faculty";
+  const COURSE_CODE = "DEMO-CS";
+  const COURSE_NAME = "Demo Computer Science Course";
   const MODULE_CODE = "DEMO-CS101";
   const MODULE_NAME = "Demo Intro to CS";
   const LECTURER_EMAIL = "demo+lecturer@local.test";
@@ -210,17 +213,34 @@ demoRouter.post("/seed-attendance", requireRole("ADMIN"), async (_req, res) => {
     );
     const facultyId = faculty.rows[0].id;
 
+    const course = await client.query<{ id: string }>(
+      `
+        INSERT INTO courses (code, name, description, is_active)
+        VALUES ($1, $2, $3, true)
+        ON CONFLICT (code)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          description = EXCLUDED.description,
+          is_active = true,
+          updated_at = now()
+        RETURNING id
+      `,
+      [COURSE_CODE, COURSE_NAME, "Demo attendance course for seeded modules."]
+    );
+    const courseId = course.rows[0].id;
+
     const moduleRes = await client.query<{ id: string }>(
       `
-        INSERT INTO faculty_modules (faculty_id, code, name)
-        VALUES ($1, $2, $3)
+        INSERT INTO faculty_modules (faculty_id, course_id, code, name)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (code)
         DO UPDATE SET
           faculty_id = EXCLUDED.faculty_id,
+          course_id = EXCLUDED.course_id,
           name = EXCLUDED.name
         RETURNING id
       `,
-      [facultyId, MODULE_CODE, MODULE_NAME]
+      [facultyId, courseId, MODULE_CODE, MODULE_NAME]
     );
     const moduleId = moduleRes.rows[0].id;
 
@@ -262,12 +282,25 @@ demoRouter.post("/seed-attendance", requireRole("ADMIN"), async (_req, res) => {
 
     await client.query(
       `
+        INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
+        VALUES ($1, $3, 'ACTIVE', now()), ($2, $3, 'ACTIVE', now())
+        ON CONFLICT (student_user_id, course_id)
+        DO UPDATE SET
+          status = 'ACTIVE'
+      `,
+      [student1Id, student2Id, courseId]
+    );
+
+    await client.query(
+      `
         INSERT INTO student_module_enrollments (module_id, student_id)
         VALUES ($1, $2), ($1, $3)
         ON CONFLICT (module_id, student_id) DO NOTHING
       `,
       [moduleId, student1Id, student2Id]
     );
+
+    await syncStudentCourseNames(client, [student1Id, student2Id]);
 
     const existingSession = await client.query<{ id: string }>(
       `
@@ -321,6 +354,7 @@ demoRouter.post("/seed-attendance", requireRole("ADMIN"), async (_req, res) => {
 
     return res.status(200).json({
       moduleId,
+      courseId,
       lecturerId,
       studentIds: [student1Id, student2Id],
       sessionId,
@@ -593,6 +627,8 @@ demoRouter.post("/seed-core", requireRole("ADMIN"), async (_req, res) => {
   ];
 
   const attendanceSeed = {
+    courseCode: "DEMO-CS",
+    courseName: "Demo Computer Science Course",
     facultyName: "Demo Faculty",
     moduleCode: "DEMO-CS101",
     moduleName: "Demo Intro to CS",
@@ -972,17 +1008,56 @@ demoRouter.post("/seed-core", requireRole("ADMIN"), async (_req, res) => {
     );
     const facultyId = facultyRes.rows[0].id;
 
+    const courseRes = await client.query<{ id: string }>(
+      `
+        INSERT INTO courses (code, name, description, is_active)
+        VALUES ($1, $2, $3, true)
+        ON CONFLICT (code)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          description = EXCLUDED.description,
+          is_active = true,
+          updated_at = now()
+        RETURNING id
+      `,
+      [
+        attendanceSeed.courseCode,
+        attendanceSeed.courseName,
+        "Demo course used to group seeded attendance modules.",
+      ]
+    );
+    const courseId = courseRes.rows[0].id;
+
+    await client.query(
+      `
+        INSERT INTO courses (code, name, description, is_active)
+        VALUES ($1, $2, $3, true)
+        ON CONFLICT (code)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          description = EXCLUDED.description,
+          is_active = true,
+          updated_at = now()
+      `,
+      [
+        "DEMO-BIZ",
+        "Demo Business Course",
+        "Secondary seeded course for admin course management walkthroughs.",
+      ]
+    );
+
     const moduleRes = await client.query<{ id: string }>(
       `
-        INSERT INTO faculty_modules (faculty_id, code, name)
-        VALUES ($1, $2, $3)
+        INSERT INTO faculty_modules (faculty_id, course_id, code, name)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (code)
         DO UPDATE SET
           faculty_id = EXCLUDED.faculty_id,
+          course_id = EXCLUDED.course_id,
           name = EXCLUDED.name
         RETURNING id
       `,
-      [facultyId, attendanceSeed.moduleCode, attendanceSeed.moduleName]
+      [facultyId, courseId, attendanceSeed.moduleCode, attendanceSeed.moduleName]
     );
     const moduleId = moduleRes.rows[0].id;
 
@@ -997,12 +1072,25 @@ demoRouter.post("/seed-core", requireRole("ADMIN"), async (_req, res) => {
 
     await client.query(
       `
+        INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
+        VALUES ($1, $2, 'ACTIVE', now())
+        ON CONFLICT (student_user_id, course_id)
+        DO UPDATE SET
+          status = 'ACTIVE'
+      `,
+      [studentId, courseId]
+    );
+
+    await client.query(
+      `
         INSERT INTO student_module_enrollments (module_id, student_id)
         VALUES ($1, $2)
         ON CONFLICT (module_id, student_id) DO NOTHING
       `,
       [moduleId, studentId]
     );
+
+    await syncStudentCourseNames(client, [studentId]);
 
     const existingAttendanceSession = await client.query<{ id: string }>(
       `

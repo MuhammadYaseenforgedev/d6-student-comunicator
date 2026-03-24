@@ -281,6 +281,8 @@ const UPLOAD_SEEDS = [
 ];
 
 const ATTENDANCE_SEED = {
+  courseCode: "DEMO-CS",
+  courseName: "Demo Computer Science Course",
   facultyName: "Engineering",
   moduleCode: "CS101",
   moduleName: "Introduction to Computer Science",
@@ -543,6 +545,44 @@ async function ensurePendingParentLinkRequest(pool, parentId, studentId, summary
 }
 
 async function ensureAttendance(pool, usersByKey, summary) {
+  const course = await pool.query(
+    `
+      INSERT INTO courses (code, name, description, is_active)
+      VALUES ($1, $2, $3, true)
+      ON CONFLICT (code)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        is_active = true,
+        updated_at = now()
+      RETURNING id
+    `,
+    [
+      ATTENDANCE_SEED.courseCode,
+      ATTENDANCE_SEED.courseName,
+      "Demo course used to group the seeded attendance module.",
+    ]
+  );
+  const courseId = course.rows[0].id;
+
+  await pool.query(
+    `
+      INSERT INTO courses (code, name, description, is_active)
+      VALUES ($1, $2, $3, true)
+      ON CONFLICT (code)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        is_active = true,
+        updated_at = now()
+    `,
+    [
+      "DEMO-BIZ",
+      "Demo Business Course",
+      "Secondary seeded course for academic admin walkthroughs.",
+    ]
+  );
+
   const faculty = await pool.query(
     `
       INSERT INTO faculties (name)
@@ -557,15 +597,16 @@ async function ensureAttendance(pool, usersByKey, summary) {
 
   const moduleRow = await pool.query(
     `
-      INSERT INTO faculty_modules (faculty_id, code, name)
-      VALUES ($1, $2, $3)
+      INSERT INTO faculty_modules (faculty_id, course_id, code, name)
+      VALUES ($1, $2, $3, $4)
       ON CONFLICT (code)
       DO UPDATE SET
         faculty_id = EXCLUDED.faculty_id,
+        course_id = EXCLUDED.course_id,
         name = EXCLUDED.name
       RETURNING id
     `,
-    [facultyId, ATTENDANCE_SEED.moduleCode, ATTENDANCE_SEED.moduleName]
+    [facultyId, courseId, ATTENDANCE_SEED.moduleCode, ATTENDANCE_SEED.moduleName]
   );
   const moduleId = moduleRow.rows[0].id;
 
@@ -578,6 +619,17 @@ async function ensureAttendance(pool, usersByKey, summary) {
     [moduleId, usersByKey.lecturer.id]
   );
 
+  await pool.query(
+    `
+      INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
+      SELECT x, $1, 'ACTIVE', now()
+      FROM unnest($2::uuid[]) AS x
+      ON CONFLICT (student_user_id, course_id)
+      DO UPDATE SET status = 'ACTIVE'
+    `,
+    [courseId, [usersByKey.student1.id, usersByKey.student2.id]]
+  );
+
   const enrolled = await pool.query(
     `
       INSERT INTO student_module_enrollments (module_id, student_id)
@@ -588,6 +640,16 @@ async function ensureAttendance(pool, usersByKey, summary) {
     [moduleId, [usersByKey.student1.id, usersByKey.student2.id]]
   );
   summary.attendance.enrollmentsAdded += Number(enrolled.rowCount || 0);
+
+  await pool.query(
+    `
+      UPDATE users
+      SET course_name = $2
+      WHERE id = ANY($1::uuid[])
+        AND role = 'STUDENT'
+    `,
+    [[usersByKey.student1.id, usersByKey.student2.id], ATTENDANCE_SEED.courseName]
+  );
 
   for (const session of ATTENDANCE_SEED.sessions) {
     const sessionExists = await pool.query(`SELECT 1 FROM attendance_sessions WHERE id = $1 LIMIT 1`, [session.id]);

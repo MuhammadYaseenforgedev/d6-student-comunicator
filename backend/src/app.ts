@@ -20,6 +20,7 @@ import { financeRouter } from "./routes/finance";
 import { userRouter } from "./routes/users";
 import { meRouter } from "./routes/me";
 import { attendanceRouter } from "./routes/attendance";
+import { courseRouter } from "./routes/courses";
 import { demoRouter } from "./routes/demo";
 import { teamsLinksRouter } from "./routes/teamsLinks";
 import { notificationRouter } from "./routes/notifications";
@@ -122,6 +123,7 @@ export function createApp() {
   app.use(requireAuth);
 
   app.use("/api", meRouter);
+  app.use("/api", courseRouter);
   app.use("/api/channels", channelRouter);
   app.use("/api", announcementRouter);
   app.use("/api", messageRouter);

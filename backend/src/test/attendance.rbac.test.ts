@@ -23,6 +23,8 @@ type Ctx = {
   lecturerId: string;
   otherLecturerId: string;
   strangerLecturerId: string;
+  courseId: string;
+  otherCourseId: string;
   moduleId: string;
   otherModuleId: string;
   facultyId: string;
@@ -68,22 +70,43 @@ describe("Attendance RBAC + marking", () => {
       ctx.facultyName,
     ]);
 
+    ctx.courseId = crypto.randomUUID();
+    ctx.otherCourseId = crypto.randomUUID();
+    await pool.query(
+      `
+        INSERT INTO courses (id, code, name, description, is_active)
+        VALUES
+          ($1, $2, $3, $4, true),
+          ($5, $6, $7, $8, true)
+      `,
+      [
+        ctx.courseId,
+        `COURSE-${Date.now()}`,
+        "Test Course",
+        "Primary attendance test course",
+        ctx.otherCourseId,
+        `COURSE-ALT-${Date.now()}`,
+        "Other Test Course",
+        "Secondary attendance test course",
+      ]
+    );
+
     ctx.moduleId = crypto.randomUUID();
     await pool.query(
       `
-        INSERT INTO faculty_modules (id, faculty_id, code, name)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO faculty_modules (id, faculty_id, course_id, code, name)
+        VALUES ($1, $2, $3, $4, $5)
       `,
-      [ctx.moduleId, ctx.facultyId, `TST-${Date.now()}`, "Test Module"]
+      [ctx.moduleId, ctx.facultyId, ctx.courseId, `TST-${Date.now()}`, "Test Module"]
     );
 
     ctx.otherModuleId = crypto.randomUUID();
     await pool.query(
       `
-        INSERT INTO faculty_modules (id, faculty_id, code, name)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO faculty_modules (id, faculty_id, course_id, code, name)
+        VALUES ($1, $2, $3, $4, $5)
       `,
-      [ctx.otherModuleId, ctx.facultyId, `ALT-${Date.now()}`, "Other Test Module"]
+      [ctx.otherModuleId, ctx.facultyId, ctx.otherCourseId, `ALT-${Date.now()}`, "Other Test Module"]
     );
 
     await pool.query(
@@ -100,6 +123,19 @@ describe("Attendance RBAC + marking", () => {
         VALUES ($1, $2)
       `,
       [ctx.otherModuleId, otherLecturer.id]
+    );
+
+    await pool.query(
+      `
+        INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
+        VALUES
+          ($1, $2, 'ACTIVE', now()),
+          ($1, $3, 'ACTIVE', now()),
+          ($4, $2, 'ACTIVE', now()),
+          ($4, $3, 'ACTIVE', now())
+        ON CONFLICT (student_user_id, course_id) DO NOTHING
+      `,
+      [student.id, ctx.courseId, ctx.otherCourseId, otherStudent.id]
     );
 
     await pool.query(
@@ -155,6 +191,8 @@ describe("Attendance RBAC + marking", () => {
     }
     await pool.query(`DELETE FROM faculty_modules WHERE id = $1`, [ctx.otherModuleId]);
     await pool.query(`DELETE FROM faculty_modules WHERE id = $1`, [ctx.moduleId]);
+    await pool.query(`DELETE FROM student_courses WHERE course_id = ANY($1::uuid[])`, [[ctx.courseId, ctx.otherCourseId]]);
+    await pool.query(`DELETE FROM courses WHERE id = ANY($1::uuid[])`, [[ctx.courseId, ctx.otherCourseId]]);
     await pool.query(`DELETE FROM faculties WHERE id = $1`, [ctx.facultyId]);
     await cleanupTestUsers();
   });
@@ -174,6 +212,7 @@ describe("Attendance RBAC + marking", () => {
       .post("/api/attendance/modules")
       .set(auth(ctx.lecturerToken))
       .send({
+        courseId: ctx.courseId,
         code: `LCT-${Date.now()}`,
         name: "Lecturer Created Module",
         facultyName: ctx.facultyName,

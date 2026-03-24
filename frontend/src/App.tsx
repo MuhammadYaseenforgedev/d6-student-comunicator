@@ -15,6 +15,7 @@ import RequireAuth from "./components/RequireAuth";
 import RequireRole from "./components/RequireRole";
 
 import AppHome from "./pages/AppHome";
+import Courses from "./pages/Courses";
 import Modules from "./pages/Modules";
 import Faculty from "./pages/Faculty";
 import Clubs from "./pages/Clubs";
@@ -100,6 +101,7 @@ export default function App() {
                   }
                 >
                   <Route path="modules" element={<Modules />} />
+                  <Route path="courses" element={<Courses />} />
                   <Route path="faculty" element={<Faculty />} />
                   <Route path="clubs" element={<Clubs />} />
                   <Route path="emergency" element={<Emergency />} />

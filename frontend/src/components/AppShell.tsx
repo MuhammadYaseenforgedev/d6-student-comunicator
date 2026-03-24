@@ -292,6 +292,11 @@ export default function AppShell() {
           ) : !financeAdmin ? (
             <>
               <Item
+                to="/app/courses"
+                label="Courses"
+                onNavigate={closeMobileMenu}
+              />
+              <Item
                 to="/app/modules"
                 label="Modules"
                 onNavigate={closeMobileMenu}
