@@ -7,6 +7,7 @@ type UserRow = {
   email: string;
   role: string;
   public_student_id: string | null;
+  admin_scope?: string | null;
 };
 
 type ChannelRow = {
@@ -132,11 +133,57 @@ export async function createAnnouncementNotifications(input: {
   channelId: string;
   actorId: string;
   title: string;
+  moduleId?: string | null;
+  moduleLabel?: string | null;
 }): Promise<void> {
   const channel = await loadChannel(input.channelId);
   if (!channel) return;
 
-  const recipients = await loadChannelRecipients(channel, input.actorId);
+  const recipients =
+    String(channel.name ?? "").trim().toLowerCase() === "modules" && input.moduleId
+      ? (
+          await pool.query<UserRow>(
+            `
+              SELECT DISTINCT u.id, u.email, u.role, u.public_student_id, u.admin_scope
+              FROM users u
+              WHERE u.id <> $2
+                AND (
+                  (u.role = 'ADMIN' AND COALESCE(u.admin_scope, 'SUPER') IN ('ACADEMIC', 'SUPER'))
+                  OR EXISTS (
+                    SELECT 1
+                    FROM lecturer_module_assignments lma
+                    WHERE lma.module_id = $1
+                      AND lma.lecturer_id = u.id
+                  )
+                  OR EXISTS (
+                    SELECT 1
+                    FROM student_module_enrollments sme
+                    JOIN faculty_modules fm ON fm.id = sme.module_id
+                    JOIN student_courses sc
+                      ON sc.student_user_id = sme.student_id
+                     AND sc.course_id = fm.course_id
+                     AND sc.status = 'ACTIVE'
+                    WHERE sme.module_id = $1
+                      AND sme.student_id = u.id
+                  )
+                  OR EXISTS (
+                    SELECT 1
+                    FROM parent_links pl
+                    JOIN student_module_enrollments sme ON sme.student_id = pl.student_user_id
+                    JOIN faculty_modules fm ON fm.id = sme.module_id
+                    JOIN student_courses sc
+                      ON sc.student_user_id = pl.student_user_id
+                     AND sc.course_id = fm.course_id
+                     AND sc.status = 'ACTIVE'
+                    WHERE pl.parent_user_id = u.id
+                      AND sme.module_id = $1
+                  )
+                )
+            `,
+            [input.moduleId, input.actorId]
+          )
+        ).rows
+      : await loadChannelRecipients(channel, input.actorId);
   if (recipients.length === 0) return;
 
   const category: NotificationCategory =
@@ -145,7 +192,7 @@ export async function createAnnouncementNotifications(input: {
   const title =
     category === "EMERGENCY"
       ? `Emergency alert: ${input.title}`
-      : `New announcement in ${channel.name}`;
+      : `New announcement in ${input.moduleLabel ?? channel.name}`;
 
   await repos.notifications.createMany(
     recipients.map((recipient) => ({
@@ -155,11 +202,17 @@ export async function createAnnouncementNotifications(input: {
       title,
       body: input.title,
       meta: {
-        ...notificationHref(`/app/c/${input.channelId}`),
+        ...notificationHref(
+          input.moduleId
+            ? `/app/modules?moduleId=${encodeURIComponent(input.moduleId)}`
+            : `/app/c/${input.channelId}`
+        ),
         channelId: input.channelId,
         channelName: channel.name,
         channelType: channel.type,
         announcementId: input.announcementId,
+        ...(input.moduleId ? { moduleId: input.moduleId } : {}),
+        ...(input.moduleLabel ? { moduleLabel: input.moduleLabel } : {}),
       },
       sourceKey: `announcement:${input.announcementId}`,
     }))

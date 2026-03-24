@@ -8,22 +8,25 @@ import type { Announcement } from "../models/announcement";
 
 export const pgAnnouncementRepo: AnnouncementRepo = {
   async create(input: CreateAnnouncementInput): Promise<Announcement> {
-    const { channelId, title, body, createdBy, pinned } = input;
+    const { channelId, moduleId, title, body, createdBy, pinned } = input;
 
     const result = await pool.query(
       `
-      insert into announcements (channel_id, title, body, pinned, created_by)
-      values ($1, $2, $3, $4, $5)
+      insert into announcements (channel_id, module_id, title, body, pinned, created_by)
+      values ($1, $2, $3, $4, $5, $6)
       returning
         id,
         channel_id as "channelId",
+        module_id as "moduleId",
+        NULL::text as "moduleCode",
+        NULL::text as "moduleName",
         title,
         body,
         pinned,
         created_by as "createdBy",
         created_at as "createdAt"
       `,
-      [channelId, title, body, Boolean(pinned), createdBy]
+      [channelId, moduleId ?? null, title, body, Boolean(pinned), createdBy]
     );
 
     return result.rows[0];
@@ -33,16 +36,20 @@ export const pgAnnouncementRepo: AnnouncementRepo = {
     const result = await pool.query(
       `
       select
-        id,
-        channel_id as "channelId",
-        title,
-        body,
-        pinned,
-        created_by as "createdBy",
-        created_at as "createdAt"
-      from announcements
-      where channel_id = $1
-      order by pinned desc, created_at desc
+        a.id,
+        a.channel_id as "channelId",
+        a.module_id as "moduleId",
+        fm.code as "moduleCode",
+        fm.name as "moduleName",
+        a.title,
+        a.body,
+        a.pinned,
+        a.created_by as "createdBy",
+        a.created_at as "createdAt"
+      from announcements a
+      left join faculty_modules fm on fm.id = a.module_id
+      where a.channel_id = $1
+      order by a.pinned desc, a.created_at desc
       `,
       [channelId]
     );
@@ -67,6 +74,9 @@ export const pgAnnouncementRepo: AnnouncementRepo = {
       RETURNING
         id,
         channel_id as "channelId",
+        module_id as "moduleId",
+        NULL::text as "moduleCode",
+        NULL::text as "moduleName",
         title,
         body,
         pinned,

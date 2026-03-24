@@ -178,6 +178,12 @@ export default function AnnouncementCard({
           {a.channel[0].toUpperCase() + a.channel.slice(1)}
         </span>
 
+        {a.channel === "modules" && a.moduleCode && (
+          <span className={`${badgeBase()} border-[#8CEBFF]/50 bg-[#8CEBFF]/10 text-[#C9F7FF]`}>
+            {a.moduleCode}
+          </span>
+        )}
+
         {(editing ? pinned : a.pinned) && (
           <span
             className={`${badgeBase()} border-yellow-300/80 bg-yellow-300/20 text-white shadow-[0_0_12px_rgba(253,224,71,0.28)]`}
@@ -224,6 +230,13 @@ export default function AnnouncementCard({
           <div className="text-lg font-semibold tracking-tight text-white">
             {a.title}
           </div>
+
+          {a.channel === "modules" && a.moduleName && (
+            <div className="mt-1 text-sm text-[#8CEBFF]">
+              {a.moduleCode ? `${a.moduleCode} - ` : ""}
+              {a.moduleName}
+            </div>
+          )}
 
           <div className="mt-2 text-sm leading-relaxed text-white/88">
             {a.body}

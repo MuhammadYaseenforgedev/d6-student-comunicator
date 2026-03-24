@@ -7,6 +7,7 @@ import { cleanupTestUsers, createChannel, createUser, signJwt } from "./helpers"
 
 type Ctx = {
   adminToken: string;
+  financeAdminToken: string;
   lecturerToken: string;
   studentToken: string;
   otherStudentToken: string;
@@ -22,6 +23,11 @@ type Ctx = {
   adminStudentUploadId: string;
   studentUploadId: string;
   otherStudentUploadId: string;
+  modulesChannelId: string;
+  courseId: string;
+  facultyId: string;
+  moduleId: string;
+  otherModuleId: string;
 };
 
 type UploadListRow = {
@@ -45,12 +51,14 @@ describe("Announcements and uploads permissions", () => {
 
   beforeAll(async () => {
     const admin = await createUser("ADMIN");
+    const financeAdmin = await createUser("ADMIN", undefined, "Passw0rd!", "FINANCE");
     const lecturer = await createUser("LECTURER");
     const student = await createUser("STUDENT");
     const otherStudent = await createUser("STUDENT");
     const parent = await createUser("PARENT");
 
     ctx.adminToken = signJwt(admin);
+    ctx.financeAdminToken = signJwt(financeAdmin);
     ctx.lecturerToken = signJwt(lecturer);
     ctx.studentToken = signJwt(student);
     ctx.otherStudentToken = signJwt(otherStudent);
@@ -61,9 +69,105 @@ describe("Announcements and uploads permissions", () => {
     ctx.otherStudentId = otherStudent.id;
 
     ctx.channelId = await createChannel(lecturer.id, `ann-upload-${Date.now()}`);
+
+    const modulesChannelRes = await pool.query<{ id: string }>(
+      `
+        INSERT INTO channels (name, type, is_private, created_by)
+        VALUES ('Modules', 'MODULE', false, $1)
+        RETURNING id
+      `,
+      [admin.id]
+    );
+    ctx.modulesChannelId = modulesChannelRes.rows[0].id;
+
+    const courseRes = await pool.query<{ id: string }>(
+      `
+        INSERT INTO courses (code, name, description, is_active)
+        VALUES ($1, $2, $3, true)
+        RETURNING id
+      `,
+      [
+        `TEST-COURSE-${Date.now()}`,
+        "Test Course",
+        "Test course for module announcement access",
+      ]
+    );
+    ctx.courseId = courseRes.rows[0].id;
+
+    const facultyRes = await pool.query<{ id: string }>(
+      `
+        INSERT INTO faculties (name)
+        VALUES ($1)
+        RETURNING id
+      `,
+      [`Test Faculty ${Date.now()}`]
+    );
+    ctx.facultyId = facultyRes.rows[0].id;
+
+    const moduleRes = await pool.query<{ id: string }>(
+      `
+        INSERT INTO faculty_modules (faculty_id, course_id, code, name)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+      `,
+      [ctx.facultyId, ctx.courseId, `TEST-MOD-${Date.now()}`, "Test Module"]
+    );
+    ctx.moduleId = moduleRes.rows[0].id;
+
+    const otherModuleRes = await pool.query<{ id: string }>(
+      `
+        INSERT INTO faculty_modules (faculty_id, course_id, code, name)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+      `,
+      [ctx.facultyId, ctx.courseId, `TEST-MOD-B-${Date.now()}`, "Other Test Module"]
+    );
+    ctx.otherModuleId = otherModuleRes.rows[0].id;
+
+    await pool.query(
+      `
+        INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
+        VALUES ($1, $2)
+        ON CONFLICT (module_id, lecturer_id) DO NOTHING
+      `,
+      [ctx.moduleId, ctx.lecturerId]
+    );
+
+    await pool.query(
+      `
+        INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
+        VALUES ($1, $2, 'ACTIVE', now())
+        ON CONFLICT (student_user_id, course_id)
+        DO UPDATE SET status = 'ACTIVE'
+      `,
+      [ctx.studentId, ctx.courseId]
+    );
+
+    await pool.query(
+      `
+        INSERT INTO student_module_enrollments (module_id, student_id)
+        VALUES ($1, $2)
+        ON CONFLICT (module_id, student_id) DO NOTHING
+      `,
+      [ctx.moduleId, ctx.studentId]
+    );
   });
 
   afterAll(async () => {
+    await pool.query(
+      `DELETE FROM lecturer_module_assignments WHERE module_id = ANY($1::uuid[])`,
+      [[ctx.moduleId, ctx.otherModuleId]]
+    );
+    await pool.query(
+      `DELETE FROM student_module_enrollments WHERE module_id = ANY($1::uuid[])`,
+      [[ctx.moduleId, ctx.otherModuleId]]
+    );
+    await pool.query(`DELETE FROM faculty_modules WHERE id = ANY($1::uuid[])`, [
+      [ctx.moduleId, ctx.otherModuleId],
+    ]);
+    await pool.query(`DELETE FROM student_courses WHERE course_id = $1`, [ctx.courseId]);
+    await pool.query(`DELETE FROM courses WHERE id = $1`, [ctx.courseId]);
+    await pool.query(`DELETE FROM faculties WHERE id = $1`, [ctx.facultyId]);
     await cleanupTestUsers();
   });
 
@@ -109,6 +213,53 @@ describe("Announcements and uploads permissions", () => {
       .delete(`/api/channels/${ctx.channelId}/announcements/${ctx.announcementId}`)
       .set(auth(ctx.adminToken));
     expect(adminDelete.status).toBe(200);
+  });
+
+  test("Module announcements are scoped to linked modules", async () => {
+    const allowedCreate = await request(app)
+      .post(`/api/channels/${ctx.modulesChannelId}/announcements`)
+      .set(auth(ctx.lecturerToken))
+      .send({
+        title: `module-ann-${Date.now()}`,
+        body: "Module-specific notice",
+        moduleId: ctx.moduleId,
+      });
+    expect(allowedCreate.status).toBe(201);
+    expect(String(allowedCreate.body?.moduleId ?? "")).toBe(ctx.moduleId);
+
+    const blockedLecturerCreate = await request(app)
+      .post(`/api/channels/${ctx.modulesChannelId}/announcements`)
+      .set(auth(ctx.lecturerToken))
+      .send({
+        title: `blocked-module-ann-${Date.now()}`,
+        body: "Should not post",
+        moduleId: ctx.otherModuleId,
+      });
+    expect(blockedLecturerCreate.status).toBe(403);
+
+    const blockedFinanceAdminCreate = await request(app)
+      .post(`/api/channels/${ctx.modulesChannelId}/announcements`)
+      .set(auth(ctx.financeAdminToken))
+      .send({
+        title: `finance-module-ann-${Date.now()}`,
+        body: "Should not post",
+        moduleId: ctx.moduleId,
+      });
+    expect(blockedFinanceAdminCreate.status).toBe(403);
+
+    const studentAllowed = await request(app)
+      .get(`/api/channels/${ctx.modulesChannelId}/announcements?moduleId=${ctx.moduleId}`)
+      .set(auth(ctx.studentToken));
+    expect(studentAllowed.status).toBe(200);
+    const allowedRows = toRows(studentAllowed.body);
+    expect(
+      allowedRows.some((row) => String(row.id) === String(allowedCreate.body?.id ?? ""))
+    ).toBe(true);
+
+    const studentBlocked = await request(app)
+      .get(`/api/channels/${ctx.modulesChannelId}/announcements?moduleId=${ctx.otherModuleId}`)
+      .set(auth(ctx.studentToken));
+    expect(studentBlocked.status).toBe(403);
   });
 
   test("Uploads: student can submit; parent is forbidden; list/download visibility is role-safe", async () => {

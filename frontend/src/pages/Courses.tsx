@@ -33,6 +33,17 @@ function uniqueLecturerEmails(modules: CourseModule[]): string[] {
   ).sort((a, b) => a.localeCompare(b));
 }
 
+function summarizeModules(modules: CourseModule[], limit = 3): string {
+  if (modules.length === 0) return "No modules linked yet.";
+
+  const visible = modules
+    .slice(0, limit)
+    .map((module) => `${module.code} - ${module.name}`);
+
+  if (modules.length <= limit) return visible.join(", ");
+  return `${visible.join(", ")} +${modules.length - limit} more`;
+}
+
 function EmptyState({
   title,
   message,
@@ -271,6 +282,10 @@ function LecturerCoursesView() {
 
               <div className="mt-3 text-sm text-white/72">
                 {course.description?.trim() || "No course description has been added yet."}
+              </div>
+
+              <div className="mt-3 text-xs text-white/65">
+                Linked modules: {summarizeModules(course.modules, 4)}
               </div>
 
               <div className="mt-4 grid grid-cols-3 gap-3">
@@ -529,6 +544,66 @@ function AdminCoursesView() {
         <EmptyState title="Loading courses" message="Fetching course management data." />
       ) : (
         <>
+          <div className="teal-glow-card p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold text-white">Course Catalog</div>
+                <div className="mt-1 text-sm text-white/72">
+                  Review each course and the modules currently linked to it before making changes.
+                </div>
+              </div>
+              <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/80">
+                {courses.length} course{courses.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+              {courses.length === 0 ? (
+                <EmptyState
+                  title="No courses yet"
+                  message="Create the first course before assigning modules or students."
+                />
+              ) : (
+                courses.map((course) => {
+                  const isSelected = course.id === selectedCourseId;
+                  return (
+                    <button
+                      key={course.id}
+                      type="button"
+                      onClick={() => setSelectedCourseId(course.id)}
+                      className={[
+                        "rounded-3xl border p-4 text-left transition",
+                        isSelected
+                          ? "border-[rgba(140,235,255,0.34)] bg-[rgba(15,37,88,0.82)] shadow-[0_0_0_1px_rgba(140,235,255,0.18)_inset]"
+                          : "border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] hover:border-[rgba(140,235,255,0.28)]",
+                      ].join(" ")}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-white">{course.name}</div>
+                          <div className="mt-1 text-xs text-white/60">{course.code}</div>
+                        </div>
+                        <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/80">
+                          {course.isActive ? "Active" : "Archived"}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-xs text-white/72">
+                        Modules: {summarizeModules(course.modules, 3)}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-white/60">
+                        <div>{course.summary.moduleCount} modules</div>
+                        <div>{course.summary.studentCount} students</div>
+                        <div>{course.summary.lecturerCount} lecturers</div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_1fr]">
             <div className="teal-glow-card space-y-4 p-5">
               <div className="text-lg font-semibold text-white">Create Course</div>
@@ -598,6 +673,9 @@ function AdminCoursesView() {
                     placeholder="Course description"
                     className="input-glass min-h-[120px]"
                   />
+                  <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] p-3 text-sm text-white/72">
+                    Linked modules: {summarizeModules(selectedCourse?.modules ?? [], 5)}
+                  </div>
                   <select
                     value={editIsActive}
                     onChange={(e) => setEditIsActive(e.target.value)}

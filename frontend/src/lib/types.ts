@@ -12,9 +12,19 @@ export type Announcement = {
   pinned: boolean;
   author: string;
   createdAt: string; // ISO string
+  moduleId?: string | null;
+  moduleCode?: string | null;
+  moduleName?: string | null;
 };
 
-export type AnnouncementCreate = Omit<Announcement, "id" | "createdAt">;
+export type AnnouncementCreate = {
+  channel: ChannelKey;
+  title: string;
+  body: string;
+  pinned: boolean;
+  author: string;
+  moduleId?: string | null;
+};
 
 // ---------- Messaging ----------
 export type Thread = {

@@ -27,9 +27,15 @@ type UpdatePayload = {
   pinned?: boolean;
 };
 
-export function useAnnouncements(channel?: ChannelKey) {
-  const role = String(getUser()?.role ?? "").toUpperCase();
-  const canManage = role === "ADMIN" || role === "LECTURER";
+export function useAnnouncements(
+  channel?: ChannelKey,
+  options?: { moduleId?: string; enabled?: boolean }
+) {
+  const user = getUser();
+  const role = String(user?.role ?? "").toUpperCase();
+  const adminScope = String(user?.adminScope ?? "").toUpperCase();
+  const canManage =
+    role === "LECTURER" || (role === "ADMIN" && adminScope !== "FINANCE");
 
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);
@@ -44,11 +50,18 @@ export function useAnnouncements(channel?: ChannelKey) {
   }, []);
 
   async function load() {
+    if (options?.enabled === false) {
+      if (mountedRef.current) {
+        setItems([]);
+        setLoading(false);
+      }
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
       const key: ChannelKey = channel ?? "general";
-      const rows = await fetchAnnouncements(key);
+      const rows = await fetchAnnouncements(key, { moduleId: options?.moduleId });
       if (mountedRef.current) setItems(sortAnnouncements(rows));
     } catch (e: unknown) {
       if (!mountedRef.current) return;
@@ -114,7 +127,7 @@ export function useAnnouncements(channel?: ChannelKey) {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel]);
+  }, [channel, options?.moduleId, options?.enabled]);
 
   const filtered = useMemo(() => {
     if (!channel) return items;

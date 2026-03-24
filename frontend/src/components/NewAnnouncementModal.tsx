@@ -8,14 +8,24 @@
 // - Validate minimum title/body lengths before submit
 // - Submit the new announcement payload to the parent handler
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AnnouncementCreate, ChannelKey } from "../lib/types";
+
+type ModuleOption = {
+  id: string;
+  label: string;
+};
 
 type Props = {
   open: boolean;
   onClose: () => void;
   defaultChannel: ChannelKey;
   onCreate: (payload: AnnouncementCreate) => void | Promise<void>;
+  channelOptions?: ChannelKey[];
+  lockChannel?: boolean;
+  moduleOptions?: ModuleOption[];
+  defaultModuleId?: string;
+  requireModuleSelection?: boolean;
 };
 
 export default function NewAnnouncementModal({
@@ -23,22 +33,55 @@ export default function NewAnnouncementModal({
   onClose,
   defaultChannel,
   onCreate,
+  channelOptions,
+  lockChannel = false,
+  moduleOptions = [],
+  defaultModuleId,
+  requireModuleSelection = false,
 }: Props) {
   /**
    * Supported announcement channels.
    * Memoized so the array is stable across renders.
    */
   const channels = useMemo<ChannelKey[]>(
-    () => ["general", "modules", "faculty", "clubs", "emergency"],
-    []
+    () => channelOptions ?? ["general", "modules", "faculty", "clubs", "emergency"],
+    [channelOptions]
   );
 
   // Form state
   const [channel, setChannel] = useState<ChannelKey>(defaultChannel);
+  const [moduleId, setModuleId] = useState(defaultModuleId ?? "");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [pinned, setPinned] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setChannel(defaultChannel);
+    setModuleId(defaultModuleId ?? "");
+    setTitle("");
+    setBody("");
+    setPinned(false);
+    setSubmitting(false);
+  }, [open, defaultChannel, defaultModuleId]);
+
+  useEffect(() => {
+    if (channel !== "modules") {
+      setModuleId("");
+      return;
+    }
+
+    if (moduleOptions.length === 0) {
+      setModuleId("");
+      return;
+    }
+
+    const fallbackModuleId = defaultModuleId ?? moduleOptions[0]?.id ?? "";
+    if (!moduleOptions.some((option) => option.id === moduleId)) {
+      setModuleId(fallbackModuleId);
+    }
+  }, [channel, defaultModuleId, moduleId, moduleOptions]);
 
   // Do not render anything if the modal is closed
   if (!open) return null;
@@ -46,7 +89,10 @@ export default function NewAnnouncementModal({
   // Lightweight form validation
   const titleOk = title.trim().length >= 3;
   const bodyOk = body.trim().length >= 5;
-  const canSubmit = titleOk && bodyOk && !submitting;
+  const needsModule =
+    channel === "modules" && (requireModuleSelection || moduleOptions.length > 0);
+  const moduleOk = !needsModule || Boolean(moduleId);
+  const canSubmit = titleOk && bodyOk && moduleOk && !submitting;
 
   /**
    * Submit the form to create a new announcement.
@@ -65,12 +111,14 @@ export default function NewAnnouncementModal({
         body: body.trim(),
         pinned,
         author: "Dev User",
+        ...(channel === "modules" && moduleId ? { moduleId } : {}),
       });
 
       // Reset form after successful submission
       setTitle("");
       setBody("");
       setPinned(false);
+      setModuleId(defaultModuleId ?? "");
       onClose();
     } finally {
       setSubmitting(false);
@@ -129,21 +177,27 @@ export default function NewAnnouncementModal({
               >
                 Channel
               </label>
-              <select
-                id="announcement-channel"
-                name="channel"
-                value={channel}
-                onChange={(e) => setChannel(e.target.value as ChannelKey)}
-                className="select-glass mt-1"
-                aria-label="Announcement channel"
-                title="Announcement channel"
-              >
-                {channels.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              {lockChannel ? (
+                <div className="input-glass mt-1 flex min-h-[44px] items-center capitalize">
+                  {channel}
+                </div>
+              ) : (
+                <select
+                  id="announcement-channel"
+                  name="channel"
+                  value={channel}
+                  onChange={(e) => setChannel(e.target.value as ChannelKey)}
+                  className="select-glass mt-1"
+                  aria-label="Announcement channel"
+                  title="Announcement channel"
+                >
+                  {channels.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <label className="flex items-center gap-2 text-sm text-white/78 sm:mt-6">
@@ -155,6 +209,38 @@ export default function NewAnnouncementModal({
               Pin announcement
             </label>
           </div>
+
+          {channel === "modules" && moduleOptions.length > 0 && (
+            <div>
+              <label
+                htmlFor="announcement-module"
+                className="text-sm text-white/78"
+              >
+                Module
+              </label>
+              <select
+                id="announcement-module"
+                name="moduleId"
+                value={moduleId}
+                onChange={(e) => setModuleId(e.target.value)}
+                className="select-glass mt-1"
+                aria-label="Announcement module"
+                title="Announcement module"
+              >
+                <option value="">Select module</option>
+                {moduleOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {!moduleOk && (
+                <div className="mt-1 text-xs text-white/55">
+                  Select the module this announcement belongs to.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Title */}
           <div>

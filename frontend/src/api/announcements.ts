@@ -38,6 +38,9 @@ type BackendChannel = {
 type BackendAnnouncement = {
   id: string;
   channelId: string;
+  moduleId?: string | null;
+  moduleCode?: string | null;
+  moduleName?: string | null;
   title: string;
   body: string;
   pinned?: boolean;
@@ -112,13 +115,24 @@ function toUiAnnouncement(row: BackendAnnouncement, channel: ChannelKey): Announ
     pinned: Boolean(row.pinned ?? false),
     author,
     createdAt: row.createdAt ?? new Date().toISOString(),
+    moduleId: row.moduleId ?? null,
+    moduleCode: row.moduleCode ?? null,
+    moduleName: row.moduleName ?? null,
   };
 }
 
-export async function fetchAnnouncements(channel: ChannelKey): Promise<Announcement[]> {
+export async function fetchAnnouncements(
+  channel: ChannelKey,
+  opts?: { moduleId?: string }
+): Promise<Announcement[]> {
   const channelId = await resolveChannelId(channel);
+  const qs = new URLSearchParams();
+  if (channel === "modules" && opts?.moduleId?.trim()) {
+    qs.set("moduleId", opts.moduleId.trim());
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
 
-  const raw = await apiGet<unknown>(`/api/channels/${channelId}/announcements`);
+  const raw = await apiGet<unknown>(`/api/channels/${channelId}/announcements${suffix}`);
   const rows = unwrapList<BackendAnnouncement>(raw);
 
   return rows.map((r) => toUiAnnouncement(r, channel));
@@ -133,6 +147,9 @@ export async function createAnnouncement(payload: AnnouncementCreate): Promise<A
       title: payload.title,
       body: payload.body,
       pinned: payload.pinned,
+      ...(payload.channel === "modules" && payload.moduleId
+        ? { moduleId: payload.moduleId }
+        : {}),
     }
   );
 

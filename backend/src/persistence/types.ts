@@ -198,6 +198,7 @@ export type CreateChannelInput = {
 
 export type CreateAnnouncementInput = {
   channelId: string;
+  moduleId?: string | null;
   title: string;
   body: string;
   pinned?: boolean;
