@@ -19,6 +19,9 @@ export type Upload = {
   uploadedBy: string;
   uploadedByEmail?: string | null;
   uploadedByRole?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
+  targetUserId?: string | null;
+  targetUserEmail?: string | null;
+  targetUserRole?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
   createdAt: string;
 };
 
@@ -89,6 +92,8 @@ export type FinanceSummary = {
   userId: string;
   balanceCents: number;
   currency: string;
+  accountStatus: string;
+  statusNote: string | null;
   updatedAt: string;
 };
 
@@ -100,6 +105,84 @@ export type FinanceTransaction = {
   description: string;
   occurredAt: string;
   createdAt: string;
+};
+
+export type FinanceDocument = {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  description: string | null;
+  amountCents: number | null;
+  currency: string;
+  issuedAt: string;
+  documentUrl: string | null;
+  createdBy: string | null;
+  createdAt: string;
+};
+
+export type FinanceStatusNotification = {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  severity: string;
+  createdBy: string | null;
+  createdAt: string;
+};
+
+/* =========
+   Notifications
+   ========= */
+
+export type NotificationCategory =
+  | "MESSAGE"
+  | "ANNOUNCEMENT"
+  | "EMERGENCY"
+  | "ATTENDANCE"
+  | "RESULT"
+  | "FINANCE"
+  | "PARENT_LINK";
+
+export type Notification = {
+  id: string;
+  userId: string;
+  category: NotificationCategory;
+  type: string;
+  title: string;
+  body: string;
+  meta: Record<string, unknown>;
+  sourceKey: string | null;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type CreateNotificationInput = {
+  userId: string;
+  category: NotificationCategory;
+  type: string;
+  title: string;
+  body?: string;
+  meta?: Record<string, unknown>;
+  sourceKey?: string | null;
+};
+
+export type NotificationListOptions = {
+  limit?: number;
+  before?: string;
+  unreadOnly?: boolean;
+  categories?: NotificationCategory[];
+};
+
+export type NotificationListResult = {
+  items: Notification[];
+  nextBefore: string | null;
+};
+
+export type NotificationSummary = {
+  totalUnread: number;
+  counts: Partial<Record<NotificationCategory, number>>;
 };
 
 /* =========
@@ -115,6 +198,7 @@ export type CreateChannelInput = {
 
 export type CreateAnnouncementInput = {
   channelId: string;
+  moduleId?: string | null;
   title: string;
   body: string;
   pinned?: boolean;
@@ -161,6 +245,7 @@ export type CreateUploadInput = {
   sizeBytes: number;
   storagePath: string;
   uploadedBy: string;
+  targetUserId?: string | null;
 };
 
 /* =========
@@ -256,10 +341,61 @@ export type CalendarRepo = {
 export type FinanceRepo = {
   ensureAccount(userId: string): Promise<void>;
   getSummary(userId: string): Promise<FinanceSummary>;
+  updateAccount(
+    userId: string,
+    input: {
+      balanceCents?: number;
+      currency?: string;
+      accountStatus?: string;
+      statusNote?: string | null;
+    }
+  ): Promise<FinanceSummary>;
   listTransactions(
     userId: string,
     opts?: { limit?: number; before?: string }
   ): Promise<FinanceTransaction[]>;
+  createTransaction(
+    userId: string,
+    input: {
+      amountCents: number;
+      currency?: string;
+      description: string;
+      occurredAt?: string;
+    }
+  ): Promise<FinanceTransaction>;
+  listDocuments(userId: string, opts?: { limit?: number }): Promise<FinanceDocument[]>;
+  createDocument(
+    userId: string,
+    input: {
+      type: string;
+      title: string;
+      description?: string | null;
+      amountCents?: number | null;
+      currency?: string;
+      issuedAt?: string;
+      documentUrl?: string | null;
+      createdBy?: string | null;
+    }
+  ): Promise<FinanceDocument>;
+  listNotifications(userId: string, opts?: { limit?: number }): Promise<FinanceStatusNotification[]>;
+  createNotification(
+    userId: string,
+    input: {
+      title: string;
+      body: string;
+      severity?: string;
+      createdBy?: string | null;
+    }
+  ): Promise<FinanceStatusNotification>;
+};
+
+export type NotificationRepo = {
+  listForUser(userId: string, opts?: NotificationListOptions): Promise<NotificationListResult>;
+  getUnreadSummary(userId: string): Promise<NotificationSummary>;
+  createMany(inputs: CreateNotificationInput[]): Promise<void>;
+  upsert(input: CreateNotificationInput & { sourceKey: string }): Promise<Notification>;
+  markRead(userId: string, notificationId: string): Promise<boolean>;
+  markAllRead(userId: string, categories?: NotificationCategory[]): Promise<number>;
 };
 
 /* =========
@@ -276,4 +412,5 @@ export type Repos = {
   threads: ThreadRepo;
   calendar: CalendarRepo;
   finance: FinanceRepo;
+  notifications: NotificationRepo;
 };

@@ -41,7 +41,6 @@ function buildDbConfig() {
   if (databaseUrl) {
     try {
       // Validate format early for clearer migration failures.
-      // eslint-disable-next-line no-new
       new URL(databaseUrl);
     } catch (e) {
       throw new Error(`Invalid DATABASE_URL: ${e instanceof Error ? e.message : String(e)}`);

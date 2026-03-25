@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import type { UploadScope } from "../lib/types";
 
 type Props = {
@@ -8,24 +8,31 @@ type Props = {
   onUpload: (file: File) => Promise<void>;
 };
 
-export default function UploadModal({ open, onClose, scope, onUpload }: Props) {
+export default function UploadModal({
+  open,
+  onClose,
+  scope,
+  onUpload,
+}: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const title = useMemo(() => {
-    return scope === "LECTURER_MATERIAL" ? "Upload Lecturer File" : "Submit Student File";
+    return scope === "LECTURER_MATERIAL"
+      ? "Upload Lecturer File"
+      : "Submit Student File";
   }, [scope]);
 
   const helper = useMemo(() => {
     return scope === "LECTURER_MATERIAL"
       ? "Visible to students and lecturers."
-      : "Visible to lecturers (and admin). Students can still see their own submissions.";
+      : "Visible to lecturers and admin. Students can still see their own submissions.";
   }, [scope]);
 
   if (!open) return null;
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
 
@@ -47,39 +54,51 @@ export default function UploadModal({ open, onClose, scope, onUpload }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <div className="text-lg font-semibold">{title}</div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="glass-panel-strong w-full max-w-lg p-5 text-white shadow-[0_0_28px_rgba(140,235,255,0.12),0_20px_45px_rgba(3,10,28,0.46)]">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-lg font-semibold text-white">{title}</div>
+
           <button
             onClick={onClose}
             type="button"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm hover:bg-slate-50"
+            className="btn-secondary px-3 py-1 text-sm"
+            title="Close upload modal"
+            aria-label="Close upload modal"
           >
             Close
           </button>
         </div>
 
-        <p className="mt-2 text-sm text-slate-600">{helper}</p>
+        <p className="mt-2 text-sm text-white/72">{helper}</p>
 
-        {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <div className="error-banner mt-4">{error}</div>}
 
         <form onSubmit={submit} className="mt-4 space-y-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="rounded-2xl border border-[#8CEBFF]/18 bg-[rgba(8,18,48,0.62)] p-3 backdrop-blur-xl">
+            <label
+              htmlFor="upload-modal-file"
+              className="block text-sm font-medium text-white/82"
+            >
+              Choose file
+            </label>
+
             <input
+              id="upload-modal-file"
+              name="uploadFile"
               type="file"
-              className="w-full text-sm"
+              className="mt-2 w-full text-sm text-white file:mr-4 file:rounded-xl file:border file:border-[#8CEBFF]/20 file:bg-[rgba(15,31,78,0.88)] file:px-4 file:py-2 file:text-white file:transition-all file:duration-200 hover:file:border-[#8CEBFF]/34 hover:file:bg-[rgba(20,42,99,0.90)]"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              aria-label="Choose file to upload"
+              title="Choose file to upload"
             />
-            <div className="mt-2 text-xs text-slate-500">
+
+            <div className="mt-2 text-xs text-white/60">
               {file ? (
                 <>
-                  Selected: <span className="font-medium text-slate-700">{file.name}</span>{" "}
-                  ({Math.round(file.size / 1024)} KB)
+                  Selected:{" "}
+                  <span className="font-medium text-white">{file.name}</span> (
+                  {Math.round(file.size / 1024)} KB)
                 </>
               ) : (
                 "No file selected."
@@ -90,7 +109,9 @@ export default function UploadModal({ open, onClose, scope, onUpload }: Props) {
           <button
             disabled={busy || !file}
             type="submit"
-            className="w-full rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            className="btn-primary w-full"
+            title="Upload selected file"
+            aria-label="Upload selected file"
           >
             {busy ? "Uploading..." : "Upload"}
           </button>

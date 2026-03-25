@@ -1,3 +1,13 @@
+// src/pages/ManageResults.tsx
+// Results management page for staff users.
+// Responsibilities:
+// - Load results for a specific student
+// - Create new results
+// - Edit existing results
+// - Delete results
+// - Download results as a file
+// - Uses the shared neon glass styling for non-channel app pages
+
 import { useCallback, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import {
@@ -31,11 +41,23 @@ function toFormEditor(r: Result): EditorState {
   };
 }
 
+function performanceTone(percent: number): string {
+  if (percent >= 75) {
+    return "border-[rgba(52,211,153,0.30)] bg-[rgba(52,211,153,0.14)] text-[#d9fff1]";
+  }
+  if (percent >= 50) {
+    return "border-[rgba(255,196,87,0.30)] bg-[rgba(255,196,87,0.14)] text-[#ffecc2]";
+  }
+  return "border-[rgba(255,102,146,0.30)] bg-[rgba(255,102,146,0.14)] text-[#ffdbe6]";
+}
+
 export default function ManageResults() {
   const [childIdInput, setChildIdInput] = useState("");
   const [activeChildId, setActiveChildId] = useState("");
+
   const [results, setResults] = useState<Result[]>([]);
   const [loading, setLoading] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -52,29 +74,29 @@ export default function ManageResults() {
   const hasActiveChild = activeChildId.trim().length > 0;
 
   const sortedResults = useMemo(() => {
-    return [...results].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    return [...results].sort((a, b) =>
+      String(b.date).localeCompare(String(a.date))
+    );
   }, [results]);
 
-  const loadResults = useCallback(
-    async (childId: string) => {
-      const cleaned = childId.trim();
-      if (!cleaned) return;
+  const loadResults = useCallback(async (childId: string) => {
+    const cleaned = childId.trim();
+    if (!cleaned) return;
 
-      setLoading(true);
-      setError(null);
-      try {
-        const rows = await listResultsForStaff(cleaned);
-        setResults(Array.isArray(rows) ? rows : []);
-        setActiveChildId(cleaned);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load results");
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
+    setLoading(true);
+    setError(null);
+
+    try {
+      const rows = await listResultsForStaff(cleaned);
+      setResults(Array.isArray(rows) ? rows : []);
+      setActiveChildId(cleaned);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load results");
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   async function onLoad() {
     await loadResults(childIdInput);
@@ -82,6 +104,7 @@ export default function ManageResults() {
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
     if (!hasActiveChild) {
       setError("Load a student first.");
       return;
@@ -110,6 +133,7 @@ export default function ManageResults() {
 
     setBusy(true);
     setError(null);
+
     try {
       await createResultForStaff({
         childId: activeChildId,
@@ -167,6 +191,7 @@ export default function ManageResults() {
 
     setBusy(true);
     setError(null);
+
     try {
       await updateResultForStaff(editing.id, {
         subject,
@@ -174,6 +199,7 @@ export default function ManageResults() {
         outOf,
         date: editing.date.trim() || undefined,
       });
+
       setEditing(null);
       await loadResults(activeChildId);
     } catch (e) {
@@ -189,6 +215,7 @@ export default function ManageResults() {
 
     setBusy(true);
     setError(null);
+
     try {
       await deleteResultForStaff(id);
       await loadResults(activeChildId);
@@ -204,13 +231,16 @@ export default function ManageResults() {
 
     setDownloadError(null);
     setDownloading(true);
+
     try {
       const { blob, fileName } = await downloadResultsForStaff(activeChildId);
       const url = URL.createObjectURL(blob);
+
       try {
         const a = document.createElement("a");
         a.href = url;
-        a.download = fileName || `results-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          fileName || `results-${new Date().toISOString().slice(0, 10)}.csv`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -218,7 +248,9 @@ export default function ManageResults() {
         URL.revokeObjectURL(url);
       }
     } catch (e) {
-      setDownloadError(e instanceof Error ? e.message : "Failed to download results");
+      setDownloadError(
+        e instanceof Error ? e.message : "Failed to download results"
+      );
     } finally {
       setDownloading(false);
     }
@@ -228,28 +260,46 @@ export default function ManageResults() {
     <div className="space-y-6">
       <PageHeader
         title="Manage Results"
-        subtitle="Admin and Lecturer can create, edit, delete, and download student results."
+        subtitle="Admins and lecturers can create, edit, delete, and download student results."
       />
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-        <div className="text-lg font-semibold text-white">Select Student</div>
-        <div className="mt-1 text-sm text-slate-400">
-          Enter student public ID (e.g. STU-1001) or student email.
+      <section className="teal-glow-card p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-lg font-semibold text-white">
+              Select Student
+            </div>
+            <div className="mt-1 text-sm text-white/72">
+              Enter student public ID such as STU-1001 or a student email.
+            </div>
+          </div>
+
+          {hasActiveChild && (
+            <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+              Active: {activeChildId}
+            </div>
+          )}
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto]">
+        <div className="divider-soft my-5" />
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto]">
           <input
             value={childIdInput}
             onChange={(e) => setChildIdInput(e.target.value)}
             placeholder="STU-1001 or student@email.com"
-            className="w-full rounded-lg border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-600"
+            className="input-glass"
+            aria-label="Student identifier"
+            title="Student identifier"
           />
 
           <button
             type="button"
             onClick={onLoad}
             disabled={!canLoad || loading}
-            className="rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
+            className="btn-primary min-w-[110px]"
+            title="Load student results"
+            aria-label="Load student results"
           >
             {loading ? "Loading..." : "Load"}
           </button>
@@ -258,86 +308,119 @@ export default function ManageResults() {
             type="button"
             onClick={onDownload}
             disabled={!hasActiveChild || loading || downloading}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/40 px-4 py-3 text-sm font-semibold text-slate-200 hover:bg-slate-900/70 disabled:opacity-60"
+            className="btn-secondary inline-flex items-center justify-center gap-2 disabled:opacity-60"
             title="Download results"
+            aria-label="Download results"
           >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M12 3v12" strokeLinecap="round" />
-              <path d="m7 10 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="m7 10 5 5 5-5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
               <path d="M4 21h16" strokeLinecap="round" />
             </svg>
             <span>{downloading ? "Downloading..." : "Download"}</span>
           </button>
         </div>
 
-        {downloadError && (
-          <div className="mt-4 rounded-xl border border-red-700/40 bg-red-950/30 p-3 text-sm text-red-200">
-            {downloadError}
-          </div>
-        )}
-      </div>
+        {downloadError && <div className="error-banner mt-4">{downloadError}</div>}
+      </section>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
+      <section className="teal-glow-card p-5">
         <div className="text-lg font-semibold text-white">Create Result</div>
-        <form onSubmit={onCreate} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <div className="mt-1 text-sm text-white/72">
+          Add a new published result for the selected student.
+        </div>
+
+        <div className="divider-soft my-5" />
+
+        <form
+          onSubmit={onCreate}
+          className="grid grid-cols-1 gap-3 sm:grid-cols-4"
+        >
           <input
             value={newSubject}
             onChange={(e) => setNewSubject(e.target.value)}
             placeholder="Subject"
-            className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
+            className="input-glass"
+            aria-label="Result subject"
+            title="Result subject"
           />
+
           <input
             value={newScore}
             onChange={(e) => setNewScore(e.target.value)}
             placeholder="Score"
-            className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
+            className="input-glass"
+            aria-label="Result score"
+            title="Result score"
           />
+
           <input
             value={newOutOf}
             onChange={(e) => setNewOutOf(e.target.value)}
             placeholder="Out Of"
-            className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
+            className="input-glass"
+            aria-label="Result out of"
+            title="Result out of"
           />
+
           <input
             type="date"
             value={newDate}
             onChange={(e) => setNewDate(e.target.value)}
-            className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
+            className="input-glass"
+            aria-label="Result date"
+            title="Result date"
           />
 
           <div className="sm:col-span-4">
             <button
               type="submit"
               disabled={!hasActiveChild || busy}
-              className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60"
+              className="btn-primary"
+              title="Add result"
+              aria-label="Add result"
             >
               {busy ? "Saving..." : "Add Result"}
             </button>
           </div>
         </form>
 
-        {error && (
-          <div className="mt-4 rounded-xl border border-red-700/40 bg-red-950/30 p-3 text-sm text-red-200">
-            {error}
-          </div>
-        )}
-      </div>
+        {error && <div className="error-banner mt-4">{error}</div>}
+      </section>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5">
-        <div className="text-lg font-semibold text-white">Results List</div>
-        <div className="mt-2 text-sm text-slate-400">
-          {hasActiveChild ? `Showing results for ${activeChildId}` : "Load a student to view results."}
+      <section className="teal-glow-card p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-lg font-semibold text-white">Results List</div>
+            <div className="mt-1 text-sm text-white/72">
+              {hasActiveChild
+                ? `Showing results for ${activeChildId}`
+                : "Load a student to view results."}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+            {sortedResults.length} record(s)
+          </div>
         </div>
 
-        <div className="mt-4 space-y-3">
+        <div className="divider-soft my-5" />
+
+        <div className="space-y-3">
           {loading ? (
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-              Loading results...
-            </div>
+            <div className="info-banner">Loading results...</div>
           ) : sortedResults.length === 0 ? (
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-              No results found.
-            </div>
+            <div className="info-banner">No results found.</div>
           ) : (
             sortedResults.map((r) => {
               const isEditing = editing?.id === r.id;
@@ -345,13 +428,32 @@ export default function ManageResults() {
               const pct = Math.round((r.score / max) * 100);
 
               return (
-                <div key={r.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                <div
+                  key={r.id}
+                  className="glass-panel p-4 transition-all duration-200 hover:-translate-y-[1px]"
+                >
                   {!isEditing ? (
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <div className="font-semibold text-white">{r.subject}</div>
-                        <div className="mt-1 text-xs text-slate-400">
-                          {r.score}/{max} ({pct}%) - {r.date || "Unknown date"}
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-white">
+                          {r.subject}
+                        </div>
+                        <div className="mt-1 text-xs text-white/60">
+                          {r.score}/{max} ({pct}%) • {r.date || "Unknown date"}
+                        </div>
+                        <div className="mt-2">
+                          <span
+                            className={[
+                              "inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                              performanceTone(pct),
+                            ].join(" ")}
+                          >
+                            {pct >= 75
+                              ? "Excellent"
+                              : pct >= 50
+                              ? "Pass"
+                              : "Needs attention"}
+                          </span>
                         </div>
                       </div>
 
@@ -359,15 +461,20 @@ export default function ManageResults() {
                         <button
                           type="button"
                           onClick={() => startEdit(r)}
-                          className="rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-1 text-xs hover:bg-slate-900/70"
+                          className="btn-secondary"
+                          title="Edit result"
+                          aria-label="Edit result"
                         >
                           Edit
                         </button>
+
                         <button
                           type="button"
                           onClick={() => onDelete(r.id)}
                           disabled={busy}
-                          className="rounded-lg border border-red-700/40 bg-red-950/30 px-3 py-1 text-xs text-red-200 hover:bg-red-950/50 disabled:opacity-60"
+                          className="btn-danger disabled:opacity-60"
+                          title="Delete result"
+                          aria-label="Delete result"
                         >
                           Delete
                         </button>
@@ -377,24 +484,43 @@ export default function ManageResults() {
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                       <input
                         value={editing.subject}
-                        onChange={(e) => setEditing({ ...editing, subject: e.target.value })}
-                        className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
+                        onChange={(e) =>
+                          setEditing({ ...editing, subject: e.target.value })
+                        }
+                        className="input-glass"
+                        aria-label="Edit subject"
+                        title="Edit subject"
                       />
+
                       <input
                         value={editing.score}
-                        onChange={(e) => setEditing({ ...editing, score: e.target.value })}
-                        className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
+                        onChange={(e) =>
+                          setEditing({ ...editing, score: e.target.value })
+                        }
+                        className="input-glass"
+                        aria-label="Edit score"
+                        title="Edit score"
                       />
+
                       <input
                         value={editing.outOf}
-                        onChange={(e) => setEditing({ ...editing, outOf: e.target.value })}
-                        className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
+                        onChange={(e) =>
+                          setEditing({ ...editing, outOf: e.target.value })
+                        }
+                        className="input-glass"
+                        aria-label="Edit out of"
+                        title="Edit out of"
                       />
+
                       <input
                         type="date"
                         value={editing.date}
-                        onChange={(e) => setEditing({ ...editing, date: e.target.value })}
-                        className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
+                        onChange={(e) =>
+                          setEditing({ ...editing, date: e.target.value })
+                        }
+                        className="input-glass"
+                        aria-label="Edit result date"
+                        title="Edit result date"
                       />
 
                       <div className="sm:col-span-4 flex gap-2">
@@ -402,14 +528,19 @@ export default function ManageResults() {
                           type="button"
                           onClick={saveEdit}
                           disabled={busy}
-                          className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold hover:bg-blue-700 disabled:opacity-60"
+                          className="btn-primary"
+                          title="Save changes"
+                          aria-label="Save changes"
                         >
                           Save
                         </button>
+
                         <button
                           type="button"
                           onClick={cancelEdit}
-                          className="rounded-lg border border-slate-700 bg-slate-900/40 px-4 py-2 text-xs hover:bg-slate-900/70"
+                          className="btn-secondary"
+                          title="Cancel editing"
+                          aria-label="Cancel editing"
                         >
                           Cancel
                         </button>
@@ -421,7 +552,7 @@ export default function ManageResults() {
             })
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

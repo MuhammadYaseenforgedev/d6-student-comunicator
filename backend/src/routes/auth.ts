@@ -3,9 +3,13 @@ import bcrypt from "bcryptjs";
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import crypto from "crypto";
 import { pool } from "../config/db";
+import { env } from "../config/env";
 import { requireAuth } from "../middleware/auth";
-import { requireRole } from "../middleware/rbac";
+import { requireAccess } from "../middleware/rbac";
 import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
+import { isSmtpConfigured, sendOtpEmail as sendOtpEmailViaSmtp } from "../lib/mailer";
+import { validatePassword } from "../lib/passwordPolicy";
+import { getEffectiveAdminScope, normalizeAdminScope, type AdminScope } from "../lib/adminAccess";
 
 export const authRouter = Router();
 
@@ -19,12 +23,17 @@ type JwtUser = {
   id: string;
   email: string;
   role: Role;
+  adminScope?: AdminScope | null;
 };
 
 function signToken(user: JwtUser) {
   const secret: Secret = (process.env.JWT_SECRET ?? "dev_secret_change_me") as Secret;
   const expiresIn = (process.env.JWT_EXPIRES_IN ?? "7d") as SignOptions["expiresIn"];
-  return jwt.sign({ id: user.id, email: user.email, role: user.role }, secret, { expiresIn });
+  return jwt.sign(
+    { id: user.id, email: user.email, role: user.role, adminScope: getEffectiveAdminScope(user) },
+    secret,
+    { expiresIn }
+  );
 }
 
 function normEmail(v: unknown) {
@@ -32,7 +41,7 @@ function normEmail(v: unknown) {
 }
 
 function isProduction() {
-  return String(process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  return env.APP_ENV === "production";
 }
 
 function boolEnv(name: string, defaultValue: boolean) {
@@ -43,8 +52,8 @@ function boolEnv(name: string, defaultValue: boolean) {
 
 /**
  * Auth policy flags:
- * - In production: default require OTP.
- * - In development: default allow password-only login to keep you moving fast.
+ * - In production: require OTP and block password-only auth shortcuts.
+ * - In non-production: still default to OTP unless explicitly relaxed.
  *
  * You can override with env:
  * - AUTH_REQUIRE_OTP=true/false
@@ -55,15 +64,42 @@ function boolEnv(name: string, defaultValue: boolean) {
 function authPolicy() {
   const prod = isProduction();
 
-  const requireOtp = boolEnv("AUTH_REQUIRE_OTP", prod ? true : false);
-  const allowPasswordLogin = boolEnv("AUTH_ALLOW_PASSWORD_LOGIN", prod ? false : true);
-  const allowPasswordRegister = boolEnv("AUTH_ALLOW_PASSWORD_REGISTER", prod ? false : false);
+  const requireOtp = prod ? true : boolEnv("AUTH_REQUIRE_OTP", true);
+  const allowPasswordLogin = prod ? false : boolEnv("AUTH_ALLOW_PASSWORD_LOGIN", false);
+  const allowPasswordRegister = prod ? false : boolEnv("AUTH_ALLOW_PASSWORD_REGISTER", false);
 
   return { requireOtp, allowPasswordLogin, allowPasswordRegister };
 }
 
-function shouldReturnDevCode() {
-  return !isProduction() && String(process.env.OTP_RETURN_DEV_CODE ?? "").toLowerCase() === "true";
+function shouldUseDemoOtpBypass(email: string): boolean {
+  const normalizedEmail = normEmail(email);
+  if (!normalizedEmail) return false;
+  if (!env.ALLOW_DEMO_OTP_BYPASS) return false;
+  if (env.APP_ENV === "production") return false;
+
+  const allowedEnvs = new Set(env.DEMO_OTP_ALLOWED_ENVS);
+  if (!allowedEnvs.has(env.APP_ENV)) return false;
+
+  const allowlist = new Set(env.DEMO_OTP_ALLOWLIST);
+  return allowlist.has(normalizedEmail);
+}
+
+function logDemoBypassUsage(kind: "request-otp", email: string) {
+  console.warn("[auth] Demo auth bypass used", {
+    kind,
+    email: normEmail(email),
+    appEnv: env.APP_ENV,
+  });
+}
+
+class OtpDeliveryError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "OtpDeliveryError";
+    this.status = status;
+  }
 }
 
 function generateOtpCode(): string {
@@ -126,6 +162,24 @@ function parsePurpose(p: unknown): "LOGIN" | "REGISTER" | null {
 function parseRole(v: unknown): Role | null {
   const role = String(v ?? "").trim().toUpperCase();
   return VALID_ROLES.includes(role as Role) ? (role as Role) : null;
+}
+
+function toJwtUser(row: {
+  id: string;
+  email: string;
+  role: Role;
+  admin_scope?: unknown;
+  adminScope?: unknown;
+}): JwtUser {
+  return {
+    id: row.id,
+    email: row.email,
+    role: row.role,
+    adminScope: getEffectiveAdminScope({
+      role: row.role,
+      adminScope: row.admin_scope ?? row.adminScope,
+    }),
+  };
 }
 
 function normalizeStudentNumber(v: unknown): string {
@@ -200,37 +254,100 @@ async function checkIpOtpRateLimit(ip: string) {
 /* ===============================
    OTP CREATION (HARDENED)
 =================================*/
-async function createOtp(email: string, purpose: "LOGIN" | "REGISTER", requestIp: string) {
+async function createOtp(
+  email: string,
+  purpose: "LOGIN" | "REGISTER",
+  requestIp: string,
+  options?: { skipEmailDelivery?: boolean; forceDevCode?: boolean }
+) {
   const { ttlMinutes } = otpConfig();
+  let checkpoint = "init";
+  let code = "";
+  let codeHash = "";
+  let expiresAt = "";
 
-  await pool.query(
-    `
-      UPDATE email_otps
-      SET consumed_at = now()
-      WHERE lower(email) = lower($1)
-        AND purpose = $2
-        AND consumed_at IS NULL
-    `,
-    [email, purpose]
-  );
+  try {
+    checkpoint = "consume_previous_otp";
+    await pool.query(
+      `
+        UPDATE email_otps
+        SET consumed_at = now()
+        WHERE lower(email) = lower($1)
+          AND purpose = $2
+          AND consumed_at IS NULL
+      `,
+      [email, purpose]
+    );
 
-  const code = generateOtpCode();
-  const codeHash = await bcrypt.hash(code, 10);
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+    checkpoint = "generate_code_hash";
+    code = generateOtpCode();
+    codeHash = await bcrypt.hash(code, 10);
+    expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
 
-  await pool.query(
-    `
-      INSERT INTO email_otps (email, purpose, code_hash, expires_at, request_ip)
-      VALUES ($1, $2, $3, $4::timestamptz, $5)
-    `,
-    [email, purpose, codeHash, expiresAt, requestIp]
-  );
-
-  if (!isProduction()) {
-    console.log(`[OTP][${purpose}] email=${email} ip=${requestIp} code=${code} (expires ${expiresAt})`);
+    checkpoint = "store_otp";
+    await pool.query(
+      `
+        INSERT INTO email_otps (email, purpose, code_hash, expires_at, request_ip)
+        VALUES ($1, $2, $3, $4::timestamptz, $5)
+      `,
+      [email, purpose, codeHash, expiresAt, requestIp]
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error("[otp][createOtp] failed before SMTP send", {
+      email,
+      purpose,
+      checkpoint,
+      message,
+      stack,
+    });
+    throw err;
   }
 
-  return { expiresAt, devCode: shouldReturnDevCode() ? code : undefined };
+  const skipEmailDelivery = Boolean(options?.skipEmailDelivery);
+
+  if (skipEmailDelivery) {
+    // Demo bypass intentionally suppresses email delivery and never logs OTP values.
+  } else if (isProduction()) {
+    const smtpConfigured = isSmtpConfigured();
+
+    try {
+      if (!smtpConfigured) {
+        throw new OtpDeliveryError(503, "OTP email service is not configured");
+      }
+      await sendOtpEmailViaSmtp({ to: email, code, expiresAt });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : undefined;
+      console.error("[otp][request-otp] SMTP send failed", {
+        email,
+        purpose,
+        message,
+        stack,
+      });
+      let error = err;
+      if (!(error instanceof OtpDeliveryError)) {
+        error = new OtpDeliveryError(503, "Failed to send OTP email");
+      }
+      await pool.query(
+        `
+          DELETE FROM email_otps
+          WHERE lower(email) = lower($1)
+            AND purpose = $2
+            AND code_hash = $3
+        `,
+        [email, purpose, codeHash]
+      );
+      throw error;
+    }
+  }
+
+  return {
+    code,
+    expiresAt,
+    devCode: options?.forceDevCode ? code : undefined,
+  };
 }
 
 /* ===============================
@@ -341,13 +458,38 @@ authRouter.post("/request-otp", async (req, res) => {
     }
   }
 
-  const out = await createOtp(email, purpose, ip);
+  try {
+    const includeDevOtp = shouldUseDemoOtpBypass(email);
+    if (includeDevOtp) {
+      logDemoBypassUsage("request-otp", email);
+    }
+    const out = await createOtp(email, purpose, ip, {
+      skipEmailDelivery: includeDevOtp,
+      forceDevCode: includeDevOtp,
+    });
 
-  return res.json({
-    ok: true,
-    expiresAt: out.expiresAt,
-    devCode: out.devCode,
-  });
+    if (includeDevOtp) {
+      return res.json({
+        ok: true,
+        expiresAt: out.expiresAt,
+        devOtp: out.devCode,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      expiresAt: out.expiresAt,
+    });
+  } catch (e: any) {
+    if (e instanceof OtpDeliveryError) {
+      return res.status(e.status).json({
+        error: { code: "EMAIL_PROVIDER", message: e.message },
+      });
+    }
+    return res.status(500).json({
+      error: { code: "INTERNAL", message: "Failed to request OTP" },
+    });
+  }
 });
 
 /* ===============================
@@ -379,6 +521,11 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
 
   if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
+  }
+
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: { code: "VALIDATION", message: passwordError } });
   }
 
   if (!role) {
@@ -449,16 +596,25 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
 
   try {
-      const result = await pool.query(
-        `
-        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, email, role
-      `,
-        [email, passwordHash, role, role === "STUDENT" ? studentNumber : null, role === "STUDENT" ? southAfricanId : null]
-      );
+    const adminScope = role === "ADMIN" ? "ACADEMIC" : null;
 
-    const user = result.rows[0] as JwtUser;
+    const result = await pool.query(
+      `
+        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id, admin_scope)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, email, role, admin_scope
+      `,
+      [
+        email,
+        passwordHash,
+        role,
+        role === "STUDENT" ? studentNumber : null,
+        role === "STUDENT" ? southAfricanId : null,
+        adminScope,
+      ]
+    );
+
+    const user = toJwtUser(result.rows[0] as JwtUser & { admin_scope?: string | null });
     const token = signToken(user);
     return res.status(201).json({ token, user });
   } catch (e: any) {
@@ -481,98 +637,122 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
    Body: { email, password, role, studentNumber?, southAfricanId? }
    Only authenticated ADMIN may create privileged roles.
 =================================*/
-authRouter.post("/admin-create", requireRole("ADMIN"), async (req, res) => {
-  const email = normEmail(req.body?.email);
-  const password = String(req.body?.password ?? "");
-  const roleRaw = String(req.body?.role ?? "").trim().toUpperCase();
-  const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
-  const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
+authRouter.post(
+  "/admin-create",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    const email = normEmail(req.body?.email);
+    const password = String(req.body?.password ?? "");
+    const roleRaw = String(req.body?.role ?? "").trim().toUpperCase();
+    const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
+    const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
+    const adminScopeInput = normalizeAdminScope(req.body?.adminScope);
 
-  if (!email || !password || !roleRaw) {
-    return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
-  }
-
-  if (!VALID_ROLES.includes(roleRaw as Role)) {
-    return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
-  }
-
-  const role = roleRaw as Role;
-
-  if (role === "STUDENT") {
-    if (!southAfricanId) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "southAfricanId is required for student creation" },
-      });
+    if (!email || !password || !roleRaw) {
+      return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
     }
-    if (!isValidSouthAfricanId(southAfricanId)) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "southAfricanId must be exactly 13 digits" },
-      });
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ error: { code: "VALIDATION", message: passwordError } });
     }
-    if (!studentNumber) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "studentNumber is required for student creation" },
-      });
+
+    if (!VALID_ROLES.includes(roleRaw as Role)) {
+      return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid role" } });
     }
-    if (studentNumber.length > 64) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "studentNumber must be 64 characters or fewer" },
-      });
+
+    const role = roleRaw as Role;
+    if (role === "ADMIN" && req.body?.adminScope !== undefined && !adminScopeInput) {
+      return res.status(400).json({ error: { code: "VALIDATION", message: "Invalid adminScope" } });
     }
-  }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+    if (role === "STUDENT") {
+      if (!southAfricanId) {
+        return res.status(400).json({
+          error: { code: "VALIDATION", message: "southAfricanId is required for student creation" },
+        });
+      }
+      if (!isValidSouthAfricanId(southAfricanId)) {
+        return res.status(400).json({
+          error: { code: "VALIDATION", message: "southAfricanId must be exactly 13 digits" },
+        });
+      }
+      if (!studentNumber) {
+        return res.status(400).json({
+          error: { code: "VALIDATION", message: "studentNumber is required for student creation" },
+        });
+      }
+      if (studentNumber.length > 64) {
+        return res.status(400).json({
+          error: { code: "VALIDATION", message: "studentNumber must be 64 characters or fewer" },
+        });
+      }
+    }
 
-  try {
-    const result = await pool.query(
-      `
-        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, email, role
-      `,
-      [email, passwordHash, role, role === "STUDENT" ? studentNumber : null, role === "STUDENT" ? southAfricanId : null]
-    );
+    const passwordHash = await bcrypt.hash(password, 10);
 
-    return res.status(201).json({ user: result.rows[0] });
-  } catch (e: any) {
-    if (String(e?.code ?? "") === "23505") {
-      if (role === "STUDENT") {
-        try {
-          const updated = await pool.query(
-            `
-              UPDATE users
-              SET
-                role = 'STUDENT',
-                public_student_id = COALESCE(public_student_id, $2),
-                south_african_id = COALESCE(south_african_id, $3)
-              WHERE lower(email) = lower($1)
-              RETURNING id, email, role
-            `,
-            [email, studentNumber, southAfricanId]
-          );
+    try {
+      const adminScope = role === "ADMIN" ? adminScopeInput ?? "ACADEMIC" : null;
+      const result = await pool.query(
+        `
+          INSERT INTO users (email, password_hash, role, public_student_id, south_african_id, admin_scope)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id, email, role, admin_scope
+        `,
+        [
+          email,
+          passwordHash,
+          role,
+          role === "STUDENT" ? studentNumber : null,
+          role === "STUDENT" ? southAfricanId : null,
+          adminScope,
+        ]
+      );
 
-          if ((updated.rowCount ?? 0) > 0) {
-            return res.status(200).json({ user: updated.rows[0], updated: true });
-          }
-        } catch (upsertErr: any) {
-          if (String(upsertErr?.code ?? "") !== "23505") {
-            return res.status(500).json({
-              error: { code: "INTERNAL", message: "Failed to update existing student account" },
-            });
+      return res.status(201).json({ user: toJwtUser(result.rows[0] as JwtUser & { admin_scope?: string | null }) });
+    } catch (e: any) {
+      if (String(e?.code ?? "") === "23505") {
+        if (role === "STUDENT") {
+          try {
+            const updated = await pool.query(
+              `
+                UPDATE users
+                SET
+                  role = 'STUDENT',
+                  public_student_id = COALESCE(public_student_id, $2),
+                  south_african_id = COALESCE(south_african_id, $3)
+                WHERE lower(email) = lower($1)
+                RETURNING id, email, role, admin_scope
+              `,
+              [email, studentNumber, southAfricanId]
+            );
+
+            if ((updated.rowCount ?? 0) > 0) {
+              return res.status(200).json({
+                user: toJwtUser(updated.rows[0] as JwtUser & { admin_scope?: string | null }),
+                updated: true,
+              });
+            }
+          } catch (upsertErr: any) {
+            if (String(upsertErr?.code ?? "") !== "23505") {
+              return res.status(500).json({
+                error: { code: "INTERNAL", message: "Failed to update existing student account" },
+              });
+            }
           }
         }
-      }
 
-      return res.status(400).json({
-        error: {
-          code: "VALIDATION",
-          message: "Account already exists (email, student number, or South African ID)",
-        },
-      });
+        return res.status(400).json({
+          error: {
+            code: "VALIDATION",
+            message: "Account already exists (email, student number, or South African ID)",
+          },
+        });
+      }
+      return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to create account" } });
     }
-    return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to create account" } });
   }
-});
+);
 
 /* ===============================
    LOGIN
@@ -637,7 +817,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
     }
   }
 
-  const user: JwtUser = { id: userRow.id, email: userRow.email, role: userRow.role };
+  const user = toJwtUser(userRow as JwtUser & { admin_scope?: string | null });
   const token = signToken(user);
 
   return res.json({ token, user });

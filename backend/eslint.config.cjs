@@ -9,6 +9,29 @@ module.exports = [
   },
   js.configs.recommended,
   {
+    files: ["scripts/**/*.cjs"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "commonjs",
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
+    files: ["scripts/**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: "commonjs",
+      },
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ["**/*.ts"],
     languageOptions: {
       parser: tsParser,

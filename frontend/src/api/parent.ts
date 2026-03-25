@@ -5,6 +5,19 @@ export type ParentChild = {
   email: string;
   role: "STUDENT";
   publicStudentId?: string | null;
+  studentNumber?: string | null;
+  userId?: string;
+  childUserId?: string;
+  studentUserId?: string;
+};
+
+export type LinkChildResult = {
+  created: boolean;
+  pending?: boolean;
+  message?: string;
+  child?: ParentChild;
+  childId?: string;
+  southAfricanId?: string | null;
 };
 
 export type ParentPortalInfo = {
@@ -77,24 +90,42 @@ export type FinanceNotification = {
   title: string;
   body: string;
   severity: string;
+  createdAt?: string | null;
 };
 
 export type FinanceDocument = {
   id: string;
   kind: string;
   type: string;
+  title?: string;
   amount: number;
   occurredAt: string;
   description: string | null;
+  documentUrl?: string | null;
 };
 
 export type FinanceSummary = {
   balance: number;
+  currency?: string;
   statements: number;
   lastPayment: string | null;
   status: string;
+  statusNote?: string | null;
   notifications: FinanceNotification[];
   documents: FinanceDocument[];
+};
+
+export type ParentAttendanceRecord = {
+  sessionId: string;
+  date: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  moduleId: string;
+  moduleCode: string;
+  moduleName: string;
+  facultyName: string;
+  status: string;
+  markedAt: string;
 };
 
 const DEFAULT_FINANCE: FinanceSummary = {
@@ -139,7 +170,7 @@ function unwrapObject(data: unknown): Record<string, unknown> | null {
 function normalizeChild(row: unknown): ParentChild | null {
   if (!isObject(row)) return null;
 
-  const id = toStringValue(row.id).trim();
+  const id = toStringValue(row.childUserId ?? row.studentUserId ?? row.userId ?? row.id).trim();
   const email = toStringValue(row.email).trim();
   if (!id || !email) return null;
 
@@ -147,11 +178,24 @@ function normalizeChild(row: unknown): ParentChild | null {
   const role: "STUDENT" = roleRaw === "STUDENT" ? "STUDENT" : "STUDENT";
 
   let publicStudentId: string | null | undefined = undefined;
-  const ps = row.publicStudentId ?? row.public_student_id;
+  const ps = row.publicStudentId ?? row.public_student_id ?? row.studentNumber ?? row.student_number;
   if (typeof ps === "string") publicStudentId = ps.trim() || null;
   if (ps === null) publicStudentId = null;
 
-  return { id, email, role, publicStudentId };
+  const userId = toStringValue(row.userId, id).trim() || id;
+  const childUserId = toStringValue(row.childUserId, id).trim() || id;
+  const studentUserId = toStringValue(row.studentUserId, id).trim() || id;
+
+  return {
+    id,
+    email,
+    role,
+    publicStudentId,
+    studentNumber: publicStudentId ?? null,
+    userId,
+    childUserId,
+    studentUserId,
+  };
 }
 
 function normalizeLinkRequest(row: unknown): LinkRequest | null {
@@ -230,8 +274,9 @@ function normalizeFinanceNotification(row: unknown, index: number): FinanceNotif
   const title = toStringValue(row.title, "");
   const body = toStringValue(row.body, "");
   const severity = toStringValue(row.severity, "info");
+  const createdAt = typeof row.createdAt === "string" ? row.createdAt : null;
 
-  return { id, title, body, severity };
+  return { id, title, body, severity, createdAt };
 }
 
 function normalizeFinanceDocument(row: unknown, index: number): FinanceDocument | null {
@@ -240,12 +285,14 @@ function normalizeFinanceDocument(row: unknown, index: number): FinanceDocument 
   const id = toStringValue(row.id).trim() || `document-${index}`;
   const kind = toStringValue(row.kind, "TRANSACTION");
   const type = toStringValue(row.type, kind || "TRANSACTION");
+  const title = toStringValue(row.title, type || "Document");
   const amount = toNumberValue(row.amount, 0);
   const occurredAt = toStringValue(row.occurredAt, "");
   const descriptionRaw = row.description;
   const description = typeof descriptionRaw === "string" ? descriptionRaw : null;
+  const documentUrl = typeof row.documentUrl === "string" ? row.documentUrl : null;
 
-  return { id, kind, type, amount, occurredAt, description };
+  return { id, kind, type, title, amount, occurredAt, description, documentUrl };
 }
 
 function normalizeFinanceSummary(data: unknown): FinanceSummary {
@@ -257,15 +304,47 @@ function normalizeFinanceSummary(data: unknown): FinanceSummary {
 
   return {
     balance: toNumberValue(source.balance, DEFAULT_FINANCE.balance),
+    currency: toStringValue(source.currency, "ZAR"),
     statements: toNumberValue(source.statements, DEFAULT_FINANCE.statements),
     lastPayment: typeof source.lastPayment === "string" ? source.lastPayment : null,
     status: toStringValue(source.status, DEFAULT_FINANCE.status),
+    statusNote: typeof source.statusNote === "string" ? source.statusNote : source.statusNote === null ? null : undefined,
     notifications: notificationsRaw
       .map((n, i) => normalizeFinanceNotification(n, i))
       .filter((n): n is FinanceNotification => n !== null),
     documents: documentsRaw
       .map((d, i) => normalizeFinanceDocument(d, i))
       .filter((d): d is FinanceDocument => d !== null),
+  };
+}
+
+function normalizeParentAttendanceRecord(row: unknown, index: number): ParentAttendanceRecord {
+  if (!isObject(row)) {
+    return {
+      sessionId: `session-${index}`,
+      date: "",
+      startsAt: null,
+      endsAt: null,
+      moduleId: "",
+      moduleCode: "",
+      moduleName: "Unknown module",
+      facultyName: "",
+      status: "UNKNOWN",
+      markedAt: "",
+    };
+  }
+
+  return {
+    sessionId: toStringValue(row.sessionId ?? row.session_id, `session-${index}`),
+    date: toStringValue(row.date ?? row.attendanceDate, ""),
+    startsAt: typeof row.startsAt === "string" ? row.startsAt : typeof row.starts_at === "string" ? row.starts_at : null,
+    endsAt: typeof row.endsAt === "string" ? row.endsAt : typeof row.ends_at === "string" ? row.ends_at : null,
+    moduleId: toStringValue(row.moduleId ?? row.module_id, ""),
+    moduleCode: toStringValue(row.moduleCode ?? row.module_code, ""),
+    moduleName: toStringValue(row.moduleName ?? row.module_name, "Unknown module"),
+    facultyName: toStringValue(row.facultyName ?? row.faculty_name, ""),
+    status: toStringValue(row.status, "UNKNOWN"),
+    markedAt: toStringValue(row.markedAt ?? row.marked_at, ""),
   };
 }
 
@@ -284,10 +363,41 @@ export async function parentPortalCheck(): Promise<ParentPortalInfo> {
 }
 
 export async function listMyChildren(): Promise<ParentChild[]> {
-  const data = await apiGet<unknown>("/api/parent/parent/children");
+  const data = await apiGet<unknown>("/api/parent/children");
   return unwrapList<unknown>(data)
     .map(normalizeChild)
     .filter((x): x is ParentChild => x !== null);
+}
+
+export async function linkChild(identifier: string): Promise<LinkChildResult> {
+  const cleaned = String(identifier ?? "").trim();
+  const data = await apiPost<unknown>("/api/parent/children", {
+    childId: cleaned,
+    studentNumber: cleaned,
+    publicStudentId: cleaned,
+    southAfricanId: cleaned,
+  });
+
+  const source = unwrapObject(data);
+  if (!source) {
+    return { created: false, message: "Unexpected response from server" };
+  }
+
+  const child = normalizeChild(source.child);
+
+  return {
+    created: Boolean(source.created),
+    pending: Boolean(source.pending),
+    message: toStringValue(source.message, ""),
+    child: child ?? undefined,
+    childId: toStringValue(source.childId, ""),
+    southAfricanId:
+      typeof source.southAfricanId === "string"
+        ? source.southAfricanId
+        : source.southAfricanId === null
+          ? null
+          : undefined,
+  };
 }
 
 export async function listLinkRequests(): Promise<LinkRequest[]> {
@@ -348,14 +458,27 @@ export async function decideAdminLinkRequest(
 }
 
 export async function getResults(childId: string): Promise<Result[]> {
-  const data = await apiGet<unknown>(`/api/parent/parent/results?childId=${encodeURIComponent(childId)}`);
+  const data = await apiGet<unknown>(`/api/parent/results?childId=${encodeURIComponent(childId)}`);
+  return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
+}
+
+export async function getStudentResults(): Promise<Result[]> {
+  const data = await apiGet<unknown>("/api/parent/student/results");
   return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
 }
 
 export async function downloadResults(
   childId: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
-  return apiDownload(`/api/parent/parent/results/download?childId=${encodeURIComponent(childId)}`);
+  return apiDownload(`/api/parent/results/download?childId=${encodeURIComponent(childId)}`);
+}
+
+export async function downloadStudentResults(): Promise<{
+  blob: Blob;
+  fileName: string | null;
+  contentType: string | null;
+}> {
+  return apiDownload("/api/parent/student/results/download");
 }
 
 export async function listResultsForStaff(childId: string): Promise<Result[]> {
@@ -384,12 +507,25 @@ export async function deleteResultForStaff(id: string): Promise<void> {
 }
 
 export async function getFinance(childId: string): Promise<FinanceSummary> {
-  const data = await apiGet<unknown>(`/api/parent/parent/finance?childId=${encodeURIComponent(childId)}`);
+  const data = await apiGet<unknown>(`/api/parent/finance?childId=${encodeURIComponent(childId)}`);
   return normalizeFinanceSummary(data);
 }
 
 export async function downloadFinanceStatement(
   childId: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
-  return apiDownload(`/api/parent/parent/finance/statement?childId=${encodeURIComponent(childId)}`);
+  return apiDownload(`/api/parent/finance/statement?childId=${encodeURIComponent(childId)}`);
+}
+
+export async function getParentAttendance(
+  childId: string,
+  params?: { from?: string; to?: string }
+): Promise<ParentAttendanceRecord[]> {
+  const qs = new URLSearchParams();
+  qs.set("childId", childId);
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+
+  const data = await apiGet<unknown>(`/api/parent/attendance?${qs.toString()}`);
+  return unwrapList<unknown>(data).map((row, index) => normalizeParentAttendanceRecord(row, index));
 }

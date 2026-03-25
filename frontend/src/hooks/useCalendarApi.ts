@@ -26,13 +26,21 @@ function fromLocalInputValue(v: string) {
   return d.toISOString();
 }
 
+function isDateOnly(v: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
+
 /**
  * If childId is provided (Parent Portal Calendar), we fetch that child's entries.
  * If role is PARENT and childId is missing, we DO NOT call the backend (prevents 400).
  */
-export function useCalendarApi(childId?: string) {
+export function useCalendarApi(date?: string, childId?: string) {
   const user = getUser();
   const role = (user?.role ?? "STUDENT").toUpperCase();
+
+  // Backward compatibility: existing callers may still pass only childId as the first argument.
+  const resolvedDate = date && isDateOnly(date) ? date : undefined;
+  const resolvedChildId = childId ?? (date && !isDateOnly(date) ? date : undefined);
 
   const canCreate = role === "ADMIN" || role === "LECTURER" || role === "STUDENT";
   const canDelete = role !== "PARENT"; // parent cannot delete
@@ -47,14 +55,15 @@ export function useCalendarApi(childId?: string) {
 
     try {
       // Parent must select a child first, otherwise backend returns 400.
-      if (role === "PARENT" && !childId) {
+      if (role === "PARENT" && !resolvedChildId) {
         setItems([]);
         return;
       }
 
       const list = await listCalendar({
+        date: resolvedDate ?? undefined,
         limit: 100,
-        childId: role === "PARENT" ? childId : undefined,
+        childId: role === "PARENT" ? resolvedChildId : undefined,
       });
 
       setItems(Array.isArray(list) ? list : []);
@@ -63,7 +72,7 @@ export function useCalendarApi(childId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [childId, role]);
+  }, [resolvedChildId, resolvedDate, role]);
 
   useEffect(() => {
     void reload();

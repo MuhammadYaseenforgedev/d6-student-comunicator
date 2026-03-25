@@ -11,6 +11,9 @@ type UploadRow = {
   uploaded_by: string;
   uploaded_by_email: string | null;
   uploaded_by_role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
+  target_user_id: string | null;
+  target_user_email: string | null;
+  target_user_role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
   created_at: string;
 };
 
@@ -25,6 +28,9 @@ function mapRow(row: UploadRow): Upload {
     uploadedBy: row.uploaded_by,
     uploadedByEmail: row.uploaded_by_email,
     uploadedByRole: row.uploaded_by_role,
+    targetUserId: row.target_user_id,
+    targetUserEmail: row.target_user_email,
+    targetUserRole: row.target_user_role,
     createdAt: row.created_at,
   };
 }
@@ -35,16 +41,19 @@ export const pgUploadRepo: UploadRepo = {
     const result = await pool.query<UploadRow>(
       `
       WITH ins AS (
-        INSERT INTO uploads (kind, original_name, mime_type, size_bytes, storage_path, uploaded_by)
-        VALUES ($1,$2,$3,$4,$5,$6)
+        INSERT INTO uploads (kind, original_name, mime_type, size_bytes, storage_path, uploaded_by, target_user_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
         RETURNING *
       )
       SELECT
         ins.*,
-        u.email AS uploaded_by_email,
-        u.role AS uploaded_by_role
+        uploader.email AS uploaded_by_email,
+        uploader.role AS uploaded_by_role,
+        target_user.email AS target_user_email,
+        target_user.role AS target_user_role
       FROM ins
-      LEFT JOIN users u ON u.id = ins.uploaded_by
+      LEFT JOIN users uploader ON uploader.id = ins.uploaded_by
+      LEFT JOIN users target_user ON target_user.id = ins.target_user_id
       `,
       [
         input.kind,
@@ -53,6 +62,7 @@ export const pgUploadRepo: UploadRepo = {
         input.sizeBytes,
         input.storagePath,
         input.uploadedBy,
+        input.targetUserId ?? null,
       ]
     );
 
@@ -65,10 +75,13 @@ export const pgUploadRepo: UploadRepo = {
         `
         SELECT
           up.*,
-          u.email AS uploaded_by_email,
-          u.role AS uploaded_by_role
+          uploader.email AS uploaded_by_email,
+          uploader.role AS uploaded_by_role,
+          target_user.email AS target_user_email,
+          target_user.role AS target_user_role
         FROM uploads up
-        LEFT JOIN users u ON u.id = up.uploaded_by
+        LEFT JOIN users uploader ON uploader.id = up.uploaded_by
+        LEFT JOIN users target_user ON target_user.id = up.target_user_id
         ORDER BY up.created_at DESC
         `
       );
@@ -80,14 +93,26 @@ export const pgUploadRepo: UploadRepo = {
         `
         SELECT
           up.*,
-          u.email AS uploaded_by_email,
-          u.role AS uploaded_by_role
+          uploader.email AS uploaded_by_email,
+          uploader.role AS uploaded_by_role,
+          target_user.email AS target_user_email,
+          target_user.role AS target_user_role
         FROM uploads up
-        JOIN users u ON u.id = up.uploaded_by
-        WHERE up.kind = 'LECTURER_MATERIAL'
-          AND u.role IN ('ADMIN', 'LECTURER')
+        JOIN users uploader ON uploader.id = up.uploaded_by
+        LEFT JOIN users target_user ON target_user.id = up.target_user_id
+        WHERE up.kind = 'STUDENT_SUBMISSION'
+          AND EXISTS (
+            SELECT 1
+            FROM parent_links pl
+            WHERE pl.parent_user_id = $1
+              AND (
+                pl.student_user_id = up.uploaded_by
+                OR pl.student_user_id = up.target_user_id
+              )
+          )
         ORDER BY up.created_at DESC
-        `
+        `,
+        [user.id]
       );
       return result.rows.map(mapRow);
     }
@@ -96,12 +121,15 @@ export const pgUploadRepo: UploadRepo = {
       `
       SELECT
         up.*,
-        u.email AS uploaded_by_email,
-        u.role AS uploaded_by_role
+        uploader.email AS uploaded_by_email,
+        uploader.role AS uploaded_by_role,
+        target_user.email AS target_user_email,
+        target_user.role AS target_user_role
       FROM uploads up
-      LEFT JOIN users u ON u.id = up.uploaded_by
-      WHERE (up.kind = 'LECTURER_MATERIAL' AND u.role IN ('ADMIN', 'LECTURER'))
-         OR (up.kind = 'STUDENT_SUBMISSION' AND up.uploaded_by = $1)
+      LEFT JOIN users uploader ON uploader.id = up.uploaded_by
+      LEFT JOIN users target_user ON target_user.id = up.target_user_id
+      WHERE (up.kind = 'LECTURER_MATERIAL' AND uploader.role IN ('ADMIN', 'LECTURER'))
+         OR (up.kind = 'STUDENT_SUBMISSION' AND (up.uploaded_by = $1 OR up.target_user_id = $1))
       ORDER BY up.created_at DESC
       `,
       [user.id]
@@ -115,10 +143,13 @@ export const pgUploadRepo: UploadRepo = {
       `
       SELECT
         up.*,
-        u.email AS uploaded_by_email,
-        u.role AS uploaded_by_role
+        uploader.email AS uploaded_by_email,
+        uploader.role AS uploaded_by_role,
+        target_user.email AS target_user_email,
+        target_user.role AS target_user_role
       FROM uploads up
-      LEFT JOIN users u ON u.id = up.uploaded_by
+      LEFT JOIN users uploader ON uploader.id = up.uploaded_by
+      LEFT JOIN users target_user ON target_user.id = up.target_user_id
       WHERE up.id = $1
       `,
       [id]

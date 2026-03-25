@@ -5,6 +5,12 @@
   text-align: center;
 }
 
+body {
+  background: url("assets/forge-bg.png") no-repeat center center fixed;
+  background-size: cover;
+  color: rgb(9, 0, 42);
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;

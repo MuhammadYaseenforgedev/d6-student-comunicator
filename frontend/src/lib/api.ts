@@ -1,12 +1,15 @@
 // frontend/src/lib/api.ts
 
-const API_URL = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
-if (import.meta.env.PROD && !API_URL) {
-  throw new Error("VITE_API_URL is required for production builds.");
-}
+import { getToken } from "./auth";
 
-function getToken(): string | null {
-  return localStorage.getItem("token");
+const API_URL = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
+export const API_CONFIG_ERROR = !API_URL
+  ? "VITE_API_URL is missing. Set it to your backend origin (for example: https://d6-student-comunicator.onrender.com)."
+  : null;
+
+function requireApiUrl(): string {
+  if (API_CONFIG_ERROR) throw new Error(API_CONFIG_ERROR);
+  return API_URL;
 }
 
 function buildHeaders(extra?: HeadersInit): HeadersInit {
@@ -90,7 +93,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const url = joinUrl(API_URL, path);
+  const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
     method: "GET",
@@ -101,7 +104,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const url = joinUrl(API_URL, path);
+  const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
     method: "POST",
@@ -113,7 +116,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const url = joinUrl(API_URL, path);
+  const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
     method: "PATCH",
@@ -125,7 +128,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
-  const url = joinUrl(API_URL, path);
+  const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
     method: "POST",
@@ -139,7 +142,7 @@ export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
 export async function apiDownload(
   path: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
-  const url = joinUrl(API_URL, path);
+  const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
     method: "GET",
@@ -159,7 +162,7 @@ export async function apiDownload(
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
-  const url = joinUrl(API_URL, path);
+  const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
     method: "DELETE",

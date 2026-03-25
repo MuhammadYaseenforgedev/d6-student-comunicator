@@ -18,18 +18,36 @@ import { threadRouter } from "./routes/threads";
 import { calendarRouter } from "./routes/calendar";
 import { financeRouter } from "./routes/finance";
 import { userRouter } from "./routes/users";
+import { meRouter } from "./routes/me";
+import { attendanceRouter } from "./routes/attendance";
+import { courseRouter } from "./routes/courses";
+import { demoRouter } from "./routes/demo";
+import { teamsLinksRouter } from "./routes/teamsLinks";
+import { notificationRouter } from "./routes/notifications";
+import { supportRouter } from "./routes/support";
+
+function normalizeOrigin(origin: string): string {
+  return String(origin).trim().replace(/\/+$/, "");
+}
 
 function buildCorsOrigins(): string[] {
-  const raw = String(process.env.CORS_ORIGIN ?? "").trim();
-  if (!raw) return [];
-  return Array.from(
-    new Set(
-      raw
-        .split(",")
-        .map((s) => s.trim().replace(/\/+$/, ""))
-        .filter(Boolean)
-    )
-  );
+  const raw = String(process.env.CORS_ALLOW_ORIGINS ?? process.env.CORS_ORIGIN ?? "").trim();
+  const configured = raw
+    .split(",")
+    .map((s) => normalizeOrigin(s))
+    .filter(Boolean);
+
+  const isProd = String(process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  const nonProdDefaults = isProd
+    ? []
+    : [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+      ];
+
+  return Array.from(new Set([...configured, ...nonProdDefaults].map(normalizeOrigin).filter(Boolean)));
 }
 
 export function createApp() {
@@ -59,25 +77,20 @@ export function createApp() {
       // Allow non-browser clients (curl/postman) and same-origin calls with no Origin header
       if (!origin) return cb(null, true);
 
-      // If no env configured, only allow in development
-      if (allowedOrigins.length === 0) {
-        const isDev = (process.env.NODE_ENV ?? "development") === "development";
-        return cb(null, isDev);
-      }
-
-      const normalizedOrigin = String(origin).trim().replace(/\/+$/, "");
+      const normalizedOrigin = normalizeOrigin(origin);
       const ok = allowedOrigins.includes(normalizedOrigin);
       return cb(ok ? null : new Error(`CORS blocked origin: ${origin}`), ok);
     },
-    credentials: true,
+    credentials: false,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Content-Disposition"],
+    optionsSuccessStatus: 204,
     maxAge: 86400,
   };
 
   app.use(cors(corsOptions));
-  app.options(/.*/, cors(corsOptions));
+  app.options(/^\/api(?:\/|$)/, cors(corsOptions));
 
   // =========================
   // Public routes
@@ -102,24 +115,31 @@ export function createApp() {
   app.use("/health", healthRouter);
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
+  app.use("/api/support", supportRouter);
 
   // =========================
   // Everything below requires auth
   // =========================
   app.use(requireAuth);
 
+  app.use("/api", meRouter);
+  app.use("/api", courseRouter);
   app.use("/api/channels", channelRouter);
   app.use("/api", announcementRouter);
   app.use("/api", messageRouter);
   app.use("/api", eventRouter);
+  app.use("/api", attendanceRouter);
+  app.use("/api/demo", demoRouter);
 
   app.use("/api/uploads", uploadRouter);
   app.use("/api/users", userRouter);
+  app.use("/api/integrations", teamsLinksRouter);
 
   app.use("/api/parent", parentRouter);
   app.use("/api/threads", threadRouter);
   app.use("/api", calendarRouter);
   app.use("/api", financeRouter);
+  app.use("/api/notifications", notificationRouter);
 
   // =========================
   // Not Found

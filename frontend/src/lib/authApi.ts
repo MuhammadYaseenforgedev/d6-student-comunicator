@@ -1,16 +1,13 @@
 // src/lib/authApi.ts
-// API client for OTP auth + registration.
+// DEPRECATED / UNUSED:
+// This legacy client targets old OTP-challenge endpoints (/auth/login/otp/* and /auth/register/otp/*)
+// that are not implemented by the current backend.
 //
-// Requirements (real-world):
-// - Login requires: email + password + OTP (OTP sent to email)
-// - Register requires: campusId + email + password + OTP (OTP sent to email)
-// - No React hooks in this file (this is not React land)
-// - No "any"
-// - Strong error handling for user-friendly messages
+// Active auth flow is implemented in src/lib/authService.ts using:
+// - POST /api/auth/request-otp
+// - POST /api/auth/login
 //
-// Dev fallback:
-// - If VITE_API_URL is missing/empty, we simulate OTP flows locally.
-// - Dev OTP is 000000.
+// Keep this file only as temporary reference; do not import it for production auth.
 
 import type { AuthUser, UserRole } from "./auth";
 
@@ -24,9 +21,10 @@ type ViteEnv = {
 
 const env = (import.meta as unknown as { env: ViteEnv }).env;
 const BASE_URL = (env?.VITE_API_URL?.trim() ?? "").replace(/\/+$/, "");
-if (import.meta.env.PROD && !BASE_URL) {
-  throw new Error("VITE_API_URL is required for production builds.");
-}
+const API_CONFIG_ERROR = !BASE_URL
+  ? "VITE_API_URL is missing. Set it to your backend origin (for example: https://d6-student-comunicator.onrender.com)."
+  : null;
+const API_PREFIX = "/api";
 
 /**
  * OTP challenge returned by backend.
@@ -59,7 +57,12 @@ export function normalizeEmail(email: string) {
  * If BASE_URL is empty, we assume backend is not wired yet.
  */
 function isDevFallbackEnabled() {
-  return !import.meta.env.PROD && BASE_URL.length === 0;
+  return false;
+}
+
+function requireBaseUrl(): string {
+  if (API_CONFIG_ERROR) throw new Error(API_CONFIG_ERROR);
+  return BASE_URL;
 }
 
 /**
@@ -114,7 +117,7 @@ async function readErrorMessage(res: Response): Promise<string> {
  * - returns strongly typed JSON
  */
 async function api<T>(path: string, init: RequestInit): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  const url = `${requireBaseUrl()}${API_PREFIX}${path}`;
 
   // 15s timeout (adjust if needed)
   const t = withTimeout(15_000);

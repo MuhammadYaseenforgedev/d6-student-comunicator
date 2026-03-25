@@ -4,12 +4,18 @@ import { useMemo, useState } from "react";
 type Props = {
   open: boolean;
   onClose: () => void;
-  date: string; // "YYYY-MM-DD"
+  date: string;
   eventTitle?: string;
   onCreate: (body: string) => Promise<void> | void;
 };
 
-export default function StudentNoteModal({ open, onClose, date, eventTitle, onCreate }: Props) {
+export default function StudentNoteModal({
+  open,
+  onClose,
+  date,
+  eventTitle,
+  onCreate,
+}: Props) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,44 +50,56 @@ export default function StudentNoteModal({ open, onClose, date, eventTitle, onCr
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <div className="text-lg font-semibold">{title}</div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="glass-panel-strong w-full max-w-lg p-5 text-white shadow-[0_0_28px_rgba(140,235,255,0.12),0_20px_45px_rgba(3,10,28,0.46)]">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-lg font-semibold text-white">{title}</div>
           <button
             onClick={onClose}
             type="button"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm hover:bg-slate-50"
+            className="btn-secondary px-3 py-1 text-sm"
+            title="Close note modal"
+            aria-label="Close note modal"
           >
             Close
           </button>
         </div>
 
-        <p className="mt-2 text-sm text-slate-600">
-          Notes are personal (only you can see them). You cannot edit the campus calendar.
+        <p className="mt-2 text-sm text-white/72">
+          Notes are personal. Only you can see them. You cannot edit the campus
+          calendar.
         </p>
 
-        {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <div className="error-banner mt-4">{error}</div>}
 
         <form onSubmit={submit} className="mt-4 space-y-3">
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={4}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-600"
-            placeholder="Write your note…"
-          />
+          <div>
+            <label
+              htmlFor="student-note-body"
+              className="block text-sm text-white/82"
+            >
+              Note
+            </label>
+            <textarea
+              id="student-note-body"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={4}
+              className="input-glass mt-2"
+              placeholder="Write your note..."
+              aria-label="Student note"
+              title="Student note"
+            />
+          </div>
 
           <button
             disabled={busy}
             type="submit"
-            className="w-full rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            className="btn-primary w-full"
+            title="Save note"
+            aria-label="Save note"
           >
-            {busy ? "Saving…" : "Save note"}
+            {busy ? "Saving..." : "Save note"}
           </button>
         </form>
       </div>

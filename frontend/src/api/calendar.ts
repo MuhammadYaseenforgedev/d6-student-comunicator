@@ -9,6 +9,8 @@ export type CalendarEntry = {
   startsAt: string;
   endsAt: string;
   createdAt: string;
+  channelId?: string | null;
+  source?: "CALENDAR_ENTRY" | "CHANNEL_EVENT" | null;
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -29,10 +31,13 @@ function unwrapList<T>(data: unknown): T[] {
  * For others: omit childId (backend ignores it anyway for non-parent)
  */
 export async function listCalendar(params?: {
+  date?: string;
   limit?: number;
   childId?: string;
 }): Promise<CalendarEntry[]> {
   const qs = new URLSearchParams();
+
+  if (params?.date) qs.set("date", params.date);
 
   const limit = params?.limit ?? 100;
   qs.set("limit", String(limit));

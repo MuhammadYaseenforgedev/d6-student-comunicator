@@ -1,21 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
-import { requireAuth } from "./auth";
-
-export type Role = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
-
-export type AuthUser = {
-  id: string;
-  role: Role;
-  email: string;
-};
-
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthUser;
-    }
-  }
-}
+import { requireAuth, type Role } from "./auth";
+import { hasAdminScope, type AdminScope } from "../lib/adminAccess";
 
 /**
  * Role guard.
@@ -25,8 +10,17 @@ declare global {
  *   router.post("/x", requireRole("ADMIN"), handler)
  */
 export function requireRole(...allowed: Role[]) {
+  return requireAccess({ roles: allowed });
+}
+
+export function requireAccess(input: {
+  roles?: Role[];
+  adminScopes?: readonly AdminScope[];
+}) {
   // First run JWT auth, then check role
   const auth = requireAuth;
+  const allowedRoles = [...(input.roles ?? [])];
+  const allowedAdminScopes = [...(input.adminScopes ?? [])];
 
   return (req: Request, res: Response, next: NextFunction) => {
     auth(req, res, (err?: any) => {
@@ -36,7 +30,14 @@ export function requireRole(...allowed: Role[]) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      if (!allowed.includes(req.user.role)) {
+      if (req.user.role === "ADMIN" && allowedAdminScopes.length > 0) {
+        if (!hasAdminScope(req.user, allowedAdminScopes)) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+        return next();
+      }
+
+      if (!allowedRoles.includes(req.user.role)) {
         return res.status(403).json({ error: "Forbidden" });
       }
 

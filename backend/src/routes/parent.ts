@@ -1,8 +1,12 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { pool } from "../config/db";
-import { requireRole } from "../middleware/rbac";
+import { requireAccess, requireRole } from "../middleware/rbac";
 import { repos } from "../persistence";
+import {
+  createParentLinkDecisionNotification,
+  createResultNotifications,
+} from "../lib/notifications";
 
 export const parentRouter = Router();
 
@@ -106,6 +110,26 @@ async function listAssessmentResultsForStudent(studentId: string): Promise<Asses
   return r.rows;
 }
 
+async function getStudentResultLabel(studentId: string): Promise<string> {
+  const result = await pool.query<{ public_student_id: string | null; email: string }>(
+    `
+      SELECT public_student_id, email
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [studentId]
+  );
+
+  const row = result.rows[0];
+  if (!row) return studentId;
+
+  const publicStudentId = String(row.public_student_id ?? "").trim();
+  if (publicStudentId) return publicStudentId;
+
+  return row.email;
+}
+
 function buildResultsCsv(childId: string, rows: AssessmentResultRow[]): string {
   const generatedAt = new Date().toISOString();
   const lines: string[] = [
@@ -132,12 +156,27 @@ function buildResultsCsv(childId: string, rows: AssessmentResultRow[]): string {
 
 /**
  * Resolves a student by either:
+ * - user id (UUID)
  * - student number/public student ID
  * - email (legacy fallback)
  *
  * Returns the student's user id or null.
  */
 async function resolveStudentUserId(childId: string): Promise<string | null> {
+  if (isUuid(childId)) {
+    const byId = await pool.query<{ id: string }>(
+      `
+        SELECT id
+        FROM users
+        WHERE role = 'STUDENT'
+          AND id = $1
+        LIMIT 1
+      `,
+      [childId]
+    );
+    if ((byId.rowCount ?? 0) > 0) return byId.rows[0].id;
+  }
+
   const q = `
     SELECT id
     FROM users
@@ -310,7 +349,10 @@ parentRouter.get("/parent/link-requests", requireRole("PARENT"), async (req, res
  * POST /api/admin/parent/link-requests/:id/decide
  * Body: { decision: "APPROVED" | "REJECTED" }
  */
-parentRouter.post("/admin/parent/link-requests/:id/decide", requireRole("ADMIN"), async (req, res) => {
+parentRouter.post(
+  "/admin/parent/link-requests/:id/decide",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const adminId = req.user!.id;
     const { id } = req.params as { id: string };
@@ -363,6 +405,15 @@ parentRouter.post("/admin/parent/link-requests/:id/decide", requireRole("ADMIN")
       );
     }
 
+    await createParentLinkDecisionNotification({
+      requestId: id,
+      parentId: row.parent_user_id,
+      studentId: row.student_user_id,
+      decision: decision as "APPROVED" | "REJECTED",
+    }).catch((e) => {
+      console.error("[parent] parent-link notification fan-out failed", e);
+    });
+
     return res.json({ ok: true, status: decision });
   } catch (e: any) {
     console.error("[parent] POST /admin/parent/link-requests/:id/decide error", e);
@@ -377,13 +428,13 @@ parentRouter.post("/admin/parent/link-requests/:id/decide", requireRole("ADMIN")
  */
 
 // GET /api/parent/children
-parentRouter.get("/parent/children", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/children", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
 
     const q = `
       SELECT
-        u.id,
+        u.id AS "studentUserId",
         u.email,
         u.public_student_id
       FROM parent_links pl
@@ -391,10 +442,15 @@ parentRouter.get("/parent/children", requireRole("PARENT"), async (req, res) => 
       WHERE pl.parent_user_id = $1
       ORDER BY lower(u.email) ASC
     `;
-    const r = await pool.query<{ id: string; email: string; public_student_id: string | null }>(q, [parentId]);
+    const r = await pool.query<{ studentUserId: string; email: string; public_student_id: string | null }>(q, [
+      parentId,
+    ]);
 
     const children = r.rows.map((x) => ({
-      id: x.id,
+      id: x.studentUserId,
+      userId: x.studentUserId,
+      childUserId: x.studentUserId,
+      studentUserId: x.studentUserId,
       email: x.email,
       role: "STUDENT" as const,
       publicStudentId: x.public_student_id,
@@ -408,16 +464,35 @@ parentRouter.get("/parent/children", requireRole("PARENT"), async (req, res) => 
 });
 
 // POST /api/parent/children { southAfricanId }
-parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) => {
+parentRouter.post("/children", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
 
-    const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId ?? req.body?.childId);
-    if (!southAfricanId || !isValidSouthAfricanId(southAfricanId)) {
-      return err(res, 400, "VALIDATION", "southAfricanId is required and must be exactly 13 digits");
+    const rawIdentifier = String(
+      req.body?.childId ??
+        req.body?.studentNumber ??
+        req.body?.publicStudentId ??
+        req.body?.southAfricanId ??
+        ""
+    ).trim();
+    if (!rawIdentifier) {
+      return err(
+        res,
+        400,
+        "VALIDATION",
+        "childId is required (student number/public student ID or South African ID)"
+      );
     }
 
-    const studentId = await resolveStudentUserIdBySouthAfricanId(southAfricanId);
+    const southAfricanId = normalizeSouthAfricanId(rawIdentifier);
+
+    let studentId: string | null = null;
+    if (isValidSouthAfricanId(southAfricanId)) {
+      studentId = await resolveStudentUserIdBySouthAfricanId(southAfricanId);
+    }
+    if (!studentId) {
+      studentId = await resolveStudentUserId(rawIdentifier);
+    }
     if (!studentId) return err(res, 404, "NOT_FOUND", "Student not found");
 
     // If parent cannot link directly, create a pending request instead
@@ -437,8 +512,8 @@ parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) =>
         created: false,
         pending: true,
         message: "Link request submitted. Await admin approval.",
-        childId: southAfricanId,
-        southAfricanId,
+        childId: rawIdentifier,
+        southAfricanId: isValidSouthAfricanId(southAfricanId) ? southAfricanId : null,
       });
     }
 
@@ -456,11 +531,15 @@ parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) =>
       [studentId]
     );
     const student = s.rows[0];
+    if (!student) return err(res, 404, "NOT_FOUND", "Student not found");
 
     return res.status(created ? 201 : 200).json({
       created,
       child: {
         id: student.id,
+        userId: student.id,
+        childUserId: student.id,
+        studentUserId: student.id,
         email: student.email,
         role: "STUDENT" as const,
         publicStudentId: student.public_student_id,
@@ -473,7 +552,7 @@ parentRouter.post("/parent/children", requireRole("PARENT"), async (req, res) =>
 });
 
 // DELETE /api/parent/children/:studentId
-parentRouter.delete("/parent/children/:studentId", requireRole("PARENT"), async (req, res) => {
+parentRouter.delete("/children/:studentId", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const studentId = String(req.params.studentId ?? "").trim();
@@ -504,9 +583,52 @@ parentRouter.delete("/parent/children/:studentId", requireRole("PARENT"), async 
  * -------------------------
  * RESULTS (Option A)
  * -------------------------
+ * GET /api/parent/student/results
+ */
+parentRouter.get("/student/results", requireRole("STUDENT"), async (req, res) => {
+  try {
+    const rows = await listAssessmentResultsForStudent(req.user!.id);
+    return res.json(rows);
+  } catch (e: any) {
+    console.error("[parent] GET /student/results error", e);
+    return err(res, 500, "INTERNAL", "Failed to load results");
+  }
+  }
+);
+
+/**
+ * GET /api/parent/student/results/download
+ * Download the signed-in student's own results.
+ */
+parentRouter.get("/student/results/download", requireRole("STUDENT"), async (req, res) => {
+  try {
+    const studentId = req.user!.id;
+    const childId = await getStudentResultLabel(studentId);
+    const rows = await listAssessmentResultsForStudent(studentId);
+    const csv = buildResultsCsv(childId, rows);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const safeChildId = childId.replace(/[^a-z0-9._-]+/gi, "_");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="results-${safeChildId || "student"}-${dateStamp}.csv"`
+    );
+
+    return res.status(200).send(csv);
+  } catch (e: any) {
+    console.error("[parent] GET /student/results/download error", e);
+    return err(res, 500, "INTERNAL", "Failed to download results");
+  }
+});
+
+/**
+ * -------------------------
+ * RESULTS (Parent)
+ * -------------------------
  * GET /api/parent/results?childId=STU-1001
  */
-parentRouter.get("/parent/results", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/results", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const childId = String(req.query.childId ?? "").trim();
@@ -522,7 +644,7 @@ parentRouter.get("/parent/results", requireRole("PARENT"), async (req, res) => {
     const rows = await listAssessmentResultsForStudent(studentId);
     return res.json(rows);
   } catch (e: any) {
-    console.error("[parent] GET /parent/results error", e);
+    console.error("[parent] GET /results error", e);
     return err(res, 500, "INTERNAL", "Failed to load results");
   }
 });
@@ -531,7 +653,10 @@ parentRouter.get("/parent/results", requireRole("PARENT"), async (req, res) => {
  * ADMIN: list link requests (queue)
  * GET /api/admin/parent/link-requests?status=PENDING|APPROVED|REJECTED|ALL
  */
-parentRouter.get("/admin/parent/link-requests", requireRole("ADMIN"), async (req, res) => {
+parentRouter.get(
+  "/admin/parent/link-requests",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const statusRaw = String(req.query.status ?? "PENDING").trim().toUpperCase();
     const valid = new Set(["PENDING", "APPROVED", "REJECTED", "ALL"]);
@@ -593,13 +718,14 @@ parentRouter.get("/admin/parent/link-requests", requireRole("ADMIN"), async (req
     console.error("[parent] GET /admin/parent/link-requests error", e);
     return err(res, 500, "INTERNAL", "Failed to list link requests");
   }
-});
+  }
+);
 
 /**
  * GET /api/parent/results/download?childId=STU-1001
  * Download linked student's results (parent only).
  */
-parentRouter.get("/parent/results/download", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/results/download", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const childId = String(req.query.childId ?? "").trim();
@@ -624,8 +750,84 @@ parentRouter.get("/parent/results/download", requireRole("PARENT"), async (req, 
 
     return res.status(200).send(csv);
   } catch (e: any) {
-    console.error("[parent] GET /parent/results/download error", e);
+    console.error("[parent] GET /results/download error", e);
     return err(res, 500, "INTERNAL", "Failed to download results");
+  }
+});
+
+/**
+ * GET /api/parent/attendance?childId=<uuid>&from=YYYY-MM-DD&to=YYYY-MM-DD
+ */
+parentRouter.get("/attendance", requireRole("PARENT"), async (req, res) => {
+  try {
+    const parentId = req.user!.id;
+    const childId = String(req.query.childId ?? "").trim();
+    if (!childId) return err(res, 400, "VALIDATION", "childId query param is required");
+
+    const from = req.query.from ? parseDateOnly(req.query.from) : null;
+    const to = req.query.to ? parseDateOnly(req.query.to) : null;
+    if (req.query.from && !from) return err(res, 400, "VALIDATION", "from must be YYYY-MM-DD");
+    if (req.query.to && !to) return err(res, 400, "VALIDATION", "to must be YYYY-MM-DD");
+
+    const studentId = await resolveStudentUserId(childId);
+    if (!studentId) return err(res, 404, "NOT_FOUND", "Student not found");
+
+    const linked = await parentHasApprovedLink(parentId, studentId);
+    if (!linked) return err(res, 403, "FORBIDDEN", "Parent is not linked to this student");
+
+    const rows = await pool.query<{
+      session_id: string;
+      attendance_date: string;
+      starts_at: string | null;
+      ends_at: string | null;
+      module_id: string;
+      module_code: string;
+      module_name: string;
+      faculty_name: string;
+      status: string;
+      marked_at: string;
+    }>(
+      `
+        SELECT
+          s.id AS session_id,
+          s.attendance_date,
+          s.starts_at,
+          s.ends_at,
+          fm.id AS module_id,
+          fm.code AS module_code,
+          fm.name AS module_name,
+          f.name AS faculty_name,
+          ar.status,
+          ar.marked_at
+        FROM attendance_records ar
+        JOIN attendance_sessions s ON s.id = ar.session_id
+        JOIN faculty_modules fm ON fm.id = s.module_id
+        JOIN faculties f ON f.id = fm.faculty_id
+        WHERE ar.student_id = $1
+          AND ($2::date IS NULL OR s.attendance_date >= $2::date)
+          AND ($3::date IS NULL OR s.attendance_date <= $3::date)
+        ORDER BY s.attendance_date DESC, ar.marked_at DESC
+      `,
+      [studentId, from, to]
+    );
+
+    const value = rows.rows.map((r) => ({
+      sessionId: r.session_id,
+      date: r.attendance_date,
+      startsAt: r.starts_at,
+      endsAt: r.ends_at,
+      moduleId: r.module_id,
+      moduleCode: r.module_code,
+      moduleName: r.module_name,
+      facultyName: r.faculty_name,
+      status: r.status,
+      markedAt: r.marked_at,
+    }));
+
+    return res.json({ value, count: value.length });
+  } catch (e: any) {
+    console.error("[parent] GET /attendance error", e);
+    return err(res, 500, "INTERNAL", "Failed to load attendance");
   }
 });
 
@@ -636,7 +838,10 @@ parentRouter.get("/parent/results/download", requireRole("PARENT"), async (req, 
  */
 
 // GET /api/parent/admin/results?childId=STU-1001
-parentRouter.get("/admin/results", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.get(
+  "/admin/results",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const childId = String(req.query.childId ?? "").trim();
     if (!childId) return err(res, 400, "VALIDATION", "childId query param is required");
@@ -650,10 +855,14 @@ parentRouter.get("/admin/results", requireRole("ADMIN", "LECTURER"), async (req,
     console.error("[parent] GET /admin/results error", e);
     return err(res, 500, "INTERNAL", "Failed to load results");
   }
-});
+  }
+);
 
 // GET /api/parent/admin/results/download?childId=STU-1001
-parentRouter.get("/admin/results/download", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.get(
+  "/admin/results/download",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const childId = String(req.query.childId ?? "").trim();
     if (!childId) return err(res, 400, "VALIDATION", "childId query param is required");
@@ -677,7 +886,8 @@ parentRouter.get("/admin/results/download", requireRole("ADMIN", "LECTURER"), as
     console.error("[parent] GET /admin/results/download error", e);
     return err(res, 500, "INTERNAL", "Failed to download results");
   }
-});
+  }
+);
 
 /**
  * POST /api/parent/admin/results/cleanup-demo
@@ -687,7 +897,10 @@ parentRouter.get("/admin/results/download", requireRole("ADMIN", "LECTURER"), as
  * and only for the selected children.
  * `dryRun` defaults to true for safety.
  */
-parentRouter.post("/admin/results/cleanup-demo", requireRole("ADMIN"), async (req, res) => {
+parentRouter.post(
+  "/admin/results/cleanup-demo",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const rawChildIds: unknown[] = Array.isArray(req.body?.childIds) ? req.body.childIds : [];
     const childIds: string[] = rawChildIds
@@ -802,11 +1015,15 @@ parentRouter.post("/admin/results/cleanup-demo", requireRole("ADMIN"), async (re
     console.error("[parent] POST /admin/results/cleanup-demo error", e);
     return err(res, 500, "INTERNAL", "Failed to cleanup demo results");
   }
-});
+  }
+);
 
 // POST /api/parent/admin/results
 // Body: { childId, subject, score, outOf?, date? }
-parentRouter.post("/admin/results", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.post(
+  "/admin/results",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const childId = String(req.body?.childId ?? "").trim();
     const subject = String(req.body?.subject ?? "").trim();
@@ -843,16 +1060,32 @@ parentRouter.post("/admin/results", requireRole("ADMIN", "LECTURER"), async (req
       [newId(), studentId, subject, score, outOf, date]
     );
 
+    await createResultNotifications({
+      resultId: created.rows[0].id,
+      studentId,
+      subject: created.rows[0].subject,
+      score: created.rows[0].score,
+      outOf: created.rows[0].outOf,
+      date: created.rows[0].date,
+      action: "PUBLISHED",
+    }).catch((e) => {
+      console.error("[parent] result notification fan-out failed", e);
+    });
+
     return res.status(201).json(created.rows[0]);
   } catch (e: any) {
     console.error("[parent] POST /admin/results error", e);
     return err(res, 500, "INTERNAL", "Failed to create result");
   }
-});
+  }
+);
 
 // POST /api/parent/admin/results/:id/update
 // Body: { subject?, score?, outOf?, date? }
-parentRouter.post("/admin/results/:id/update", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.post(
+  "/admin/results/:id/update",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const id = String(req.params.id ?? "").trim();
     if (!isUuid(id)) return err(res, 400, "VALIDATION", "id must be a UUID");
@@ -866,8 +1099,19 @@ parentRouter.post("/admin/results/:id/update", requireRole("ADMIN", "LECTURER"),
       return err(res, 400, "VALIDATION", "Provide at least one field: subject, score, outOf, date");
     }
 
-    const current = await pool.query<{ score: number; out_of: number }>(
-      `SELECT score, out_of FROM assessment_results WHERE id = $1 LIMIT 1`,
+    const current = await pool.query<{
+      student_user_id: string;
+      subject: string;
+      score: number;
+      out_of: number;
+      assessed_at: string;
+    }>(
+      `
+        SELECT student_user_id, subject, score, out_of, assessed_at
+        FROM assessment_results
+        WHERE id = $1
+        LIMIT 1
+      `,
       [id]
     );
     if ((current.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Result not found");
@@ -917,15 +1161,32 @@ parentRouter.post("/admin/results/:id/update", requireRole("ADMIN", "LECTURER"),
       [id, subject, score, outOf, date]
     );
 
-    return res.json(updated.rows[0]);
+    const updatedRow = updated.rows[0];
+    await createResultNotifications({
+      resultId: updatedRow.id,
+      studentId: currentRow.student_user_id,
+      subject: updatedRow.subject,
+      score: updatedRow.score,
+      outOf: updatedRow.outOf,
+      date: updatedRow.date,
+      action: "UPDATED",
+    }).catch((e) => {
+      console.error("[parent] result update notification fan-out failed", e);
+    });
+
+    return res.json(updatedRow);
   } catch (e: any) {
     console.error("[parent] POST /admin/results/:id/update error", e);
     return err(res, 500, "INTERNAL", "Failed to update result");
   }
-});
+  }
+);
 
 // DELETE /api/parent/admin/results/:id
-parentRouter.delete("/admin/results/:id", requireRole("ADMIN", "LECTURER"), async (req, res) => {
+parentRouter.delete(
+  "/admin/results/:id",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const id = String(req.params.id ?? "").trim();
     if (!isUuid(id)) return err(res, 400, "VALIDATION", "id must be a UUID");
@@ -938,7 +1199,8 @@ parentRouter.delete("/admin/results/:id", requireRole("ADMIN", "LECTURER"), asyn
     console.error("[parent] DELETE /admin/results/:id error", e);
     return err(res, 500, "INTERNAL", "Failed to delete result");
   }
-});
+  }
+);
 
 /**
  * -------------------------
@@ -951,7 +1213,7 @@ parentRouter.delete("/admin/results/:id", requireRole("ADMIN", "LECTURER"), asyn
  * - getSummary(userId)
  * - listTransactions(userId, opts)
  */
-parentRouter.get("/parent/finance", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/finance", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const childId = String(req.query.childId ?? "").trim();
@@ -966,50 +1228,83 @@ parentRouter.get("/parent/finance", requireRole("PARENT"), async (req, res) => {
     // Make sure finance account exists for the student
     await repos.finance.ensureAccount(studentId);
 
-    const summary = await repos.finance.getSummary(studentId);
-    const tx = await repos.finance.listTransactions(studentId, { limit: 50 });
+    const [summary, tx, financeDocuments, financeNotifications] = await Promise.all([
+      repos.finance.getSummary(studentId),
+      repos.finance.listTransactions(studentId, { limit: 50 }),
+      repos.finance.listDocuments(studentId, { limit: 25 }),
+      repos.finance.listNotifications(studentId, { limit: 25 }),
+    ]);
 
     // Heuristic: last payment is typically a negative amount (money received)
     const lastPayment = tx.find((t) => t.amountCents < 0) ?? null;
 
     const balance = summary.balanceCents / 100;
-    const status = summary.balanceCents > 0 ? "OVERDUE" : "OK";
+    const status = summary.accountStatus;
 
     const notifications =
-      status === "OVERDUE"
-        ? [
-            {
-              id: "overdue",
-              title: "Account overdue",
-              body: `Outstanding balance: R ${balance.toFixed(2)}`,
-              severity: "warning",
-            },
-          ]
-        : [{ id: "ok", title: "Account up to date", body: "No outstanding balance.", severity: "info" }];
+      financeNotifications.length > 0
+        ? financeNotifications.map((entry) => ({
+            id: entry.id,
+            title: entry.title,
+            body: entry.body,
+            severity: entry.severity.toLowerCase(),
+            createdAt: entry.createdAt,
+          }))
+        : status === "OVERDUE"
+          ? [
+              {
+                id: "overdue",
+                title: "Account overdue",
+                body: `Outstanding balance: R ${balance.toFixed(2)}`,
+                severity: "warning",
+              },
+            ]
+          : [{ id: "ok", title: "Account up to date", body: "No outstanding balance.", severity: "info" }];
 
-    const statementsCount = tx.filter((t) => /statement/i.test(t.description)).length;
+    const statementsCount =
+      financeDocuments.filter((entry) => entry.type === "STATEMENT").length +
+      tx.filter((t) => /statement/i.test(t.description)).length;
+
+    const documents = [
+      ...financeDocuments.map((entry) => ({
+        id: entry.id,
+        kind: entry.type,
+        type: entry.type,
+        title: entry.title,
+        amount: entry.amountCents == null ? 0 : entry.amountCents / 100,
+        occurredAt: entry.issuedAt,
+        description: entry.description ?? null,
+        documentUrl: entry.documentUrl ?? null,
+      })),
+      ...tx.slice(0, 12).map((t) => {
+        const kind = /statement/i.test(t.description) ? "STATEMENT" : "TRANSACTION";
+        return {
+          id: t.id,
+          kind,
+          type: kind,
+          title: kind === "STATEMENT" ? "Statement transaction" : "Finance transaction",
+          amount: t.amountCents / 100,
+          occurredAt: t.occurredAt,
+          description: t.description ?? null,
+          documentUrl: null,
+        };
+      }),
+    ]
+      .sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt)))
+      .slice(0, 20);
 
     return res.json({
       balance,
       statements: statementsCount,
       lastPayment: lastPayment?.occurredAt ?? null,
       status,
-      documents: tx.slice(0, 12).map((t) => {
-        const kind = /statement/i.test(t.description) ? "STATEMENT" : "TRANSACTION";
-        return {
-          id: t.id,
-          // frontend may be expecting "type", so we provide it too
-          kind,
-          type: kind,
-          amount: t.amountCents / 100,
-          occurredAt: t.occurredAt,
-          description: t.description ?? null,
-        };
-      }),
+      statusNote: summary.statusNote,
+      currency: summary.currency,
+      documents,
       notifications,
     });
   } catch (e: any) {
-    console.error("[parent] GET /parent/finance error", e);
+    console.error("[parent] GET /finance error", e);
     return err(res, 500, "INTERNAL", "Failed to load finance");
   }
 });
@@ -1020,7 +1315,7 @@ parentRouter.get("/parent/finance", requireRole("PARENT"), async (req, res) => {
  * -------------------------
  * GET /api/parent/finance/statement?childId=STU-1001
  */
-parentRouter.get("/parent/finance/statement", requireRole("PARENT"), async (req, res) => {
+parentRouter.get("/finance/statement", requireRole("PARENT"), async (req, res) => {
   try {
     const parentId = req.user!.id;
     const childId = String(req.query.childId ?? "").trim();
@@ -1069,7 +1364,7 @@ parentRouter.get("/parent/finance/statement", requireRole("PARENT"), async (req,
 
     return res.status(200).send(csv);
   } catch (e: any) {
-    console.error("[parent] GET /parent/finance/statement error", e);
+    console.error("[parent] GET /finance/statement error", e);
     return err(res, 500, "INTERNAL", "Failed to download finance statement");
   }
 });

@@ -1,13 +1,15 @@
-const env = (import.meta as { env?: { VITE_API_BASE_URL?: string; VITE_API_URL?: string } }).env;
-const baseFromApi = (env?.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
-if (import.meta.env.PROD && !baseFromApi) {
-  throw new Error("VITE_API_URL is required for production builds.");
+const env = (import.meta as { env?: { VITE_API_URL?: string } }).env;
+const apiOrigin = (env?.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
+export const API_CONFIG_ERROR = !apiOrigin
+  ? "VITE_API_URL is missing. Set it to your backend origin (for example: https://d6-student-comunicator.onrender.com)."
+  : null;
+
+export const API_BASE = API_CONFIG_ERROR ? "" : `${apiOrigin}/api`;
+
+function requireApiBase(): string {
+  if (API_CONFIG_ERROR) throw new Error(API_CONFIG_ERROR);
+  return API_BASE;
 }
-
-const baseFromDirect = (env?.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
-const apiOrigin = import.meta.env.PROD ? baseFromApi : baseFromApi || baseFromDirect;
-
-export const API_BASE = apiOrigin ? `${apiOrigin}/api` : "/api";
 
 function isJsonResponse(res: Response) {
   const contentType = res.headers.get("content-type") ?? "";
@@ -15,7 +17,7 @@ function isJsonResponse(res: Response) {
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${requireApiBase()}${path}`, {
     ...options,
     headers: {
       ...(options.headers ?? {}),
