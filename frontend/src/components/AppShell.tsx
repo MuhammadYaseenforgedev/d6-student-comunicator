@@ -15,7 +15,12 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { clearAuth, getUser, setDevBypass } from "../lib/auth";
-import { adminScopeLabel, isAcademicOrSuperAdmin, isFinanceAdmin, isSuperAdmin } from "../lib/adminAccess";
+import {
+  adminScopeLabel,
+  isAcademicOrSuperAdmin,
+  isFinanceAdmin,
+  isSuperAdmin,
+} from "../lib/adminAccess";
 import AppErrorBoundary from "./AppErrorBoundary";
 import { fetchMeProfile, type MeProfile } from "../lib/authService";
 import AnimatedForgeLogo from "./AnimatedForgeLogo";
@@ -38,7 +43,7 @@ function BurgerButton({
       type="button"
       onClick={onClick}
       aria-label={open ? "Close navigation menu" : "Open navigation menu"}
-      aria-expanded={open}
+      aria-expanded={open ? "true" : "false"}
       className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#8CEBFF]/20 bg-[rgba(9,23,54,0.72)] text-white/90 backdrop-blur-xl transition hover:border-[#8CEBFF]/40 hover:text-[#8CEBFF]"
     >
       <span className="relative block h-4 w-5">
@@ -111,7 +116,11 @@ export default function AppShell() {
 
   const calendarTo =
     user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
-  const homeTo = isParent ? "/app/parent" : financeAdmin ? "/app/admin/finance" : "/app";
+  const homeTo = isParent
+    ? "/app/parent"
+    : financeAdmin
+      ? "/app/admin/finance"
+      : "/app";
   const homeLabel = isParent ? "Parent Portal" : "Home";
 
   const userId = user?.id ?? "";
@@ -191,15 +200,15 @@ export default function AppShell() {
   const financeBadge = Number(counts.FINANCE ?? 0);
   const parentLinkBadge = Number(counts.PARENT_LINK ?? 0);
 
+  function closeMobileMenu() {
+    setMobileMenuOpen(false);
+  }
+
   function logout() {
     clearAuth();
     setDevBypass(false);
     closeMobileMenu();
     navigate("/login", { replace: true });
-  }
-
-  function closeMobileMenu() {
-    setMobileMenuOpen(false);
   }
 
   const sidebarContent = (
@@ -218,7 +227,12 @@ export default function AppShell() {
         <div className="mt-6 space-y-1.5">
           {!financeAdmin && (
             <>
-              <Item to={homeTo} label={homeLabel} onNavigate={closeMobileMenu} end />
+              <Item
+                to={homeTo}
+                label={homeLabel}
+                onNavigate={closeMobileMenu}
+                end
+              />
               <Item
                 to="/app/notifications"
                 label="Notifications"
@@ -271,12 +285,12 @@ export default function AppShell() {
                 badge={attendanceBadge}
                 onNavigate={closeMobileMenu}
               />
-                <Item
-                  to="/app/parent/children"
-                  label="Children"
-                  badge={parentLinkBadge}
-                  onNavigate={closeMobileMenu}
-                />
+              <Item
+                to="/app/parent/children"
+                label="Children"
+                badge={parentLinkBadge}
+                onNavigate={closeMobileMenu}
+              />
               <Item
                 to="/app/uploads"
                 label="Uploads"
@@ -431,8 +445,8 @@ export default function AppShell() {
   );
 
   return (
-    <div className="min-h-[calc(100dvh-220px)]">
-      <div className="mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4 lg:px-4 lg:py-6">
+    <div className="min-h-[calc(100dvh-180px)]">
+      <div className="w-full px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6 xl:px-8 2xl:px-10">
         <div className="mb-3 lg:hidden">
           <div className="glass-panel-premium relative overflow-hidden px-3 py-3">
             <div className="pointer-events-none absolute inset-0 opacity-100">
@@ -460,19 +474,19 @@ export default function AppShell() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[290px_minmax(0,1fr)] lg:gap-5">
-          <aside className="glass-panel-premium relative hidden overflow-hidden p-4 lg:block">
+        <div className="desktop-app-frame grid grid-cols-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="glass-panel-premium relative hidden overflow-hidden p-4 lg:block lg:min-h-[calc(100dvh-130px)]">
             {sidebarContent}
           </aside>
 
-          <main className="glass-panel relative min-w-0 overflow-x-hidden">
+          <main className="glass-panel relative min-w-0 overflow-x-hidden lg:min-h-[calc(100dvh-130px)]">
             <div className="pointer-events-none absolute inset-0 opacity-100">
               <div className="absolute left-0 top-0 h-36 w-36 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
               <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/40 to-transparent" />
             </div>
 
-            <div className="relative min-w-0 p-3 sm:p-4 lg:p-6">
+            <div className="relative min-w-0 p-3 sm:p-4 lg:p-6 xl:p-7">
               <AppErrorBoundary>
                 <Outlet />
               </AppErrorBoundary>
@@ -493,7 +507,7 @@ export default function AppShell() {
           "fixed inset-y-0 left-0 z-50 h-dvh w-[88vw] max-w-[340px] border-r border-[#8CEBFF]/10 bg-[rgba(5,12,30,0.96)] p-4 shadow-2xl backdrop-blur-2xl transition-transform duration-300 lg:hidden",
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
-        aria-hidden={!mobileMenuOpen}
+        aria-hidden={mobileMenuOpen ? "false" : "true"}
       >
         <div className="glass-panel-premium relative h-full overflow-y-auto overflow-x-hidden p-4">
           {sidebarContent}

@@ -40,10 +40,10 @@ function headingToneClass(tone: HeaderTone): string {
   }
 
   if (tone === "general") {
-    return "text-[#8CEBFF]";
+    return "page-heading-gradient";
   }
 
-  return "bg-gradient-to-r from-[#8CEBFF] via-[#8C5BFF] to-[#FF5EDB] bg-clip-text text-transparent";
+  return "page-heading-gradient";
 }
 
 export default function PageHeader({

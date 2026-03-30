@@ -44,6 +44,41 @@ function summarizeModules(modules: CourseModule[], limit = 3): string {
   return `${visible.join(", ")} +${modules.length - limit} more`;
 }
 
+function getStatusTone(status: string | null | undefined): string {
+  const normalized = status?.trim().toUpperCase();
+
+  if (normalized === "ACTIVE") {
+    return "border-[rgba(140,235,255,0.32)] bg-[rgba(8,18,48,0.82)] text-[#8CEBFF] shadow-[0_0_14px_rgba(140,235,255,0.34)]";
+  }
+
+  if (normalized === "INACTIVE" || normalized === "ARCHIVED") {
+    return "border-[rgba(255,94,130,0.30)] bg-[rgba(74,10,31,0.62)] text-[#ff8ea8] shadow-[0_0_14px_rgba(255,94,130,0.28)]";
+  }
+
+  return "border-[rgba(255,255,255,0.24)] bg-[rgba(255,255,255,0.06)] text-white shadow-[0_0_10px_rgba(255,255,255,0.14)]";
+}
+
+function StatusBadge({
+  status,
+  fallback = "NONE",
+}: {
+  status?: string | null;
+  fallback?: string;
+}) {
+  const label = status?.trim() ? status.trim().toUpperCase() : fallback;
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] transition",
+        getStatusTone(label),
+      ].join(" ")}
+    >
+      {label}
+    </span>
+  );
+}
+
 function EmptyState({
   title,
   message,
@@ -87,8 +122,109 @@ function SummaryCard({
 }) {
   return (
     <div className="teal-glow-card p-4">
-      <div className="text-xs uppercase tracking-wide text-white/65">{label}</div>
+      <div className="text-xs uppercase tracking-[0.16em] text-white/60">{label}</div>
       <div className="mt-2 text-2xl font-bold text-white">{value}</div>
+    </div>
+  );
+}
+
+function SectionTitle({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div>
+      <div className="text-lg font-semibold text-white">{title}</div>
+      {subtitle ? <div className="mt-1 text-sm text-white/70">{subtitle}</div> : null}
+    </div>
+  );
+}
+
+function PremiumCourseCard({
+  course,
+  selected,
+  onClick,
+}: {
+  course: CourseRecord;
+  selected?: boolean;
+  onClick?: () => void;
+}) {
+  const statusLabel = course.isActive ? "ACTIVE" : "INACTIVE";
+
+  const content = (
+    <>
+      <div className="pointer-events-none absolute inset-0 opacity-100">
+        <div className="absolute -left-10 -top-10 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
+        <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/35 to-transparent" />
+      </div>
+
+      <div className="relative">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-lg font-semibold text-white">{course.name}</div>
+            <div className="mt-1 text-xs uppercase tracking-[0.16em] text-white/55">
+              {course.code}
+            </div>
+          </div>
+          <StatusBadge status={statusLabel} />
+        </div>
+
+        <div className="mt-4 text-sm leading-6 text-white/72">
+          {course.description?.trim() || "No course description has been added yet."}
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.12)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-xs text-white/70">
+          Modules: {summarizeModules(course.modules, 3)}
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Modules</div>
+            <div className="mt-1 text-base font-semibold text-white">
+              {course.summary.moduleCount}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Students</div>
+            <div className="mt-1 text-base font-semibold text-white">
+              {course.summary.studentCount}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Lecturers</div>
+            <div className="mt-1 text-base font-semibold text-white">
+              {course.summary.lecturerCount}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={[
+          "relative overflow-hidden rounded-3xl border p-5 text-left transition-all duration-200",
+          selected
+            ? "border-[rgba(140,235,255,0.34)] bg-[rgba(15,37,88,0.82)] shadow-[0_0_0_1px_rgba(140,235,255,0.18)_inset,0_0_22px_rgba(140,235,255,0.14)]"
+            : "border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] hover:border-[rgba(140,235,255,0.28)] hover:shadow-[0_0_18px_rgba(140,235,255,0.12)]",
+        ].join(" ")}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-5 shadow-[0_0_18px_rgba(140,235,255,0.10)]">
+      {content}
     </div>
   );
 }
@@ -146,7 +282,12 @@ function StudentCoursesView() {
           label="Assigned Lecturers"
           value={uniqueLecturerEmails(linkedModules).length}
         />
-        <SummaryCard label="Status" value={courses.length > 0 ? "Active" : "None"} />
+        <div className="teal-glow-card p-4">
+          <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
+          <div className="mt-3">
+            <StatusBadge status={courses.length > 0 ? "ACTIVE" : "NONE"} />
+          </div>
+        </div>
       </div>
 
       {loading ? (
@@ -163,38 +304,47 @@ function StudentCoursesView() {
             const lecturers = uniqueLecturerEmails(modules);
 
             return (
-              <div key={course.id} className="teal-glow-card p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+              <div
+                key={course.id}
+                className="relative overflow-hidden rounded-3xl border border-[rgba(140,235,255,0.20)] bg-[rgba(8,18,48,0.66)] p-5 shadow-[0_0_20px_rgba(140,235,255,0.10)]"
+              >
+                <div className="pointer-events-none absolute inset-0 opacity-100">
+                  <div className="absolute -left-10 -top-10 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
+                  <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
+                </div>
+
+                <div className="relative flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-lg font-semibold text-white">
-                      {course.name}
-                    </div>
+                    <div className="text-lg font-semibold text-white">{course.name}</div>
                     <div className="mt-1 text-sm text-white/65">
                       {course.code}
                       {index === 0 ? " | Primary course in your dashboard" : ""}
                     </div>
                   </div>
-                  <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/80">
-                    {course.enrollmentStatus ?? "ACTIVE"}
-                  </div>
+                  <StatusBadge status={course.enrollmentStatus ?? "ACTIVE"} />
                 </div>
 
-                <div className="mt-3 text-sm text-white/72">
+                <div className="relative mt-3 text-sm text-white/72">
                   {course.description?.trim() || "No course description has been added yet."}
                 </div>
 
-                <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="relative mt-4 grid grid-cols-3 gap-3">
                   <SummaryCard label="Modules" value={modules.length} />
                   <SummaryCard label="Lecturers" value={lecturers.length} />
-                  <SummaryCard label="Status" value={course.enrollmentStatus ?? "ACTIVE"} />
+                  <div className="teal-glow-card p-4">
+                    <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
+                    <div className="mt-3">
+                      <StatusBadge status={course.enrollmentStatus ?? "ACTIVE"} />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="mt-3 text-xs text-white/60">
+                <div className="relative mt-3 text-xs text-white/60">
                   Enrolled: {formatDate(course.enrolledAt)}
                 </div>
 
-                <div className="mt-5">
-                  <div className="text-sm font-semibold text-white">Linked modules</div>
+                <div className="relative mt-5">
+                  <SectionTitle title="Linked modules" />
                   <div className="mt-3 space-y-3">
                     {modules.length === 0 ? (
                       <EmptyState
@@ -269,33 +419,39 @@ function LecturerCoursesView() {
       ) : (
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           {courses.map((course) => (
-            <div key={course.id} className="teal-glow-card p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <div
+              key={course.id}
+              className="relative overflow-hidden rounded-3xl border border-[rgba(140,235,255,0.20)] bg-[rgba(8,18,48,0.66)] p-5 shadow-[0_0_20px_rgba(140,235,255,0.10)]"
+            >
+              <div className="pointer-events-none absolute inset-0 opacity-100">
+                <div className="absolute -left-10 -top-10 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
+                <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
+              </div>
+
+              <div className="relative flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-lg font-semibold text-white">{course.name}</div>
                   <div className="mt-1 text-sm text-white/65">{course.code}</div>
                 </div>
-                <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/80">
-                  {course.isActive ? "Active" : "Archived"}
-                </div>
+                <StatusBadge status={course.isActive ? "ACTIVE" : "INACTIVE"} />
               </div>
 
-              <div className="mt-3 text-sm text-white/72">
+              <div className="relative mt-3 text-sm text-white/72">
                 {course.description?.trim() || "No course description has been added yet."}
               </div>
 
-              <div className="mt-3 text-xs text-white/65">
+              <div className="relative mt-3 rounded-2xl border border-[rgba(140,235,255,0.12)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-xs text-white/65">
                 Linked modules: {summarizeModules(course.modules, 4)}
               </div>
 
-              <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="relative mt-4 grid grid-cols-3 gap-3">
                 <SummaryCard label="Modules" value={course.summary.moduleCount} />
                 <SummaryCard label="Students" value={course.summary.studentCount} />
                 <SummaryCard label="Lecturers" value={course.summary.lecturerCount} />
               </div>
 
-              <div className="mt-5">
-                <div className="text-sm font-semibold text-white">Modules in this course</div>
+              <div className="relative mt-5">
+                <SectionTitle title="Modules in this course" />
                 <div className="mt-3 space-y-3">
                   {course.modules.length === 0 ? (
                     <EmptyState
@@ -546,67 +702,40 @@ function AdminCoursesView() {
         <>
           <div className="teal-glow-card p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-lg font-semibold text-white">Course Catalog</div>
-                <div className="mt-1 text-sm text-white/72">
-                  Review each course and the modules currently linked to it before making changes.
-                </div>
-              </div>
-              <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/80">
+              <SectionTitle
+                title="Course Catalog"
+                subtitle="Review each course and the modules currently linked to it before making changes."
+              />
+              <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
                 {courses.length} course{courses.length === 1 ? "" : "s"}
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
               {courses.length === 0 ? (
                 <EmptyState
                   title="No courses yet"
                   message="Create the first course before assigning modules or students."
                 />
               ) : (
-                courses.map((course) => {
-                  const isSelected = course.id === selectedCourseId;
-                  return (
-                    <button
-                      key={course.id}
-                      type="button"
-                      onClick={() => setSelectedCourseId(course.id)}
-                      className={[
-                        "rounded-3xl border p-4 text-left transition",
-                        isSelected
-                          ? "border-[rgba(140,235,255,0.34)] bg-[rgba(15,37,88,0.82)] shadow-[0_0_0_1px_rgba(140,235,255,0.18)_inset]"
-                          : "border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] hover:border-[rgba(140,235,255,0.28)]",
-                      ].join(" ")}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="font-semibold text-white">{course.name}</div>
-                          <div className="mt-1 text-xs text-white/60">{course.code}</div>
-                        </div>
-                        <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/80">
-                          {course.isActive ? "Active" : "Archived"}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 text-xs text-white/72">
-                        Modules: {summarizeModules(course.modules, 3)}
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-white/60">
-                        <div>{course.summary.moduleCount} modules</div>
-                        <div>{course.summary.studentCount} students</div>
-                        <div>{course.summary.lecturerCount} lecturers</div>
-                      </div>
-                    </button>
-                  );
-                })
+                courses.map((course) => (
+                  <PremiumCourseCard
+                    key={course.id}
+                    course={course}
+                    selected={course.id === selectedCourseId}
+                    onClick={() => setSelectedCourseId(course.id)}
+                  />
+                ))
               )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_1fr]">
             <div className="teal-glow-card space-y-4 p-5">
-              <div className="text-lg font-semibold text-white">Create Course</div>
+              <SectionTitle
+                title="Create Course"
+                subtitle="Add a new course to the catalog before linking modules or students."
+              />
               <input
                 value={newCode}
                 onChange={(e) => setNewCode(e.target.value.toUpperCase())}
@@ -636,7 +765,10 @@ function AdminCoursesView() {
             </div>
 
             <div className="teal-glow-card space-y-4 p-5">
-              <div className="text-lg font-semibold text-white">Manage Course</div>
+              <SectionTitle
+                title="Manage Course"
+                subtitle="Update details, linked modules, and the current course state."
+              />
               {courses.length === 0 ? (
                 <EmptyState
                   title="No courses yet"
@@ -648,6 +780,8 @@ function AdminCoursesView() {
                     value={selectedCourseId}
                     onChange={(e) => setSelectedCourseId(e.target.value)}
                     className="select-glass"
+                    aria-label="Select course to manage"
+                    title="Select course to manage"
                   >
                     {courses.map((course) => (
                       <option key={course.id} value={course.id}>
@@ -655,6 +789,7 @@ function AdminCoursesView() {
                       </option>
                     ))}
                   </select>
+
                   <input
                     value={editCode}
                     onChange={(e) => setEditCode(e.target.value.toUpperCase())}
@@ -673,17 +808,22 @@ function AdminCoursesView() {
                     placeholder="Course description"
                     className="input-glass min-h-[120px]"
                   />
+
                   <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] p-3 text-sm text-white/72">
                     Linked modules: {summarizeModules(selectedCourse?.modules ?? [], 5)}
                   </div>
+
                   <select
                     value={editIsActive}
                     onChange={(e) => setEditIsActive(e.target.value)}
                     className="select-glass"
+                    aria-label="Set course status"
+                    title="Set course status"
                   >
                     <option value="true">Active</option>
                     <option value="false">Archived</option>
                   </select>
+
                   <button
                     type="button"
                     onClick={() => void onSaveCourse()}
@@ -703,20 +843,27 @@ function AdminCoursesView() {
                 <SummaryCard label="Modules" value={selectedCourse.summary.moduleCount} />
                 <SummaryCard label="Students" value={selectedCourse.summary.studentCount} />
                 <SummaryCard label="Lecturers" value={selectedCourse.summary.lecturerCount} />
-                <SummaryCard label="Status" value={selectedCourse.isActive ? "Active" : "Archived"} />
+                <div className="teal-glow-card p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
+                  <div className="mt-3">
+                    <StatusBadge status={selectedCourse.isActive ? "ACTIVE" : "INACTIVE"} />
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <div className="teal-glow-card space-y-4 p-5">
-                  <div className="text-lg font-semibold text-white">Assign Module</div>
-                  <div className="text-sm text-white/72">
-                    Link an existing module to the selected course.
-                  </div>
+                  <SectionTitle
+                    title="Assign Module"
+                    subtitle="Link an existing module to the selected course."
+                  />
                   <select
                     value={selectedModuleId}
                     onChange={(e) => setSelectedModuleId(e.target.value)}
                     disabled={availableModules.length === 0}
                     className="select-glass"
+                    aria-label="Select module to link to course"
+                    title="Select module to link to course"
                   >
                     {availableModules.length === 0 ? (
                       <option value="">All modules are already linked to this course</option>
@@ -739,15 +886,17 @@ function AdminCoursesView() {
                 </div>
 
                 <div className="teal-glow-card space-y-4 p-5">
-                  <div className="text-lg font-semibold text-white">Enroll Student</div>
-                  <div className="text-sm text-white/72">
-                    Add a student to the selected course before linking them to its modules.
-                  </div>
+                  <SectionTitle
+                    title="Enroll Student"
+                    subtitle="Add a student to the selected course before linking them to its modules."
+                  />
                   <select
                     value={selectedStudentId}
                     onChange={(e) => setSelectedStudentId(e.target.value)}
                     disabled={availableStudents.length === 0}
                     className="select-glass"
+                    aria-label="Select student to enroll in course"
+                    title="Select student to enroll in course"
                   >
                     {availableStudents.length === 0 ? (
                       <option value="">All available students are already enrolled</option>
@@ -772,7 +921,10 @@ function AdminCoursesView() {
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <div className="teal-glow-card p-5">
-                  <div className="text-lg font-semibold text-white">Module Coverage</div>
+                  <SectionTitle
+                    title="Module Coverage"
+                    subtitle="Review all modules linked to this course and their lecturer coverage."
+                  />
                   <div className="mt-3 space-y-3">
                     {selectedCourse.modules.length === 0 ? (
                       <EmptyState
@@ -804,7 +956,10 @@ function AdminCoursesView() {
                 </div>
 
                 <div className="teal-glow-card p-5">
-                  <div className="text-lg font-semibold text-white">Enrolled Students</div>
+                  <SectionTitle
+                    title="Enrolled Students"
+                    subtitle="Students in this course will receive linked module access."
+                  />
                   <div className="mt-3 space-y-3">
                     {selectedCourse.students.length === 0 ? (
                       <EmptyState

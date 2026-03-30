@@ -15,7 +15,14 @@
 
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { setAuth, type AuthUser, type UserRole } from "../lib/auth";
+import {
+  isMockMode,
+  MOCK_USERS,
+  setAuth,
+  setSelectedMockUser,
+  type AuthUser,
+  type UserRole,
+} from "../lib/auth";
 import { type ApiClientError } from "../lib/apiClient";
 import {
   fetchAuthMe,
@@ -47,6 +54,7 @@ const API_TARGET = String(import.meta.env.VITE_API_TARGET ?? "")
 const API_BASE =
   API_TARGET === "secondary" && API_SECONDARY ? API_SECONDARY : API_PRIMARY;
 const IS_PROD_BUILD = Boolean(import.meta.env.PROD);
+const IS_MOCK_MODE = isMockMode();
 const LOGIN_REQUIRES_OTP = IS_PROD_BUILD;
 const ENV_CONFIG_ERROR = !API_BASE
   ? "Environment misconfigured: VITE_API_URL is missing. Contact support."
@@ -366,9 +374,15 @@ export default function LoginPage2() {
       (mode === "register" && hasOtp)) &&
     !busy &&
     (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
-    (!roleNeedsStudentIdentity ||
+        (!roleNeedsStudentIdentity ||
       (!!normalizeStudentNumber(studentNumber) &&
         /^\d{13}$/.test(normalizeSouthAfricanId(southAfricanId))));
+
+  function continueAsMock(roleToUse: UserRole) {
+    const user = setSelectedMockUser(roleToUse);
+    setAuth(`mock-token:${roleToUse.toLowerCase()}`, user);
+    navigate(from ?? landingFor(user), { replace: true });
+  }
 
   return (
     <div className="relative mx-auto flex min-h-[calc(100vh-220px)] w-full max-w-7xl items-center justify-center overflow-hidden px-4 py-10 md:py-14">
@@ -452,11 +466,120 @@ export default function LoginPage2() {
               <div className="error-banner mt-4">{ENV_CONFIG_ERROR}</div>
             )}
 
+            {IS_MOCK_MODE && (
+              <div className="info-banner mt-4">
+                Mock mode is enabled for local frontend work.
+              </div>
+            )}
+
+            {IS_MOCK_MODE && mode === "login" && (
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {(["ADMIN", "LECTURER", "STUDENT", "PARENT"] as UserRole[]).map(
+                  (mockRole) => (
+                    <button
+                      key={mockRole}
+                      type="button"
+                      onClick={() => continueAsMock(mockRole)}
+                      className="btn-secondary w-full"
+                      title={`Login as ${MOCK_USERS[mockRole].role.toLowerCase()}`}
+                      aria-label={`Login as ${MOCK_USERS[mockRole].role.toLowerCase()}`}
+                    >
+                      {`Login as ${
+                        mockRole.charAt(0) + mockRole.slice(1).toLowerCase()
+                      }`}
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+
             <form
               onSubmit={onSubmit}
               className="mt-5 space-y-4"
               autoComplete="on"
             >
+              {mode === "register" && (
+                <div>
+                  <label htmlFor="role" className="block text-sm text-white/80">
+                    Role
+                  </label>
+                  <select
+                    id="role"
+                    name="role"
+                    className="select-glass mt-2"
+                    value={role}
+                    onChange={(e) => {
+                      const nextRole = e.target.value as UserRole;
+                      setRole(nextRole);
+                      if (nextRole !== "ADMIN" && nextRole !== "LECTURER") {
+                        setStaffRegisterPassword("");
+                      }
+                      if (nextRole !== "STUDENT") {
+                        setSouthAfricanId("");
+                      }
+                    }}
+                    disabled={busy}
+                  >
+                    <option value="STUDENT">Student</option>
+                    <option value="PARENT">Parent</option>
+                    <option value="LECTURER">Lecturer</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+                </div>
+              )}
+
+              {roleNeedsStudentIdentity && (
+                <div>
+                  <label
+                    htmlFor="southAfricanId"
+                    className="block text-sm text-white/80"
+                  >
+                    South African ID
+                  </label>
+                  <input
+                    id="southAfricanId"
+                    name="southAfricanId"
+                    type="text"
+                    inputMode="numeric"
+                    className="input-glass mt-2"
+                    placeholder="13-digit ID number"
+                    value={southAfricanId}
+                    onChange={(e) => setSouthAfricanId(e.target.value)}
+                    autoComplete="off"
+                    required
+                    disabled={busy}
+                  />
+                </div>
+              )}
+
+              {(mode === "login" || roleNeedsStudentIdentity) && (
+                <div>
+                  <label
+                    htmlFor="studentNumber"
+                    className="block text-sm text-white/80"
+                  >
+                    Student Number
+                  </label>
+                  <input
+                    id="studentNumber"
+                    name="studentNumber"
+                    type="text"
+                    className="input-glass mt-2"
+                    placeholder="e.g. STU-1001"
+                    value={studentNumber}
+                    onChange={(e) => setStudentNumber(e.target.value)}
+                    autoComplete="off"
+                    required={roleNeedsStudentIdentity}
+                    disabled={busy}
+                  />
+                  {mode === "login" && (
+                    <p className="mt-2 text-xs text-white/55">
+                      Required for student accounts. Other roles can leave this blank.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label htmlFor="email" className="block text-sm text-white/80">
                   Email
@@ -495,113 +618,6 @@ export default function LoginPage2() {
                   disabled={busy}
                 />
               </div>
-
-              {(mode === "login" || roleNeedsStudentIdentity) && (
-                <div>
-                  <label
-                    htmlFor="studentNumber"
-                    className="block text-sm text-white/80"
-                  >
-                    Student Number
-                  </label>
-                  <input
-                    id="studentNumber"
-                    name="studentNumber"
-                    type="text"
-                    className="input-glass mt-2"
-                    placeholder="e.g. STU-1001"
-                    value={studentNumber}
-                    onChange={(e) => setStudentNumber(e.target.value)}
-                    autoComplete="off"
-                    required={roleNeedsStudentIdentity}
-                    disabled={busy}
-                  />
-                  {mode === "login" && (
-                    <p className="mt-2 text-xs text-white/55">
-                      Required for student accounts. Other roles can leave this blank.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {roleNeedsStudentIdentity && (
-                <div>
-                  <label
-                    htmlFor="southAfricanId"
-                    className="block text-sm text-white/80"
-                  >
-                    South African ID
-                  </label>
-                  <input
-                    id="southAfricanId"
-                    name="southAfricanId"
-                    type="text"
-                    inputMode="numeric"
-                    className="input-glass mt-2"
-                    placeholder="13-digit ID number"
-                    value={southAfricanId}
-                    onChange={(e) => setSouthAfricanId(e.target.value)}
-                    autoComplete="off"
-                    required
-                    disabled={busy}
-                  />
-                </div>
-              )}
-
-              {mode === "register" && (
-                <div>
-                  <label htmlFor="role" className="block text-sm text-white/80">
-                    Role
-                  </label>
-                  <select
-                    id="role"
-                    name="role"
-                    className="select-glass mt-2"
-                    value={role}
-                    onChange={(e) => {
-                      const nextRole = e.target.value as UserRole;
-                      setRole(nextRole);
-                      if (nextRole !== "ADMIN" && nextRole !== "LECTURER") {
-                        setStaffRegisterPassword("");
-                      }
-                      if (nextRole !== "STUDENT") {
-                        setSouthAfricanId("");
-                      }
-                    }}
-                    disabled={busy}
-                  >
-                    <option value="STUDENT">Student</option>
-                    <option value="PARENT">Parent</option>
-                    <option value="LECTURER">Lecturer</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-                  <p className="mt-2 text-xs text-white/55">
-                    Student and Parent can self-register. Admin and Lecturer require a staff registration password.
-                  </p>
-                </div>
-              )}
-
-              {mode === "register" && roleNeedsStaffPassword && (
-                <div>
-                  <label
-                    htmlFor="staffRegisterPassword"
-                    className="block text-sm text-white/80"
-                  >
-                    Staff Registration Password
-                  </label>
-                  <input
-                    id="staffRegisterPassword"
-                    name="staffRegisterPassword"
-                    type="password"
-                    className="input-glass mt-2"
-                    placeholder="Enter staff password"
-                    value={staffRegisterPassword}
-                    onChange={(e) => setStaffRegisterPassword(e.target.value)}
-                    autoComplete="off"
-                    disabled={busy}
-                  />
-                </div>
-              )}
 
               {mode === "register" && (
                 <div>
@@ -670,6 +686,28 @@ export default function LoginPage2() {
                 )}
               </div>
 
+              {mode === "register" && roleNeedsStaffPassword && (
+                <div>
+                  <label
+                    htmlFor="staffRegisterPassword"
+                    className="block text-sm text-white/80"
+                  >
+                    Staff Registration Password
+                  </label>
+                  <input
+                    id="staffRegisterPassword"
+                    name="staffRegisterPassword"
+                    type="password"
+                    className="input-glass mt-2"
+                    placeholder="Enter staff password"
+                    value={staffRegisterPassword}
+                    onChange={(e) => setStaffRegisterPassword(e.target.value)}
+                    autoComplete="off"
+                    disabled={busy}
+                  />
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={!canSubmit}
@@ -683,6 +721,18 @@ export default function LoginPage2() {
                   ? "Sign In"
                   : "Create account"}
               </button>
+
+              {IS_MOCK_MODE && (
+                <button
+                  type="button"
+                  onClick={() => continueAsMock("ADMIN")}
+                  className="btn-secondary w-full"
+                  title="Enter app in local demo mode"
+                  aria-label="Enter app in local demo mode"
+                >
+                  Continue As Demo
+                </button>
+              )}
 
               <div className="flex items-center justify-center">
                 <Link
