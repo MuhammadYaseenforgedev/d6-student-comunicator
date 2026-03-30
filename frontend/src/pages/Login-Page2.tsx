@@ -16,10 +16,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  isMockMode,
-  MOCK_USERS,
   setAuth,
-  setSelectedMockUser,
   type AuthUser,
   type UserRole,
 } from "../lib/auth";
@@ -54,7 +51,6 @@ const API_TARGET = String(import.meta.env.VITE_API_TARGET ?? "")
 const API_BASE =
   API_TARGET === "secondary" && API_SECONDARY ? API_SECONDARY : API_PRIMARY;
 const IS_PROD_BUILD = Boolean(import.meta.env.PROD);
-const IS_MOCK_MODE = isMockMode();
 const LOGIN_REQUIRES_OTP = IS_PROD_BUILD;
 const ENV_CONFIG_ERROR = !API_BASE
   ? "Environment misconfigured: VITE_API_URL is missing. Contact support."
@@ -374,15 +370,9 @@ export default function LoginPage2() {
       (mode === "register" && hasOtp)) &&
     !busy &&
     (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
-        (!roleNeedsStudentIdentity ||
+    (!roleNeedsStudentIdentity ||
       (!!normalizeStudentNumber(studentNumber) &&
         /^\d{13}$/.test(normalizeSouthAfricanId(southAfricanId))));
-
-  function continueAsMock(roleToUse: UserRole) {
-    const user = setSelectedMockUser(roleToUse);
-    setAuth(`mock-token:${roleToUse.toLowerCase()}`, user);
-    navigate(from ?? landingFor(user), { replace: true });
-  }
 
   return (
     <div className="relative mx-auto flex min-h-[calc(100vh-220px)] w-full max-w-7xl items-center justify-center overflow-hidden px-4 py-10 md:py-14">
@@ -464,33 +454,6 @@ export default function LoginPage2() {
 
             {ENV_CONFIG_ERROR && (
               <div className="error-banner mt-4">{ENV_CONFIG_ERROR}</div>
-            )}
-
-            {IS_MOCK_MODE && (
-              <div className="info-banner mt-4">
-                Mock mode is enabled for local frontend work.
-              </div>
-            )}
-
-            {IS_MOCK_MODE && mode === "login" && (
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {(["ADMIN", "LECTURER", "STUDENT", "PARENT"] as UserRole[]).map(
-                  (mockRole) => (
-                    <button
-                      key={mockRole}
-                      type="button"
-                      onClick={() => continueAsMock(mockRole)}
-                      className="btn-secondary w-full"
-                      title={`Login as ${MOCK_USERS[mockRole].role.toLowerCase()}`}
-                      aria-label={`Login as ${MOCK_USERS[mockRole].role.toLowerCase()}`}
-                    >
-                      {`Login as ${
-                        mockRole.charAt(0) + mockRole.slice(1).toLowerCase()
-                      }`}
-                    </button>
-                  )
-                )}
-              </div>
             )}
 
             <form
@@ -721,18 +684,6 @@ export default function LoginPage2() {
                   ? "Sign In"
                   : "Create account"}
               </button>
-
-              {IS_MOCK_MODE && (
-                <button
-                  type="button"
-                  onClick={() => continueAsMock("ADMIN")}
-                  className="btn-secondary w-full"
-                  title="Enter app in local demo mode"
-                  aria-label="Enter app in local demo mode"
-                >
-                  Continue As Demo
-                </button>
-              )}
 
               <div className="flex items-center justify-center">
                 <Link

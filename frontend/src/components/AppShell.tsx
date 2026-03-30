@@ -14,7 +14,7 @@ import {
   Outlet,
   useNavigate,
 } from "react-router-dom";
-import { clearAuth, getUser, setDevBypass } from "../lib/auth";
+import { clearAuth, getUser } from "../lib/auth";
 import {
   adminScopeLabel,
   isAcademicOrSuperAdmin,
@@ -43,7 +43,7 @@ function BurgerButton({
       type="button"
       onClick={onClick}
       aria-label={open ? "Close navigation menu" : "Open navigation menu"}
-      aria-expanded={open ? "true" : "false"}
+      aria-expanded={open}
       className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#8CEBFF]/20 bg-[rgba(9,23,54,0.72)] text-white/90 backdrop-blur-xl transition hover:border-[#8CEBFF]/40 hover:text-[#8CEBFF]"
     >
       <span className="relative block h-4 w-5">
@@ -206,7 +206,6 @@ export default function AppShell() {
 
   function logout() {
     clearAuth();
-    setDevBypass(false);
     closeMobileMenu();
     navigate("/login", { replace: true });
   }
@@ -507,7 +506,7 @@ export default function AppShell() {
           "fixed inset-y-0 left-0 z-50 h-dvh w-[88vw] max-w-[340px] border-r border-[#8CEBFF]/10 bg-[rgba(5,12,30,0.96)] p-4 shadow-2xl backdrop-blur-2xl transition-transform duration-300 lg:hidden",
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
-        aria-hidden={mobileMenuOpen ? "false" : "true"}
+        aria-hidden={!mobileMenuOpen}
       >
         <div className="glass-panel-premium relative h-full overflow-y-auto overflow-x-hidden p-4">
           {sidebarContent}

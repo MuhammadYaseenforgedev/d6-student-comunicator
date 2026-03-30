@@ -80,7 +80,11 @@ export default function AppFooter() {
                     rel="noopener noreferrer"
                     className="flex items-start gap-2"
                   >
-                    <MapPin size={16} className="mt-0.5 text-[#8C5BFF]" />
+                    <MapPin
+                      size={16}
+                      aria-hidden="true"
+                      className="mt-0.5 text-[#8C5BFF]"
+                    />
                     <span>
                       Building 6, Clearwater Office Park
                       <br />
@@ -91,12 +95,12 @@ export default function AppFooter() {
                   </a>
 
                   <div className="flex items-center gap-2">
-                    <Phone size={16} className="text-[#8CEBFF]" />
+                    <Phone size={16} aria-hidden="true" className="text-[#8CEBFF]" />
                     <a href="tel:+27108803795">+27 10 880 3795</a>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Mail size={16} className="text-[#8CEBFF]" />
+                    <Mail size={16} aria-hidden="true" className="text-[#8CEBFF]" />
                     <a href="mailto:hello@forgeacademy.co.za">
                       hello@forgeacademy.co.za
                     </a>
@@ -127,36 +131,40 @@ export default function AppFooter() {
                       href="https://www.facebook.com/ForgeAcademySA"
                       target="_blank"
                       rel="noopener noreferrer"
+                      aria-label="Visit Forge Academy on Facebook"
                       className="icon-button"
                     >
-                      <Facebook size={18} />
+                      <Facebook size={18} aria-hidden="true" />
                     </a>
 
                     <a
                       href="https://www.instagram.com/forge_academy/"
                       target="_blank"
                       rel="noopener noreferrer"
+                      aria-label="Visit Forge Academy on Instagram"
                       className="icon-button"
                     >
-                      <Instagram size={18} />
+                      <Instagram size={18} aria-hidden="true" />
                     </a>
 
                     <a
                       href="https://www.linkedin.com/company/forgeacademy"
                       target="_blank"
                       rel="noopener noreferrer"
+                      aria-label="Visit Forge Academy on LinkedIn"
                       className="icon-button"
                     >
-                      <Linkedin size={18} />
+                      <Linkedin size={18} aria-hidden="true" />
                     </a>
 
                     <a
                       href="https://x.com/forgeacademyza"
                       target="_blank"
                       rel="noopener noreferrer"
+                      aria-label="Visit Forge Academy on X"
                       className="icon-button"
                     >
-                      <Twitter size={18} />
+                      <Twitter size={18} aria-hidden="true" />
                     </a>
                   </div>
                 </div>
@@ -172,6 +180,7 @@ export default function AppFooter() {
                     href={logo.href}
                     target="_blank"
                     rel="noopener noreferrer"
+                    aria-label={`Visit ${logo.name}`}
                   >
                     <img
                       src={logo.src}

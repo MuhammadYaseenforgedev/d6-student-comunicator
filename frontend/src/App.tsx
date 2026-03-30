@@ -13,7 +13,6 @@ import AppShell from "./components/AppShell";
 import AppFooter from "./components/AppFooter";
 import RequireAuth from "./components/RequireAuth";
 import RequireRole from "./components/RequireRole";
-import DevRoleSwitcher from "./components/DevRoleSwitcher";
 
 import AppHome from "./pages/AppHome";
 import Courses from "./pages/Courses";
@@ -219,8 +218,6 @@ export default function App() {
             <AppFooter />
           </div>
         </div>
-
-        <DevRoleSwitcher />
       </div>
     </BrowserRouter>
   );

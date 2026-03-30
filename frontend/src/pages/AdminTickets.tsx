@@ -141,19 +141,28 @@ export default function AdminTickets() {
               className="input-glass w-full"
             />
             <div className="grid grid-cols-[1fr_auto] gap-3">
-              <select
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.target.value as SupportTicketStatus | "ALL")
-                }
-                className="select-glass w-full"
-              >
-                {TICKET_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {status === "ALL" ? "All statuses" : status.replace(/_/g, " ")}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <label
+                  htmlFor="ticket-status-filter"
+                  className="mb-2 block text-xs font-semibold uppercase tracking-wide text-white/55"
+                >
+                  Status filter
+                </label>
+                <select
+                  id="ticket-status-filter"
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(e.target.value as SupportTicketStatus | "ALL")
+                  }
+                  className="select-glass w-full"
+                >
+                  {TICKET_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status === "ALL" ? "All statuses" : status.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button type="submit" className="btn-primary min-w-[100px]">
                 Search
               </button>
@@ -244,10 +253,14 @@ export default function AdminTickets() {
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
                 <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-white/55">
+                  <label
+                    htmlFor="ticket-status-input"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-wide text-white/55"
+                  >
                     Status
                   </label>
                   <select
+                    id="ticket-status-input"
                     value={statusInput}
                     onChange={(e) => setStatusInput(e.target.value as SupportTicketStatus)}
                     className="select-glass w-full"
