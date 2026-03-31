@@ -170,6 +170,9 @@ const SMTP_SECURE = parseBoolean(process.env.SMTP_SECURE, false);
 const SMTP_USER = String(process.env.SMTP_USER ?? "").trim() || undefined;
 const SMTP_PASS = String(process.env.SMTP_PASS ?? "").trim() || undefined;
 const SMTP_FROM = String(process.env.SMTP_FROM ?? "").trim() || undefined;
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY ?? "").trim() || undefined;
+const OPENAI_ASSISTANT_MODEL =
+  String(process.env.OPENAI_ASSISTANT_MODEL ?? "").trim() || "gpt-5.4-mini";
 
 if (!DATABASE_URL && !DB_PASSWORD) {
   required("DB_PASSWORD");
@@ -197,6 +200,10 @@ export const env = {
   SMTP_USER,
   SMTP_PASS,
   SMTP_FROM,
+
+  // OpenAI
+  OPENAI_API_KEY,
+  OPENAI_ASSISTANT_MODEL,
 
   // Demo OTP bypass controls
   get ALLOW_DEMO_OTP_BYPASS(): boolean {

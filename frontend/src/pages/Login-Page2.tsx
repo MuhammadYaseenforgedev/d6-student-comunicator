@@ -29,6 +29,7 @@ import {
 } from "../lib/authService";
 import { isFinanceAdmin } from "../lib/adminAccess";
 import forgeLogo from "../assets/Forge.jpg";
+import AuthAssistant from "../components/AuthAssistant";
 
 type LocationState = { from?: string };
 type Mode = "login" | "register";
@@ -160,6 +161,15 @@ export default function LoginPage2() {
     mode === "register" && (role === "ADMIN" || role === "LECTURER");
   const roleNeedsStudentIdentity =
     mode === "register" && role === "STUDENT";
+
+  function changeMode(nextMode: Mode) {
+    setMode(nextMode);
+    setError(null);
+    setInfo(null);
+    setOtp("");
+    setStaffRegisterPassword("");
+    setSouthAfricanId("");
+  }
 
   async function fetchMe(token: string) {
     return fetchAuthMe(token);
@@ -404,12 +414,7 @@ export default function LoginPage2() {
               <button
                 type="button"
                 onClick={() => {
-                  setMode("login");
-                  setError(null);
-                  setInfo(null);
-                  setOtp("");
-                  setStaffRegisterPassword("");
-                  setSouthAfricanId("");
+                  changeMode("login");
                 }}
                 className={[
                   "rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200",
@@ -426,12 +431,7 @@ export default function LoginPage2() {
               <button
                 type="button"
                 onClick={() => {
-                  setMode("register");
-                  setError(null);
-                  setInfo(null);
-                  setOtp("");
-                  setStaffRegisterPassword("");
-                  setSouthAfricanId("");
+                  changeMode("register");
                 }}
                 className={[
                   "rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200",
@@ -697,6 +697,14 @@ export default function LoginPage2() {
           </div>
         </div>
       </div>
+
+      <AuthAssistant
+        mode={mode}
+        role={role}
+        canRequestOtp={canRequestOtp}
+        onSwitchMode={changeMode}
+        onRequestOtp={onRequestOtpClick}
+      />
     </div>
   );
 }

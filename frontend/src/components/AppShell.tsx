@@ -25,6 +25,7 @@ import AppErrorBoundary from "./AppErrorBoundary";
 import { fetchMeProfile, type MeProfile } from "../lib/authService";
 import AnimatedForgeLogo from "./AnimatedForgeLogo";
 import { useNotificationSummary } from "../hooks/useNotificationSummary";
+import RoleAssistant from "./RoleAssistant";
 
 function formatBadgeCount(value: number): string {
   if (value > 99) return "99+";
@@ -512,6 +513,8 @@ export default function AppShell() {
           {sidebarContent}
         </div>
       </aside>
+
+      {user && <RoleAssistant user={user} />}
     </div>
   );
 }
