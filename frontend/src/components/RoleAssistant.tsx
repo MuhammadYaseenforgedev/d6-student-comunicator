@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AssistantWidget, {
   type AssistantAction,
@@ -28,33 +28,36 @@ export default function RoleAssistant({ user }: RoleAssistantProps) {
     [location.pathname, user]
   );
 
-  function actionFor(actionId: string): AssistantAction {
-    const destination = destinations.find((entry) => entry.id === actionId);
+  const actionFor = useCallback(
+    (actionId: string): AssistantAction => {
+      const destination = destinations.find((entry) => entry.id === actionId);
 
-    if (!destination) {
+      if (!destination) {
+        return {
+          id: actionId,
+          label: "Back home",
+          run: () => {
+            navigate(destinations[0]?.path ?? "/app");
+            return "Taking you to the main workspace.";
+          },
+        };
+      }
+
       return {
-        id: actionId,
-        label: "Back home",
+        id: destination.id,
+        label: destination.label,
         run: () => {
-          navigate(destinations[0]?.path ?? "/app");
-          return "Taking you to the main workspace.";
+          if (location.pathname === destination.path) {
+            return `You are already on ${destination.label}.`;
+          }
+
+          navigate(destination.path);
+          return `Opening ${destination.label}.`;
         },
       };
-    }
-
-    return {
-      id: destination.id,
-      label: destination.label,
-      run: () => {
-        if (location.pathname === destination.path) {
-          return `You are already on ${destination.label}.`;
-        }
-
-        navigate(destination.path);
-        return `Opening ${destination.label}.`;
-      },
-    };
-  }
+    },
+    [destinations, location.pathname, navigate]
+  );
 
   const welcome = useMemo<AssistantReply>(
     () => ({ text: profile.welcome }),
@@ -63,7 +66,7 @@ export default function RoleAssistant({ user }: RoleAssistantProps) {
 
   const spotlightActions = useMemo(
     () => context.actionIds.map(actionFor),
-    [context.actionIds, location.pathname, destinations]
+    [context.actionIds, actionFor]
   );
 
   return (

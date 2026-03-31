@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import AssistantWidget, {
   type AssistantAction,
@@ -38,82 +38,85 @@ export default function AuthAssistant({
   );
   const context = useMemo(() => getAuthContext(mode, role), [mode, role]);
 
-  function actionFor(actionId: AuthActionId): AssistantAction {
-    switch (actionId) {
-      case "switch-login":
-        return {
-          id: actionId,
-          label: "Login tab",
-          run: () => {
-            onSwitchMode("login");
-            return "Switched to Login. Enter email and password first, then use OTP if your environment requires it.";
-          },
-        };
+  const actionFor = useCallback(
+    (actionId: AuthActionId): AssistantAction => {
+      switch (actionId) {
+        case "switch-login":
+          return {
+            id: actionId,
+            label: "Login tab",
+            run: () => {
+              onSwitchMode("login");
+              return "Switched to Login. Enter email and password first, then use OTP if your environment requires it.";
+            },
+          };
 
-      case "switch-register":
-        return {
-          id: actionId,
-          label: "Register tab",
-          run: () => {
-            onSwitchMode("register");
-            return "Switched to Register. Pick the right role and I will keep the guidance aligned with the form.";
-          },
-        };
+        case "switch-register":
+          return {
+            id: actionId,
+            label: "Register tab",
+            run: () => {
+              onSwitchMode("register");
+              return "Switched to Register. Pick the right role and I will keep the guidance aligned with the form.";
+            },
+          };
 
-      case "request-otp":
-        return {
-          id: actionId,
-          label: "Request OTP",
-          run: async () => {
-            if (!canRequestOtp) {
-              return "Enter your email first, then I can help you request OTP.";
-            }
+        case "request-otp":
+          return {
+            id: actionId,
+            label: "Request OTP",
+            run: async () => {
+              if (!canRequestOtp) {
+                return "Enter your email first, then I can help you request OTP.";
+              }
 
-            await onRequestOtp();
+              await onRequestOtp();
 
-            return mode === "login"
-              ? "OTP requested for login. Check the info banner and your email or backend console."
-              : "OTP requested for registration. Check the info banner and your email or backend console.";
-          },
-        };
+              return mode === "login"
+                ? "OTP requested for login. Check the info banner and your email or backend console."
+                : "OTP requested for registration. Check the info banner and your email or backend console.";
+            },
+          };
 
-      case "student-fields":
-        return {
-          id: actionId,
-          label: "Student fields",
-          run: () =>
-            mode === "login"
-              ? "Students sign in with email, password, student number, and OTP when required. Other roles can leave the student number blank on login."
-              : "Student registration needs South African ID, student number, email, password, confirm password, and OTP.",
-        };
+        case "student-fields":
+          return {
+            id: actionId,
+            label: "Student fields",
+            run: () =>
+              mode === "login"
+                ? "Students sign in with email, password, student number, and OTP when required. Other roles can leave the student number blank on login."
+                : "Student registration needs South African ID, student number, email, password, confirm password, and OTP.",
+          };
 
-      case "staff-password":
-        return {
-          id: actionId,
-          label: "Staff password",
-          run: () =>
-            "Lecturer and Admin registration needs the shared staff registration password before the account can be created.",
-        };
+        case "staff-password":
+          return {
+            id: actionId,
+            label: "Staff password",
+            run: () =>
+              "Lecturer and Admin registration needs the shared staff registration password before the account can be created.",
+          };
 
-      case "parent-setup":
-        return {
-          id: actionId,
-          label: "Parent setup",
-          run: () =>
-            "Parent registration needs email, password, confirm password, and OTP only. Parents do not enter student number, South African ID, or staff password.",
-        };
+        case "parent-setup":
+          return {
+            id: actionId,
+            label: "Parent setup",
+            run: () =>
+              "Parent registration needs email, password, confirm password, and OTP only. Parents do not enter student number, South African ID, or staff password.",
+          };
 
-      case "support":
-        return {
-          id: actionId,
-          label: "Support desk",
-          run: () => {
-            navigate("/support");
-            return "Opening Support so you can send a ticket if the form still blocks you.";
-          },
-        };
-    }
-  }
+        case "support":
+          return {
+            id: actionId,
+            label: "Support desk",
+            run: () => {
+              navigate("/support");
+              return "Opening Support so you can send a ticket if the form still blocks you.";
+            },
+          };
+      }
+    },
+    [canRequestOtp, mode, navigate, onRequestOtp, onSwitchMode]
+  );
 
   const welcome = useMemo<AssistantReply>(
     () => ({ text: profile.welcome }),
@@ -122,7 +125,7 @@ export default function AuthAssistant({
 
   const spotlightActions = useMemo(
     () => getDefaultAuthActionIds(mode, role).map(actionFor),
-    [mode, role, canRequestOtp]
+    [mode, role, actionFor]
   );
 
   function describeAction(actionId: AuthActionId): string {
