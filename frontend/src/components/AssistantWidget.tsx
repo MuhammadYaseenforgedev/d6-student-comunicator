@@ -10,7 +10,6 @@ import {
   CornerDownRight,
   Eye,
   EyeOff,
-  GripHorizontal,
   MessageCircle,
   Send,
   Sparkles,
@@ -111,38 +110,13 @@ function SpeechBubble({
   );
 }
 
-function DragHandleButton({
-  onPointerDown,
-  className = "",
-}: {
-  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
-  className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onPointerDown={onPointerDown}
-      className={[
-        "inline-flex h-9 w-9 touch-none items-center justify-center rounded-2xl border border-[#8CEBFF]/16 bg-white/5 text-white/68 transition hover:border-[#8CEBFF]/30 hover:bg-white/10 hover:text-white active:cursor-grabbing",
-        className,
-      ].join(" ")}
-      aria-label="Move assistant"
-      title="Move assistant"
-    >
-      <GripHorizontal className="h-4 w-4" />
-    </button>
-  );
-}
-
 export default function AssistantWidget({
   name,
   subtitle,
   placeholder,
   welcome,
   resetKey,
-  contextTitle,
   contextSummary,
-  spotlightActions = [],
   onAsk,
 }: AssistantWidgetProps) {
   const [open, setOpen] = useState(false);
@@ -162,6 +136,7 @@ export default function AssistantWidget({
   const dragControls = useDragControls();
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
+  const assistantBrand = "Sparky";
 
   function clearSpeakingTimer() {
     if (speakingTimerRef.current !== null) {
@@ -230,6 +205,17 @@ export default function AssistantWidget({
 
   function startDragging(event: React.PointerEvent<HTMLElement>) {
     dragControls.start(event);
+  }
+
+  function handlePanelPointerDown(event: React.PointerEvent<HTMLElement>) {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (!target) return;
+
+    if (target.closest("button, textarea, input, select, a, [data-no-drag]")) {
+      return;
+    }
+
+    startDragging(event);
   }
 
   function handleDock() {
@@ -350,7 +336,10 @@ export default function AssistantWidget({
             transition={{ duration: 0.24, ease: "easeOut" }}
             className="pointer-events-auto"
           >
-            <div className="relative flex items-center gap-2 rounded-[1.4rem] border border-[#8CEBFF]/20 bg-[linear-gradient(135deg,rgba(4,12,31,0.96),rgba(7,18,43,0.92))] px-2.5 py-2 shadow-[0_18px_40px_rgba(2,8,24,0.42)] backdrop-blur-xl">
+            <div
+              onPointerDown={handlePanelPointerDown}
+              className="teal-glow-card relative flex cursor-grab items-center gap-2 rounded-[1.4rem] px-2.5 py-2 active:cursor-grabbing"
+            >
               <ChatbotAvatar
                 mode={avatarMode}
                 size={42}
@@ -365,7 +354,7 @@ export default function AssistantWidget({
               >
                 <div className="min-w-0">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#9EEFFF]">
-                    Beacon
+                    {assistantBrand}
                   </div>
                   <div className="text-sm font-medium text-white/88">
                     Show assistant
@@ -373,8 +362,6 @@ export default function AssistantWidget({
                 </div>
                 <Eye className="h-4 w-4 shrink-0 text-[#B6F7FF]" />
               </button>
-
-              <DragHandleButton onPointerDown={startDragging} />
             </div>
           </motion.div>
         ) : open ? (
@@ -396,7 +383,9 @@ export default function AssistantWidget({
               scale: 0.97,
               transition: { duration: 0.24, ease: "easeOut" },
             }}
-            className="pointer-events-auto relative flex h-[min(80vh,46rem)] w-[min(92vw,26rem)] flex-col overflow-hidden rounded-[2rem] border border-[#8CEBFF]/18 bg-[linear-gradient(180deg,rgba(4,12,31,0.98),rgba(3,10,28,0.94))] shadow-[0_28px_100px_rgba(2,8,24,0.62)] backdrop-blur-2xl"
+            onPointerDown={handlePanelPointerDown}
+            aria-label={`${assistantBrand} assistant. ${contextSummary}`}
+            className="teal-glow-card pointer-events-auto relative flex h-[min(80vh,46rem)] w-[min(92vw,26rem)] cursor-grab flex-col overflow-hidden rounded-[2rem] active:cursor-grabbing"
           >
             <div className="pointer-events-none absolute inset-0">
               <div className="absolute inset-x-0 top-0 h-44 bg-[radial-gradient(circle_at_top,rgba(140,235,255,0.14),transparent_60%)]" />
@@ -404,19 +393,6 @@ export default function AssistantWidget({
               <div className="absolute right-0 top-10 h-32 w-32 rounded-full bg-[#8C5BFF]/18 blur-3xl" />
               <div className="absolute bottom-16 left-8 h-20 w-20 rounded-full bg-[#38BDF8]/10 blur-3xl" />
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),transparent_24%,transparent_74%,rgba(255,255,255,0.02))]" />
-            </div>
-
-            <div className="relative px-4 pt-3">
-              <button
-                type="button"
-                onPointerDown={startDragging}
-                className="flex w-full touch-none cursor-grab items-center justify-center gap-2 rounded-full border border-[#8CEBFF]/12 bg-white/[0.03] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.24em] text-white/42 transition hover:border-[#8CEBFF]/24 hover:text-[#B6F7FF] active:cursor-grabbing"
-                aria-label="Drag assistant panel"
-                title="Drag assistant panel"
-              >
-                <span className="h-1.5 w-12 rounded-full bg-[#8CEBFF]/28" />
-                Drag panel
-              </button>
             </div>
 
             <div className="relative overflow-hidden border-b border-[#8CEBFF]/10 px-4 py-3.5">
@@ -430,7 +406,7 @@ export default function AssistantWidget({
 
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.26em] text-[#9EEFFF]">
-                      Beacon
+                      {assistantBrand}
                     </div>
                     <div className="mt-1 truncate text-base font-semibold text-white">
                       {name}
@@ -442,7 +418,6 @@ export default function AssistantWidget({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <DragHandleButton onPointerDown={startDragging} />
                   <button
                     type="button"
                     onClick={handleDock}
@@ -472,69 +447,6 @@ export default function AssistantWidget({
                 </div>
               </div>
             </div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.08, duration: 0.34 }}
-              className="relative border-b border-[#8CEBFF]/10 px-4 py-3.5"
-            >
-              <div className="grid grid-cols-[auto,minmax(0,1fr)] items-start gap-3.5">
-                <ChatbotAvatar
-                  mode={avatarMode}
-                  size={56}
-                  className="mt-1 shrink-0"
-                />
-
-                <div className="min-w-0 flex-1">
-                  <SpeechBubble
-                    title="Beacon"
-                    body={contextSummary}
-                    footer={
-                      <>
-                        <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">
-                          {contextTitle}
-                        </div>
-
-                        {spotlightActions.length > 0 && (
-                          <motion.div
-                            initial="hidden"
-                            animate="visible"
-                            variants={{
-                              hidden: {},
-                              visible: {
-                                transition: { staggerChildren: 0.05, delayChildren: 0.08 },
-                              },
-                            }}
-                            className="mt-3 flex flex-wrap gap-2"
-                          >
-                            {spotlightActions.map((action) => (
-                              <motion.button
-                                key={action.id}
-                                type="button"
-                                disabled={busy}
-                                variants={{
-                                  hidden: { opacity: 0, y: 8 },
-                                  visible: { opacity: 1, y: 0 },
-                                }}
-                                whileHover={{ y: -2, scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => {
-                                  void runAction(action);
-                                }}
-                                className="rounded-full border border-[#8CEBFF]/20 bg-[#8CEBFF]/8 px-3 py-1.5 text-xs font-medium text-[#C5F7FF] transition disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {action.label}
-                              </motion.button>
-                            ))}
-                          </motion.div>
-                        )}
-                      </>
-                    }
-                  />
-                </div>
-              </div>
-            </motion.div>
 
             <div className="relative flex-1 overflow-y-auto px-4 py-4">
               <div className="space-y-3.5">
@@ -572,7 +484,7 @@ export default function AssistantWidget({
                         }
                       >
                         {message.role === "assistant" ? (
-                          <SpeechBubble title="Beacon" body={message.text} compact />
+                          <SpeechBubble title={assistantBrand} body={message.text} compact />
                         ) : (
                           <div className="inline-block max-w-full rounded-[1.45rem] border border-[#8CEBFF]/16 bg-[linear-gradient(135deg,rgba(56,189,248,0.26),rgba(99,102,241,0.3),rgba(140,91,255,0.3))] px-4 py-3 text-sm leading-6 text-white shadow-[0_14px_28px_rgba(2,8,24,0.18)]">
                             <p className="whitespace-pre-wrap">{message.text}</p>
@@ -620,7 +532,7 @@ export default function AssistantWidget({
 
                       <div className="min-w-0 max-w-[19rem] sm:max-w-[20.5rem]">
                         <SpeechBubble
-                          title="Beacon"
+                          title={assistantBrand}
                           body="Thinking..."
                           compact
                           footer={
@@ -691,42 +603,40 @@ export default function AssistantWidget({
             transition={{ duration: 0.28, ease: "easeOut" }}
             className="pointer-events-auto"
           >
-            <div className="group relative overflow-hidden rounded-[1.8rem] border border-[#8CEBFF]/20 bg-[linear-gradient(135deg,rgba(4,12,31,0.96),rgba(7,18,43,0.92))] px-3 py-3 text-sm font-semibold text-white shadow-[0_22px_56px_rgba(2,8,24,0.48)] backdrop-blur-xl">
+            <div
+              onPointerDown={handlePanelPointerDown}
+              className="teal-glow-card group relative overflow-hidden rounded-[1.6rem] px-2.5 py-2.5 text-sm font-semibold text-white"
+            >
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_left,rgba(140,235,255,0.16),transparent_34%),radial-gradient(circle_at_right,rgba(140,91,255,0.18),transparent_34%)]" />
-              <div className="relative flex items-start gap-3 pr-12">
+              <div className="relative flex items-center gap-2 pr-10">
                 <button
                   type="button"
                   onClick={handleOpenAssistant}
-                  className="flex items-start gap-3 text-left"
+                  className="flex min-w-0 items-center gap-3 rounded-[1.2rem] px-1 py-1 text-left transition hover:bg-white/5"
                   aria-label="Open assistant"
                 >
                   <ChatbotAvatar
                     mode={avatarMode}
-                    size={60}
-                    className="mt-0.5 shrink-0"
+                    size={46}
+                    className="shrink-0"
                   />
 
-                  <div className="max-w-[11rem] min-w-0">
-                    <SpeechBubble
-                      title="Beacon"
-                      body={`Chat with ${name}. Your ${subtitle.toLowerCase()} is ready to speak.`}
-                      compact
-                      footer={
-                        <div className="flex items-center gap-2 text-[11px] font-medium text-[#B6F7FF]">
-                          <MessageCircle className="h-3.5 w-3.5" />
-                          Open the speech bubble
-                          <ChevronRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
-                        </div>
-                      }
-                    />
+                  <div className="min-w-0 max-w-[10rem]">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#9EEFFF]">
+                      {assistantBrand}
+                    </div>
+                    <div className="mt-0.5 truncate text-sm font-semibold text-white">
+                      Open assistant
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-[#B6F7FF]">
+                      <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{subtitle}</span>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 transition group-hover:translate-x-0.5" />
+                    </div>
                   </div>
                 </button>
 
                 <div className="absolute right-2 top-2 flex items-center gap-2">
-                  <DragHandleButton
-                    onPointerDown={startDragging}
-                    className="h-8 w-8 rounded-xl"
-                  />
                   <button
                     type="button"
                     onClick={handleHide}

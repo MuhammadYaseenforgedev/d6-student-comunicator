@@ -190,12 +190,12 @@ export function getRoleAssistantProfile(
     case "super-admin":
       return {
         key,
-        name: "Command",
+        name: "Sparky",
         subtitle: "Super admin guide",
         placeholder:
           "Ask about accounts, tickets, approvals, results, or navigation...",
         welcome:
-          "I am Command, your super admin guide. I can help you move across the full admin workspace, including tickets, approvals, accounts, and academic operations.",
+          "I am Sparky, your super admin guide. I can help you move across the full admin workspace, including tickets, approvals, accounts, and academic operations.",
         overview:
           "You can ask me for admin tools, tickets, account management, result management, messages, notifications, and the main academic pages.",
         spotlightIds: [
@@ -228,11 +228,11 @@ export function getAuthAssistantProfile(
 ): AuthProfile {
   if (mode === "login") {
     return {
-      name: "Beacon",
+      name: "Sparky",
       subtitle: "Login guide",
       placeholder: "Ask about OTP, student number, or signing in...",
       welcome:
-        "I am Beacon. I can guide you through sign-in, OTP, and the extra fields student accounts need on the login page.",
+        "I am Sparky. I can guide you through sign-in, OTP, and the extra fields student accounts need on the login page.",
     };
   }
 
