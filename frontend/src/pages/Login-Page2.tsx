@@ -16,6 +16,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  consumeLogoutNotice,
   setAuth,
   type AuthUser,
   type UserRole,
@@ -149,7 +150,7 @@ export default function LoginPage2() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(() => consumeLogoutNotice());
   const [busy, setBusy] = useState(false);
 
   const title = useMemo(

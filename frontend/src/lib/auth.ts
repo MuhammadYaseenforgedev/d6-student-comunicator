@@ -4,6 +4,7 @@
 
 const TOKEN_KEY = "token";
 const USER_KEY = "user";
+const LOGOUT_NOTICE_KEY = "auth.logout.notice";
 /**
  * Roles used throughout the app.
  * Backend will enforce these, frontend uses them for UI + route guards.
@@ -29,6 +30,14 @@ export type AuthUser = {
 function getLocalStorage(): Storage | null {
   try {
     return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function getSessionStorage(): Storage | null {
+  try {
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -60,6 +69,31 @@ export function clearAuth(): void {
   const storage = getLocalStorage();
   storage?.removeItem(TOKEN_KEY);
   storage?.removeItem(USER_KEY);
+}
+
+function setLogoutNotice(message: string): void {
+  const storage = getSessionStorage();
+  const nextMessage = message.trim();
+
+  if (!nextMessage) {
+    storage?.removeItem(LOGOUT_NOTICE_KEY);
+    return;
+  }
+
+  storage?.setItem(LOGOUT_NOTICE_KEY, nextMessage);
+}
+
+export function consumeLogoutNotice(): string | null {
+  const storage = getSessionStorage();
+  const message = storage?.getItem(LOGOUT_NOTICE_KEY)?.trim() ?? "";
+
+  storage?.removeItem(LOGOUT_NOTICE_KEY);
+  return message || null;
+}
+
+export function logout(message?: string): void {
+  clearAuth();
+  setLogoutNotice(message ?? "");
 }
 
 /**

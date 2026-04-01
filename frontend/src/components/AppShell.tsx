@@ -14,7 +14,7 @@ import {
   Outlet,
   useNavigate,
 } from "react-router-dom";
-import { clearAuth, getUser } from "../lib/auth";
+import { getUser, logout as logoutUser } from "../lib/auth";
 import {
   adminScopeLabel,
   isAcademicOrSuperAdmin,
@@ -206,7 +206,7 @@ export default function AppShell() {
   }
 
   function logout() {
-    clearAuth();
+    logoutUser();
     closeMobileMenu();
     navigate("/login", { replace: true });
   }
