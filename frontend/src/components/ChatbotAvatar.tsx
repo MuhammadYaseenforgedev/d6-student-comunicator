@@ -212,8 +212,8 @@ function RobotArm({
           upper: "right-[14%]",
           lower: "right-[-4%]",
           hand: "right-[-1%]",
-          transformOrigin: "88% 16%",
-          forearmOrigin: "94% 36%",
+          transformOriginClass: "origin-[88%_16%]",
+          forearmOriginClass: "origin-[94%_36%]",
         }
       : {
           wrapper: "right-[1%]",
@@ -221,8 +221,8 @@ function RobotArm({
           upper: "left-[14%]",
           lower: "left-[-4%]",
           hand: "left-[-1%]",
-          transformOrigin: "12% 16%",
-          forearmOrigin: "6% 36%",
+          transformOriginClass: "origin-[12%_16%]",
+          forearmOriginClass: "origin-[6%_36%]",
         };
 
   return (
@@ -233,8 +233,7 @@ function RobotArm({
         repeat: Infinity,
         ease: "easeInOut",
       }}
-      className={`absolute top-[36%] ${sideConfig.wrapper} z-10 h-[34%] w-[28%]`}
-      style={{ transformOrigin: sideConfig.transformOrigin }}
+      className={`absolute top-[36%] ${sideConfig.wrapper} ${sideConfig.transformOriginClass} z-10 h-[34%] w-[28%]`}
     >
       <div
         className={`absolute top-[5%] ${sideConfig.shoulder} h-[22%] w-[24%] rounded-full border border-white/14 bg-[linear-gradient(180deg,#fafdff,#d9ecff_55%,#7646da)] shadow-[0_8px_14px_rgba(8,17,42,0.28)]`}
@@ -251,8 +250,7 @@ function RobotArm({
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className={`absolute top-[30%] ${sideConfig.lower} h-[18%] w-[62%] rounded-full border border-white/10 bg-[linear-gradient(180deg,#ffffff,#ddf7ff_44%,#78ebff_94%)] shadow-[0_10px_16px_rgba(8,17,42,0.24)]`}
-        style={{ transformOrigin: sideConfig.forearmOrigin }}
+        className={`absolute top-[30%] ${sideConfig.lower} ${sideConfig.forearmOriginClass} h-[18%] w-[62%] rounded-full border border-white/10 bg-[linear-gradient(180deg,#ffffff,#ddf7ff_44%,#78ebff_94%)] shadow-[0_10px_16px_rgba(8,17,42,0.24)]`}
       />
 
       <div
@@ -271,9 +269,10 @@ export default function ChatbotAvatar({
   const resolvedSize = size ?? Math.round(BASE_SIZE * scale);
 
   return (
-    <div
-      className={`relative isolate inline-flex shrink-0 items-center justify-center overflow-visible ${className}`}
-      style={{ width: resolvedSize, height: resolvedSize }}
+    <motion.div
+      animate={{ scale: resolvedSize / BASE_SIZE }}
+      transition={{ duration: 0 }}
+      className={`relative isolate inline-flex h-24 w-24 shrink-0 items-center justify-center overflow-visible ${className}`}
     >
       <motion.div
         animate={auraAnimation(mode)}
@@ -285,9 +284,11 @@ export default function ChatbotAvatar({
         className="absolute inset-[6%] rounded-full bg-[radial-gradient(circle,rgba(111,240,255,0.22),rgba(111,125,255,0.14),transparent_72%)] blur-xl"
       />
 
-      <div
-        className="absolute inset-[18%] rounded-full bg-contain bg-center bg-no-repeat opacity-[0.08] blur-[0.5px]"
-        style={{ backgroundImage: `url(${beaconAvatar})` }}
+      <img
+        src={beaconAvatar}
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-[18%] h-[64%] w-[64%] rounded-full object-contain opacity-[0.08] blur-[0.5px]"
       />
 
       <motion.div
@@ -313,15 +314,13 @@ export default function ChatbotAvatar({
 
         <div className="absolute left-1/2 top-[6%] z-20 h-[44%] w-[72%] -translate-x-1/2">
           <div
-            className="absolute inset-0 border border-white/14 bg-[linear-gradient(180deg,#ffffff,#edf5ff_54%,#8f63ea)] shadow-[0_18px_28px_rgba(4,12,31,0.26)]"
-            style={{ borderRadius: "34% 34% 28% 28% / 30% 30% 36% 36%" }}
+            className="absolute inset-0 rounded-[34%_34%_28%_28%_/_30%_30%_36%_36%] border border-white/14 bg-[linear-gradient(180deg,#ffffff,#edf5ff_54%,#8f63ea)] shadow-[0_18px_28px_rgba(4,12,31,0.26)]"
           />
 
           <div className="absolute inset-x-[16%] top-[6%] h-[12%] rounded-full bg-[linear-gradient(90deg,rgba(164,112,255,0.18),rgba(164,112,255,0.76),rgba(164,112,255,0.18))]" />
 
           <div
-            className="absolute inset-x-[9%] bottom-[12%] top-[21%] overflow-hidden border border-[#8feaff]/18 bg-[linear-gradient(180deg,rgba(8,17,43,0.98),rgba(11,27,62,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_18px_rgba(111,240,255,0.12)]"
-            style={{ borderRadius: "30% 30% 28% 28% / 34% 34% 28% 28%" }}
+            className="absolute inset-x-[9%] bottom-[12%] top-[21%] overflow-hidden rounded-[30%_30%_28%_28%_/_34%_34%_28%_28%] border border-[#8feaff]/18 bg-[linear-gradient(180deg,rgba(8,17,43,0.98),rgba(11,27,62,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_18px_rgba(111,240,255,0.12)]"
           >
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(126,241,255,0.18),transparent_54%)]" />
 
@@ -344,15 +343,13 @@ export default function ChatbotAvatar({
 
         <div className="absolute left-1/2 top-[46%] z-10 h-[30%] w-[48%] -translate-x-1/2">
           <div
-            className="absolute inset-0 border border-white/12 bg-[linear-gradient(180deg,#fbfdff,#e7f0ff_46%,#6431c8_92%)] shadow-[0_16px_26px_rgba(4,12,31,0.24)]"
-            style={{ borderRadius: "34% 34% 26% 26% / 24% 24% 34% 34%" }}
+            className="absolute inset-0 rounded-[34%_34%_26%_26%_/_24%_24%_34%_34%] border border-white/12 bg-[linear-gradient(180deg,#fbfdff,#e7f0ff_46%,#6431c8_92%)] shadow-[0_16px_26px_rgba(4,12,31,0.24)]"
           />
 
           <div className="absolute inset-x-[12%] top-[8%] h-[14%] rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.32),rgba(255,255,255,0.02))]" />
 
           <div
-            className="absolute inset-x-[16%] top-[18%] h-[52%] border border-white/12 bg-[linear-gradient(180deg,rgba(130,74,255,0.82),rgba(37,18,96,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-            style={{ borderRadius: "26% 26% 34% 34% / 24% 24% 42% 42%" }}
+            className="absolute inset-x-[16%] top-[18%] h-[52%] rounded-[26%_26%_34%_34%_/_24%_24%_42%_42%] border border-white/12 bg-[linear-gradient(180deg,rgba(130,74,255,0.82),rgba(37,18,96,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
           />
 
           <motion.div
@@ -408,6 +405,6 @@ export default function ChatbotAvatar({
           />
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }

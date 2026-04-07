@@ -36,7 +36,7 @@ function headingToneClass(tone: HeaderTone): string {
   }
 
   if (tone === "emergency") {
-    return "text-[#FF8CCF]";
+    return "text-[#FF3B3B]";
   }
 
   if (tone === "general") {

@@ -350,7 +350,7 @@ export default function AdminUsers() {
 
         <div className="divider-soft my-5" />
 
-        <div className="space-y-3">
+        <div className="max-h-[26rem] overflow-y-auto pr-1 space-y-3">
           {loading ? (
             <div className="info-banner">Loading accounts...</div>
           ) : accounts.length === 0 ? (

@@ -190,6 +190,10 @@ function normalizeSouthAfricanId(v: unknown): string {
   return String(v ?? "").replace(/\D+/g, "");
 }
 
+function hasAcceptedLegalTerms(value: unknown): value is true {
+  return value === true;
+}
+
 function isValidSouthAfricanId(v: string): boolean {
   return /^\d{13}$/.test(v);
 }
@@ -518,9 +522,19 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
   const otp = String(req.body?.otp ?? "").trim();
   const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
   const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
+  const acceptedLegalTerms = req.body?.acceptedLegalTerms;
 
   if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
+  }
+
+  if (!hasAcceptedLegalTerms(acceptedLegalTerms)) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION",
+        message: "You must accept the POPIA Disclosure and IT Terms of Use before registering.",
+      },
+    });
   }
 
   const passwordError = validatePassword(password);

@@ -29,11 +29,50 @@ import {
   requestOtp as requestOtpApi,
 } from "../lib/authService";
 import { isFinanceAdmin } from "../lib/adminAccess";
+import { isMockAuthEnabled } from "../lib/devMode";
 import forgeLogo from "../assets/Forge.jpg";
 import AuthAssistant from "../components/AuthAssistant";
+import OTPInput from "../components/OTPInput";
 
 type LocationState = { from?: string };
 type Mode = "login" | "register";
+type LoginPage2Props = { onOpenLegal?: () => void };
+
+const MOCK_AUTH_ENABLED = isMockAuthEnabled();
+
+const DEMO_ACCOUNTS: Array<{
+  label: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  studentNumber?: string;
+}> = [
+  {
+    label: "Student",
+    email: "student@localhost.test",
+    password: "Demo123!",
+    role: "STUDENT",
+    studentNumber: "STU-1001",
+  },
+  {
+    label: "Lecturer",
+    email: "lecturer@localhost.test",
+    password: "Demo123!",
+    role: "LECTURER",
+  },
+  {
+    label: "Admin",
+    email: "admin@localhost.test",
+    password: "Demo123!",
+    role: "ADMIN",
+  },
+  {
+    label: "Parent",
+    email: "parent@localhost.test",
+    password: "Demo123!",
+    role: "PARENT",
+  },
+];
 
 function landingFor(user: Pick<AuthUser, "role" | "adminScope">) {
   if (user.role === "PARENT") return "/app/parent";
@@ -133,7 +172,7 @@ function normalizeSouthAfricanId(v: string): string {
   return v.replace(/\D+/g, "");
 }
 
-export default function LoginPage2() {
+export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as LocationState | null)?.from;
@@ -148,9 +187,16 @@ export default function LoginPage2() {
   const [staffRegisterPassword, setStaffRegisterPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedLegalTerms, setAcceptedLegalTerms] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(() => consumeLogoutNotice());
+  const [info, setInfo] = useState<string | null>(
+    () =>
+      consumeLogoutNotice() ??
+      (MOCK_AUTH_ENABLED
+        ? "Mock auth is enabled for local development. Use a demo account below."
+        : null)
+  );
   const [busy, setBusy] = useState(false);
 
   const title = useMemo(
@@ -170,6 +216,42 @@ export default function LoginPage2() {
     setOtp("");
     setStaffRegisterPassword("");
     setSouthAfricanId("");
+    setAcceptedLegalTerms(false);
+  }
+
+  function applyDemoAccount(account: (typeof DEMO_ACCOUNTS)[number]) {
+    setMode("login");
+    setRole(account.role);
+    setEmail(account.email);
+    setPassword(account.password);
+    setStudentNumber(account.studentNumber ?? "");
+    setOtp("");
+    setSouthAfricanId("");
+    setConfirmPassword("");
+    setStaffRegisterPassword("");
+    setError(null);
+    setInfo(`Demo ${account.label.toLowerCase()} account loaded.`);
+  }
+
+  async function quickSignIn(account: (typeof DEMO_ACCOUNTS)[number]) {
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(`Signing in as demo ${account.label.toLowerCase()}...`);
+
+      await doLogin(
+        account.email,
+        account.password,
+        "",
+        account.studentNumber ?? ""
+      );
+    } catch (err) {
+      const e2 = err as HttpError;
+      setError(loginErrorBanner(e2, ""));
+      setInfo(null);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function fetchMe(token: string) {
@@ -193,7 +275,7 @@ export default function LoginPage2() {
       );
     } else {
       setInfo(
-        "OTP requested. Check backend terminal in dev or email in production."
+        "OTP request sent. Please check email"
       );
     }
   }
@@ -243,13 +325,15 @@ export default function LoginPage2() {
     selectedRole: UserRole,
     staffPassword: string,
     studentNumberInput: string,
-    southAfricanIdInput: string
+    southAfricanIdInput: string,
+    legalTermsAccepted: boolean
   ) {
     const payload: {
       email: string;
       password: string;
       role: UserRole;
       otp: string;
+      acceptedLegalTerms: boolean;
       staffRegisterPassword?: string;
       studentNumber?: string;
       southAfricanId?: string;
@@ -258,6 +342,7 @@ export default function LoginPage2() {
       password: pw,
       role: selectedRole,
       otp: otpCode,
+      acceptedLegalTerms: legalTermsAccepted,
     };
 
     if (selectedRole === "ADMIN" || selectedRole === "LECTURER") {
@@ -304,6 +389,12 @@ export default function LoginPage2() {
       return setError("Passwords do not match.");
     }
 
+    if (mode === "register" && !acceptedLegalTerms) {
+      return setError(
+        "You must accept the POPIA Disclosure and IT Terms of Use before registering."
+      );
+    }
+
     if (roleNeedsStaffPassword && !staffRegisterPassword.trim()) {
       return setError(
         "Staff registration password is required for Admin and Lecturer roles."
@@ -322,14 +413,14 @@ export default function LoginPage2() {
       }
     }
 
-    if (mode === "register" && !otp.trim()) {
+    if (mode === "register" && otp.trim().length !== 6) {
       return setError(
         "OTP is required for registration. Request OTP first, then enter the code."
       );
     }
-    if (mode === "login" && LOGIN_REQUIRES_OTP && !otp.trim()) {
+    if (mode === "login" && LOGIN_REQUIRES_OTP && otp.trim().length !== 6) {
       return setError(
-        "OTP is required for production login. Click 'Request OTP' first, then enter the code."
+        "Please enter the full 6-digit OTP"
       );
     }
 
@@ -346,7 +437,8 @@ export default function LoginPage2() {
           role,
           staffRegisterPassword.trim(),
           studentNumberNorm,
-          southAfricanIdNorm
+          southAfricanIdNorm,
+          acceptedLegalTerms
         );
       }
     } catch (err) {
@@ -374,12 +466,13 @@ export default function LoginPage2() {
   }
 
   const canRequestOtp = !ENV_CONFIG_ERROR && !!email.trim() && !busy;
-  const hasOtp = !!otp.trim();
+  const hasOtp = otp.trim().length === 6;
   const canSubmit =
     !ENV_CONFIG_ERROR &&
     ((mode === "login" && (!LOGIN_REQUIRES_OTP || hasOtp)) ||
       (mode === "register" && hasOtp)) &&
     !busy &&
+    (mode !== "register" || acceptedLegalTerms) &&
     (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
     (!roleNeedsStudentIdentity ||
       (!!normalizeStudentNumber(studentNumber) &&
@@ -395,7 +488,8 @@ export default function LoginPage2() {
       </div>
 
       <div className="relative mx-auto w-full max-w-md">
-        <div className="glass-panel-strong relative overflow-hidden p-8 md:p-9">
+        <div className="auth-gradient-shell p-8 md:p-9">
+          <div className="sidebar-gradient-border-overlay absolute inset-0" />
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/40 to-transparent" />
             <div className="absolute -left-8 top-0 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-2xl" />
@@ -411,20 +505,21 @@ export default function LoginPage2() {
               />
             </div>
 
-            <div className="mt-6 grid grid-cols-2 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.58)] p-1 backdrop-blur-xl">
+            <div className="auth-nav-shell mt-6">
               <button
                 type="button"
                 onClick={() => {
                   changeMode("login");
                 }}
                 className={[
-                  "rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200",
+                  "auth-nav-tab",
                   mode === "login"
-                    ? "border border-[rgba(140,235,255,0.22)] bg-[rgba(14,42,99,0.82)] text-white shadow-[0_0_14px_rgba(140,235,255,0.08)]"
-                    : "text-white/65 hover:bg-[rgba(140,235,255,0.08)] hover:text-white",
+                    ? "auth-nav-tab-active"
+                    : "auth-nav-tab-idle",
                 ].join(" ")}
                 title="Switch to login mode"
                 aria-label="Switch to login mode"
+                aria-pressed={mode === "login"}
               >
                 Login
               </button>
@@ -435,19 +530,69 @@ export default function LoginPage2() {
                   changeMode("register");
                 }}
                 className={[
-                  "rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200",
+                  "auth-nav-tab",
                   mode === "register"
-                    ? "border border-[rgba(140,235,255,0.22)] bg-[rgba(14,42,99,0.82)] text-white shadow-[0_0_14px_rgba(140,235,255,0.08)]"
-                    : "text-white/65 hover:bg-[rgba(140,235,255,0.08)] hover:text-white",
+                    ? "auth-nav-tab-active"
+                    : "auth-nav-tab-idle",
                 ].join(" ")}
                 title="Switch to register mode"
                 aria-label="Switch to register mode"
+                aria-pressed={mode === "register"}
               >
                 Register
               </button>
             </div>
 
             <h2 className="mt-6 text-xl font-semibold text-white">{title}</h2>
+
+            {MOCK_AUTH_ENABLED && (
+              <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4">
+                <div className="text-sm font-semibold text-[#8CEBFF]">
+                  Demo Accounts
+                </div>
+                <div className="mt-2 text-xs text-white/70">
+                  Password for all demo users: <span className="font-semibold text-white">Demo123!</span>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {DEMO_ACCOUNTS.map((account) => (
+                    <div
+                      key={account.email}
+                      className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(14,42,99,0.42)] px-3 py-3"
+                    >
+                      <div className="text-sm font-semibold text-white">
+                        {account.label}
+                      </div>
+                      <div className="mt-1 text-xs text-white/65">
+                        {account.email}
+                      </div>
+                      {account.studentNumber && (
+                        <div className="mt-1 text-xs text-white/50">
+                          Student No: {account.studentNumber}
+                        </div>
+                      )}
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => quickSignIn(account)}
+                          disabled={busy}
+                          className="btn-primary flex-1 px-3 py-2 text-xs disabled:opacity-60"
+                        >
+                          Sign In
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyDemoAccount(account)}
+                          disabled={busy}
+                          className="btn-secondary flex-1 px-3 py-2 text-xs disabled:opacity-60"
+                        >
+                          Fill
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {info && <div className="info-banner mt-4">{info}</div>}
 
@@ -608,33 +753,32 @@ export default function LoginPage2() {
               )}
 
               <div>
-                <label htmlFor="otp" className="block text-sm text-white/80">
-                  OTP Code
-                </label>
-                <div className="mt-2 flex gap-2">
-                  <input
-                    id="otp"
-                    name="otp"
-                    type="text"
-                    inputMode="numeric"
-                    className="input-glass w-full"
-                    placeholder="6-digit code"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    disabled={busy}
-                  />
+                <div className="mt-2 flex flex-col items-center gap-3">
                   <button
                     type="button"
                     disabled={!canRequestOtp}
                     onClick={() => {
                       void onRequestOtpClick();
                     }}
-                    className="btn-secondary shrink-0"
+                    className="btn-secondary shrink-0 px-4 py-2.5"
                     title="Request one-time password"
                     aria-label="Request one-time password"
                   >
                     Request OTP
                   </button>
+
+                  <div className="w-full overflow-x-auto">
+                    <div className="flex min-w-max justify-center">
+                      <OTPInput
+                        id="otp"
+                        name="otp"
+                        value={otp}
+                        onChange={setOtp}
+                        length={6}
+                        disabled={busy}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {mode === "login" ? (
@@ -672,6 +816,44 @@ export default function LoginPage2() {
                 </div>
               )}
 
+              {mode === "register" && (
+                <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.52)] px-4 py-3">
+                  <label
+                    htmlFor="acceptedLegalTerms"
+                    className="flex cursor-pointer items-start gap-3 text-sm text-white/82"
+                  >
+                    <input
+                      id="acceptedLegalTerms"
+                      name="acceptedLegalTerms"
+                      type="checkbox"
+                      checked={acceptedLegalTerms}
+                      onChange={(e) => setAcceptedLegalTerms(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-[rgba(140,235,255,0.28)] bg-[rgba(8,18,48,0.84)] text-[#8CEBFF] focus:ring-[#8CEBFF]/40"
+                      disabled={busy}
+                    />
+                    <span>
+                      I have read and agree to the{" "}
+                      <button
+                        type="button"
+                        onClick={onOpenLegal}
+                        className="font-medium text-[#8CEBFF] transition hover:text-white focus:outline-none focus:text-white"
+                      >
+                        POPIA Disclosure
+                      </button>{" "}
+                      and{" "}
+                      <button
+                        type="button"
+                        onClick={onOpenLegal}
+                        className="font-medium text-[#8CEBFF] transition hover:text-white focus:outline-none focus:text-white"
+                      >
+                        IT Terms of Use
+                      </button>
+                      .
+                    </span>
+                  </label>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={!canSubmit}
@@ -685,6 +867,20 @@ export default function LoginPage2() {
                   ? "Sign In"
                   : "Create account"}
               </button>
+
+              {mode === "login" && (
+                <p className="text-center text-xs text-white/55">
+                  By logging in, you agree to the Forge Communicator{" "}
+                  <button
+                    type="button"
+                    onClick={onOpenLegal}
+                    className="text-[#8CEBFF] transition hover:text-white focus:outline-none focus:text-white"
+                  >
+                    IT Terms of Use
+                  </button>
+                  .
+                </p>
+              )}
 
               <div className="flex items-center justify-center">
                 <Link

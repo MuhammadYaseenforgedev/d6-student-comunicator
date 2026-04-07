@@ -6,6 +6,7 @@
 // - Keep footer visible on all pages
 // - Provide a dark futuristic visual base
 
+import { useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import LoginPage from "./pages/Login-Page2";
@@ -47,6 +48,8 @@ import ParentAttendance from "./pages/parent/ParentAttendance";
 import { getUser } from "./lib/auth";
 import { isFinanceAdmin } from "./lib/adminAccess";
 import forgeBg from "./assets/forge-bg.png";
+import LegalModal from "./components/LegalModal";
+import AnimatedCursor from "./components/AnimatedCursor";
 
 function AppIndex() {
   const user = getUser();
@@ -56,9 +59,13 @@ function AppIndex() {
 }
 
 export default function App() {
+  const [legalOpen, setLegalOpen] = useState(false);
+
   return (
     <BrowserRouter>
       <div className="app-root-shell relative min-h-screen text-white">
+        <AnimatedCursor />
+
         {/* GLOBAL FIXED BACKGROUND */}
         <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
           <img
@@ -78,10 +85,13 @@ export default function App() {
 
         {/* ROUTES */}
         <div className="relative z-10 flex min-h-screen flex-col">
-          <div className="flex-1">
+          <div className="flex-1 min-h-0">
             <Routes>
               <Route path="/" element={<Navigate to="/login" replace />} />
-              <Route path="/login" element={<LoginPage />} />
+              <Route
+                path="/login"
+                element={<LoginPage onOpenLegal={() => setLegalOpen(true)} />}
+              />
               <Route path="/support" element={<SupportDesk />} />
 
               <Route element={<RequireAuth />}>
@@ -215,9 +225,11 @@ export default function App() {
 
           {/* FOOTER */}
           <div className="relative z-20 mt-3 lg:mt-4 pb-4 lg:pb-6">
-            <AppFooter />
+            <AppFooter onOpenLegal={() => setLegalOpen(true)} />
           </div>
         </div>
+
+        <LegalModal open={legalOpen} onClose={() => setLegalOpen(false)} />
       </div>
     </BrowserRouter>
   );

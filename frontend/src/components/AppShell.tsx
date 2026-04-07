@@ -8,11 +8,13 @@
 // - Keep visual styling consistent with the app-wide neon glass theme
 
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Link,
   NavLink,
-  Outlet,
   useNavigate,
+  useLocation,
+  useOutlet,
 } from "react-router-dom";
 import { getUser, logout as logoutUser } from "../lib/auth";
 import {
@@ -107,6 +109,8 @@ function Item({
 
 export default function AppShell() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const outlet = useOutlet();
   const user = getUser();
 
   const isParent = user?.role === "PARENT";
@@ -445,7 +449,7 @@ export default function AppShell() {
   );
 
   return (
-    <div className="min-h-[calc(100dvh-180px)]">
+    <div className="min-h-0">
       <div className="w-full px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6 xl:px-8 2xl:px-10">
         <div className="mb-3 lg:hidden">
           <div className="glass-panel-premium relative overflow-hidden px-3 py-3">
@@ -475,11 +479,13 @@ export default function AppShell() {
         </div>
 
         <div className="desktop-app-frame grid grid-cols-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="glass-panel-premium relative hidden overflow-hidden p-4 lg:block lg:min-h-[calc(100dvh-130px)]">
+          <aside className="glass-panel-premium relative hidden overflow-hidden p-4 lg:block">
+            <div className="sidebar-gradient-border-overlay absolute inset-0" />
             {sidebarContent}
           </aside>
 
-          <main className="glass-panel relative min-w-0 overflow-x-hidden lg:min-h-[calc(100dvh-130px)]">
+          <main className="glass-panel relative min-w-0 overflow-x-hidden">
+            <div className="sidebar-gradient-border-overlay absolute inset-0" />
             <div className="pointer-events-none absolute inset-0 opacity-100">
               <div className="absolute left-0 top-0 h-36 w-36 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
               <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
@@ -488,7 +494,20 @@ export default function AppShell() {
 
             <div className="relative min-w-0 p-3 sm:p-4 lg:p-6 xl:p-7">
               <AppErrorBoundary>
-                <Outlet />
+                <div className="relative min-w-0 overflow-x-hidden">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={location.pathname}
+                      initial={{ opacity: 0, x: 30 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -30 }}
+                      transition={{ duration: 0.25, ease: "easeInOut" }}
+                      className="min-w-0"
+                    >
+                      {outlet}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
               </AppErrorBoundary>
             </div>
           </main>
@@ -510,6 +529,7 @@ export default function AppShell() {
         aria-hidden={!mobileMenuOpen}
       >
         <div className="glass-panel-premium relative h-full overflow-y-auto overflow-x-hidden p-4">
+          <div className="sidebar-gradient-border-overlay absolute inset-0" />
           {sidebarContent}
         </div>
       </aside>

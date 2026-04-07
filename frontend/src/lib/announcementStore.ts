@@ -47,6 +47,29 @@ export function addAnnouncement(payload: AnnouncementCreate): Announcement {
   return newItem;
 }
 
+export function updateAnnouncementLocal(
+  id: string,
+  patch: Pick<Announcement, "title" | "body" | "pinned">
+): Announcement {
+  const all = getAnnouncements();
+  const current = all.find((item) => item.id === id);
+  if (!current) {
+    throw new Error("Announcement not found.");
+  }
+
+  const nextItem: Announcement = {
+    ...current,
+    ...patch,
+  };
+  saveAnnouncements(all.map((item) => (item.id === id ? nextItem : item)));
+  return nextItem;
+}
+
+export function deleteAnnouncementLocal(id: string): void {
+  const all = getAnnouncements();
+  saveAnnouncements(all.filter((item) => item.id !== id));
+}
+
 export function getAnnouncementsByChannel(channel: ChannelKey): Announcement[] {
   return getAnnouncements().filter((a) => a.channel === channel);
 }

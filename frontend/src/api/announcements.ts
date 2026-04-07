@@ -3,6 +3,14 @@
 import type { Announcement, AnnouncementCreate, ChannelKey } from "../lib/types";
 import { apiDelete, apiGet, apiPatch, apiPost } from "../lib/api";
 import { getUser } from "../lib/auth";
+import {
+  addAnnouncement,
+  deleteAnnouncementLocal,
+  ensureDemoSeeded,
+  getAnnouncementsByChannel,
+  updateAnnouncementLocal,
+} from "../lib/announcementStore";
+import { isMockDataEnabled } from "../lib/devMode";
 
 // The backend mounts apiListWrapper under /api, which wraps any array JSON body as:
 //   { value: [...], count: number }
@@ -125,6 +133,16 @@ export async function fetchAnnouncements(
   channel: ChannelKey,
   opts?: { moduleId?: string }
 ): Promise<Announcement[]> {
+  if (isMockDataEnabled()) {
+    ensureDemoSeeded();
+    const rows = getAnnouncementsByChannel(channel);
+    if (channel !== "modules" || !opts?.moduleId?.trim()) {
+      return rows;
+    }
+    const moduleId = opts.moduleId.trim();
+    return rows.filter((row) => row.moduleId === moduleId);
+  }
+
   const channelId = await resolveChannelId(channel);
   const qs = new URLSearchParams();
   if (channel === "modules" && opts?.moduleId?.trim()) {
@@ -139,6 +157,11 @@ export async function fetchAnnouncements(
 }
 
 export async function createAnnouncement(payload: AnnouncementCreate): Promise<Announcement> {
+  if (isMockDataEnabled()) {
+    ensureDemoSeeded();
+    return addAnnouncement(payload);
+  }
+
   const channelId = await resolveChannelId(payload.channel);
 
   const created = await apiPost<BackendAnnouncement>(
@@ -165,6 +188,19 @@ type AnnouncementUpdateInput = {
 };
 
 export async function updateAnnouncement(input: AnnouncementUpdateInput): Promise<Announcement> {
+  if (isMockDataEnabled()) {
+    ensureDemoSeeded();
+    const current = getAnnouncementsByChannel(input.channel).find((item) => item.id === input.id);
+    if (!current) {
+      throw new Error("Announcement not found.");
+    }
+    return updateAnnouncementLocal(input.id, {
+      title: input.title ?? current.title,
+      body: input.body ?? current.body,
+      pinned: input.pinned ?? current.pinned,
+    });
+  }
+
   const channelId = await resolveChannelId(input.channel);
   const updated = await apiPatch<BackendAnnouncement>(
     `/api/channels/${channelId}/announcements/${input.id}`,
@@ -181,6 +217,12 @@ export async function deleteAnnouncement(input: {
   channel: ChannelKey;
   id: string;
 }): Promise<void> {
+  if (isMockDataEnabled()) {
+    ensureDemoSeeded();
+    deleteAnnouncementLocal(input.id);
+    return;
+  }
+
   const channelId = await resolveChannelId(input.channel);
   await apiDelete<{ ok: boolean }>(
     `/api/channels/${channelId}/announcements/${input.id}`

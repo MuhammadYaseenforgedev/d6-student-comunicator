@@ -1,4 +1,6 @@
 import { apiDelete, apiDownload, apiGet, apiPost } from "../lib/api";
+import { getUser } from "../lib/auth";
+import { isMockDataEnabled } from "../lib/devMode";
 
 export type ParentChild = {
   id: string;
@@ -136,6 +138,132 @@ const DEFAULT_FINANCE: FinanceSummary = {
   notifications: [],
   documents: [],
 };
+
+const MOCK_LINK_REQUESTS_KEY = "d6_mock_parent_link_requests_v1";
+
+const MOCK_CHILD: ParentChild = {
+  id: "mock-student-1",
+  email: "student@localhost.test",
+  role: "STUDENT",
+  publicStudentId: "STU-1001",
+  studentNumber: "STU-1001",
+  userId: "mock-student-1",
+  childUserId: "mock-student-1",
+  studentUserId: "mock-student-1",
+};
+
+const MOCK_RESULTS: Result[] = [
+  { id: "result-1", subject: "Mathematics", score: 82, outOf: 100, date: "2026-03-12" },
+  { id: "result-2", subject: "Programming", score: 91, outOf: 100, date: "2026-03-20" },
+  { id: "result-3", subject: "Communication Skills", score: 76, outOf: 100, date: "2026-03-24" },
+];
+
+const MOCK_FINANCE: FinanceSummary = {
+  balance: 2450.5,
+  currency: "ZAR",
+  statements: 3,
+  lastPayment: "2026-03-25T09:30:00.000Z",
+  status: "OUTSTANDING",
+  statusNote: "Payment due before the April registration cut-off.",
+  notifications: [
+    {
+      id: "finance-note-1",
+      title: "April statement ready",
+      body: "Your latest statement is available for download.",
+      severity: "info",
+      createdAt: "2026-03-26T10:00:00.000Z",
+    },
+  ],
+  documents: [
+    {
+      id: "finance-doc-1",
+      kind: "STATEMENT",
+      type: "STATEMENT",
+      title: "Statement - March 2026",
+      amount: 2450.5,
+      occurredAt: "2026-03-26T08:00:00.000Z",
+      description: "Tuition and campus services statement.",
+      documentUrl: null,
+    },
+  ],
+};
+
+const MOCK_ATTENDANCE: ParentAttendanceRecord[] = [
+  {
+    sessionId: "attendance-1",
+    date: "2026-03-25",
+    startsAt: "2026-03-25T08:00:00.000Z",
+    endsAt: "2026-03-25T10:00:00.000Z",
+    moduleId: "module-prog-1",
+    moduleCode: "PRG101",
+    moduleName: "Programming Fundamentals",
+    facultyName: "Computing",
+    status: "PRESENT",
+    markedAt: "2026-03-25T08:05:00.000Z",
+  },
+  {
+    sessionId: "attendance-2",
+    date: "2026-03-27",
+    startsAt: "2026-03-27T11:00:00.000Z",
+    endsAt: "2026-03-27T13:00:00.000Z",
+    moduleId: "module-math-1",
+    moduleCode: "MAT101",
+    moduleName: "Mathematics",
+    facultyName: "Computing",
+    status: "LATE",
+    markedAt: "2026-03-27T11:12:00.000Z",
+  },
+];
+
+function getMockParentEmail(): string {
+  return (getUser()?.email ?? "parent@localhost.test").trim().toLowerCase();
+}
+
+function getStoredMockLinkRequests(): LinkRequest[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(MOCK_LINK_REQUESTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as LinkRequest[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredMockLinkRequests(items: LinkRequest[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(MOCK_LINK_REQUESTS_KEY, JSON.stringify(items));
+}
+
+function ensureMockLinkRequests(): LinkRequest[] {
+  const current = getStoredMockLinkRequests();
+  if (current.length > 0) return current;
+
+  const seeded: LinkRequest[] = [
+    {
+      id: "mock-link-1",
+      childId: MOCK_CHILD.publicStudentId ?? MOCK_CHILD.email,
+      southAfricanId: "0012311234088",
+      status: "APPROVED",
+      requestedAt: "2026-03-20T09:00:00.000Z",
+    },
+  ];
+  saveStoredMockLinkRequests(seeded);
+  return seeded;
+}
+
+function makeCsvBlob(lines: string[], fileName: string): {
+  blob: Blob;
+  fileName: string;
+  contentType: string;
+} {
+  return {
+    blob: new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }),
+    fileName,
+    contentType: "text/csv;charset=utf-8",
+  };
+}
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
@@ -349,6 +477,9 @@ function normalizeParentAttendanceRecord(row: unknown, index: number): ParentAtt
 }
 
 export async function parentPortalCheck(): Promise<ParentPortalInfo> {
+  if (isMockDataEnabled()) {
+    return { ok: true, role: "PARENT", message: "Mock parent portal active" };
+  }
   const data = await apiGet<unknown>("/api/parent/parent");
   const source = unwrapObject(data);
   if (!source) {
@@ -363,6 +494,10 @@ export async function parentPortalCheck(): Promise<ParentPortalInfo> {
 }
 
 export async function listMyChildren(): Promise<ParentChild[]> {
+  if (isMockDataEnabled()) {
+    ensureMockLinkRequests();
+    return [MOCK_CHILD];
+  }
   const data = await apiGet<unknown>("/api/parent/children");
   return unwrapList<unknown>(data)
     .map(normalizeChild)
@@ -370,6 +505,18 @@ export async function listMyChildren(): Promise<ParentChild[]> {
 }
 
 export async function linkChild(identifier: string): Promise<LinkChildResult> {
+  if (isMockDataEnabled()) {
+    return {
+      created: false,
+      pending: true,
+      message: "Mock mode keeps parent links local-only.",
+      child: MOCK_CHILD,
+      childId:
+        String(identifier ?? "").trim() ||
+        (MOCK_CHILD.publicStudentId ?? MOCK_CHILD.email),
+      southAfricanId: String(identifier ?? "").trim() || null,
+    };
+  }
   const cleaned = String(identifier ?? "").trim();
   const data = await apiPost<unknown>("/api/parent/children", {
     childId: cleaned,
@@ -401,6 +548,9 @@ export async function linkChild(identifier: string): Promise<LinkChildResult> {
 }
 
 export async function listLinkRequests(): Promise<LinkRequest[]> {
+  if (isMockDataEnabled()) {
+    return ensureMockLinkRequests();
+  }
   const data = await apiGet<unknown>("/api/parent/parent/link-requests");
   return unwrapList<unknown>(data)
     .map(normalizeLinkRequest)
@@ -408,6 +558,19 @@ export async function listLinkRequests(): Promise<LinkRequest[]> {
 }
 
 export async function createLinkRequest(southAfricanId: string): Promise<LinkRequestCreateResult> {
+  if (isMockDataEnabled()) {
+    const normalizedId = String(southAfricanId ?? "").replace(/\D+/g, "");
+    const next: LinkRequest = {
+      id: `mock-link-${Date.now()}`,
+      childId: normalizedId || (MOCK_CHILD.publicStudentId ?? MOCK_CHILD.email),
+      southAfricanId: normalizedId || null,
+      status: "PENDING",
+      requestedAt: new Date().toISOString(),
+    };
+    const current = ensureMockLinkRequests();
+    saveStoredMockLinkRequests([next, ...current]);
+    return next;
+  }
   const data = await apiPost<unknown>("/api/parent/parent/link-requests", { southAfricanId });
   const source = unwrapObject(data);
 
@@ -435,6 +598,24 @@ export async function createLinkRequest(southAfricanId: string): Promise<LinkReq
 export async function listAdminLinkRequests(
   status: AdminLinkRequestStatusFilter = "PENDING"
 ): Promise<AdminLinkRequest[]> {
+  if (isMockDataEnabled()) {
+    const rows = ensureMockLinkRequests().map((request) => ({
+      id: request.id,
+      status: request.status,
+      requestedAt: request.requestedAt,
+      decidedAt: request.status === "PENDING" ? null : new Date().toISOString(),
+      parentUserId: "mock-parent-1",
+      parentEmail: getMockParentEmail(),
+      childUserId: MOCK_CHILD.id,
+      childEmail: MOCK_CHILD.email,
+      childId: request.childId,
+      southAfricanId: request.southAfricanId ?? null,
+      decidedById: request.status === "PENDING" ? null : "mock-admin-1",
+      decidedByEmail: request.status === "PENDING" ? null : "admin@localhost.test",
+    }));
+    if (status === "ALL") return rows;
+    return rows.filter((row) => row.status === status);
+  }
   const qs = new URLSearchParams();
   qs.set("status", status);
   const data = await apiGet<unknown>(`/api/parent/admin/parent/link-requests?${qs.toString()}`);
@@ -447,6 +628,15 @@ export async function decideAdminLinkRequest(
   id: string,
   decision: AdminLinkRequestDecision
 ): Promise<{ ok: boolean; status: string }> {
+  if (isMockDataEnabled()) {
+    const current = ensureMockLinkRequests();
+    saveStoredMockLinkRequests(
+      current.map((request) =>
+        request.id === id ? { ...request, status: decision } : request
+      )
+    );
+    return { ok: true, status: decision };
+  }
   const data = await apiPost<unknown>(`/api/parent/admin/parent/link-requests/${encodeURIComponent(id)}/decide`, {
     decision,
   });
@@ -458,11 +648,17 @@ export async function decideAdminLinkRequest(
 }
 
 export async function getResults(childId: string): Promise<Result[]> {
+  if (isMockDataEnabled()) {
+    return childId ? [...MOCK_RESULTS] : [];
+  }
   const data = await apiGet<unknown>(`/api/parent/results?childId=${encodeURIComponent(childId)}`);
   return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
 }
 
 export async function getStudentResults(): Promise<Result[]> {
+  if (isMockDataEnabled()) {
+    return [...MOCK_RESULTS];
+  }
   const data = await apiGet<unknown>("/api/parent/student/results");
   return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
 }
@@ -470,6 +666,10 @@ export async function getStudentResults(): Promise<Result[]> {
 export async function downloadResults(
   childId: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
+  if (isMockDataEnabled()) {
+    const lines = ["Subject,Score,OutOf,Date", ...MOCK_RESULTS.map((row) => `${row.subject},${row.score},${row.outOf},${row.date}`)];
+    return makeCsvBlob(lines, `mock-results-${encodeURIComponent(childId || "student")}.csv`);
+  }
   return apiDownload(`/api/parent/results/download?childId=${encodeURIComponent(childId)}`);
 }
 
@@ -478,10 +678,17 @@ export async function downloadStudentResults(): Promise<{
   fileName: string | null;
   contentType: string | null;
 }> {
+  if (isMockDataEnabled()) {
+    const lines = ["Subject,Score,OutOf,Date", ...MOCK_RESULTS.map((row) => `${row.subject},${row.score},${row.outOf},${row.date}`)];
+    return makeCsvBlob(lines, "mock-student-results.csv");
+  }
   return apiDownload("/api/parent/student/results/download");
 }
 
 export async function listResultsForStaff(childId: string): Promise<Result[]> {
+  if (isMockDataEnabled()) {
+    return childId ? [...MOCK_RESULTS] : [];
+  }
   const data = await apiGet<unknown>(`/api/parent/admin/results?childId=${encodeURIComponent(childId)}`);
   return unwrapList<unknown>(data).map((row, index) => normalizeResult(row, index));
 }
@@ -489,24 +696,54 @@ export async function listResultsForStaff(childId: string): Promise<Result[]> {
 export async function downloadResultsForStaff(
   childId: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
+  if (isMockDataEnabled()) {
+    const lines = ["Subject,Score,OutOf,Date", ...MOCK_RESULTS.map((row) => `${row.subject},${row.score},${row.outOf},${row.date}`)];
+    return makeCsvBlob(lines, `mock-admin-results-${encodeURIComponent(childId || "student")}.csv`);
+  }
   return apiDownload(`/api/parent/admin/results/download?childId=${encodeURIComponent(childId)}`);
 }
 
 export async function createResultForStaff(input: StaffResultInput): Promise<Result> {
+  if (isMockDataEnabled()) {
+    return {
+      id: `mock-result-${Date.now()}`,
+      subject: input.subject,
+      score: input.score,
+      outOf: input.outOf ?? 100,
+      date: input.date ?? new Date().toISOString().slice(0, 10),
+    };
+  }
   const data = await apiPost<unknown>("/api/parent/admin/results", input);
   return normalizeResult(data, 0);
 }
 
 export async function updateResultForStaff(id: string, input: StaffResultUpdateInput): Promise<Result> {
+  if (isMockDataEnabled()) {
+    const current = MOCK_RESULTS.find((row) => row.id === id) ?? MOCK_RESULTS[0];
+    return {
+      id,
+      subject: input.subject ?? current.subject,
+      score: input.score ?? current.score,
+      outOf: input.outOf ?? current.outOf,
+      date: input.date ?? current.date,
+    };
+  }
   const data = await apiPost<unknown>(`/api/parent/admin/results/${encodeURIComponent(id)}/update`, input);
   return normalizeResult(data, 0);
 }
 
 export async function deleteResultForStaff(id: string): Promise<void> {
+  if (isMockDataEnabled()) {
+    void id;
+    return;
+  }
   await apiDelete<void>(`/api/parent/admin/results/${encodeURIComponent(id)}`);
 }
 
 export async function getFinance(childId: string): Promise<FinanceSummary> {
+  if (isMockDataEnabled()) {
+    return childId ? { ...MOCK_FINANCE } : { ...DEFAULT_FINANCE };
+  }
   const data = await apiGet<unknown>(`/api/parent/finance?childId=${encodeURIComponent(childId)}`);
   return normalizeFinanceSummary(data);
 }
@@ -514,6 +751,13 @@ export async function getFinance(childId: string): Promise<FinanceSummary> {
 export async function downloadFinanceStatement(
   childId: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
+  if (isMockDataEnabled()) {
+    const lines = [
+      "Type,Title,Amount,OccurredAt",
+      ...MOCK_FINANCE.documents.map((row) => `${row.type},${row.title ?? ""},${row.amount},${row.occurredAt}`),
+    ];
+    return makeCsvBlob(lines, `mock-finance-statement-${encodeURIComponent(childId || "student")}.csv`);
+  }
   return apiDownload(`/api/parent/finance/statement?childId=${encodeURIComponent(childId)}`);
 }
 
@@ -521,6 +765,17 @@ export async function getParentAttendance(
   childId: string,
   params?: { from?: string; to?: string }
 ): Promise<ParentAttendanceRecord[]> {
+  if (isMockDataEnabled()) {
+    if (!childId) return [];
+
+    const fromTime = params?.from ? new Date(params.from).getTime() : Number.NEGATIVE_INFINITY;
+    const toTime = params?.to ? new Date(params.to).getTime() : Number.POSITIVE_INFINITY;
+
+    return MOCK_ATTENDANCE.filter((row) => {
+      const rowTime = new Date(row.date).getTime();
+      return rowTime >= fromTime && rowTime <= toTime;
+    });
+  }
   const qs = new URLSearchParams();
   qs.set("childId", childId);
   if (params?.from) qs.set("from", params.from);

@@ -75,10 +75,10 @@ function channelCardClass(channel: string) {
 
   if (channel === "emergency") {
     return [
-      "border-[#FF5E7E]/78 bg-[#081A44]/72",
-      "shadow-[0_0_0_1px_rgba(255,94,126,0.24),0_0_18px_rgba(255,94,126,0.22),0_12px_30px_rgba(2,12,42,0.55)]",
-      "hover:border-[#FF5E7E] hover:bg-[#0B204D]/80",
-      "hover:shadow-[0_0_0_1px_rgba(255,94,126,0.36),0_0_26px_rgba(255,94,126,0.30),0_16px_36px_rgba(2,12,42,0.62)]",
+      "border-[#FF3B3B] bg-[#081A44]/72",
+      "shadow-[0_0_0_1px_rgba(255,59,59,0.32),0_0_22px_rgba(255,59,59,0.18),0_12px_30px_rgba(2,12,42,0.55)]",
+      "hover:border-[#FF3B3B] hover:bg-[#0B204D]/80",
+      "hover:shadow-[0_0_0_1px_rgba(255,59,59,0.56),0_0_12px_rgba(255,59,59,0.38),0_0_28px_rgba(255,59,59,0.30),0_20px_42px_rgba(2,12,42,0.66)]",
     ].join(" ");
   }
 

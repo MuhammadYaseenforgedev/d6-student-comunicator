@@ -30,6 +30,13 @@
 
     --card-glow-teal: 140 235 255;
     --card-glow-purple: 140 91 255;
+    --heading-gradient: linear-gradient(
+      135deg,
+      rgb(var(--neon-magenta)) 0%,
+      rgb(var(--neon-purple-2)) 42%,
+      rgb(var(--neon-blue-2)) 74%,
+      rgb(var(--neon-cyan)) 100%
+    );
   }
 
   html {
@@ -82,6 +89,18 @@
 
   *::-webkit-scrollbar-thumb:hover {
     background: rgba(140, 235, 255, 0.36);
+  }
+
+  body.forge-cursor-enabled,
+  body.forge-cursor-enabled * {
+    cursor: none !important;
+  }
+
+  body.forge-cursor-enabled input,
+  body.forge-cursor-enabled textarea,
+  body.forge-cursor-enabled [contenteditable="true"],
+  body.forge-cursor-enabled [data-native-cursor="true"] {
+    cursor: text !important;
   }
 }
 
@@ -153,7 +172,79 @@
   }
 }
 
+@keyframes navbarBorderFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes navItemBorderLoop {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 @layer components {
+  .forge-cursor-shell {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 120;
+    pointer-events: none;
+    opacity: 0;
+    will-change: transform, opacity;
+    transition: opacity 140ms ease;
+  }
+
+  .forge-cursor-shell.is-visible {
+    opacity: 1;
+  }
+
+  .forge-cursor-visual {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    transform: translate(-50%, -50%);
+    transition:
+      transform 180ms ease,
+      filter 180ms ease;
+    filter:
+      drop-shadow(0 0 10px rgba(191, 253, 255, 0.75))
+      drop-shadow(0 0 18px rgba(140, 235, 255, 0.42))
+      drop-shadow(0 0 26px rgba(79, 166, 255, 0.22));
+  }
+
+  .forge-cursor-shell.is-interactive .forge-cursor-visual {
+    transform: translate(-50%, -50%) scale(1.1);
+    filter:
+      drop-shadow(0 0 12px rgba(224, 255, 255, 0.9))
+      drop-shadow(0 0 22px rgba(140, 235, 255, 0.58))
+      drop-shadow(0 0 34px rgba(79, 166, 255, 0.28));
+  }
+
+  .forge-cursor-mark {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform: scaleX(-1) rotate(-45deg);
+    transform-origin: center;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
   .app-bg {
     @apply min-h-screen flex flex-col;
     color: rgb(var(--text));
@@ -220,6 +311,159 @@
     animation: haloPulseTeal 7s ease-in-out infinite;
   }
 
+  .sidebar-gradient-border {
+    isolation: isolate;
+    border-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .sidebar-gradient-border::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1.25px;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image: var(--heading-gradient);
+    background-size: 240% 240%;
+    background-position: 0% 50%;
+    opacity: 0.92;
+    filter: saturate(1.08);
+    animation: navbarBorderFlow 7s ease-in-out infinite;
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    transition:
+      opacity 220ms ease,
+      filter 220ms ease,
+      background-size 220ms ease;
+  }
+
+  .sidebar-gradient-border::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      135deg,
+      rgba(var(--neon-magenta), 0.14) 0%,
+      rgba(var(--neon-purple-2), 0.16) 42%,
+      rgba(var(--neon-blue-2), 0.14) 74%,
+      rgba(var(--neon-cyan), 0.16) 100%
+    );
+    opacity: 0.26;
+    filter: blur(14px);
+    z-index: -1;
+    transition:
+      opacity 220ms ease,
+      filter 220ms ease;
+  }
+
+  .sidebar-gradient-border:hover::before,
+  .sidebar-gradient-border:focus-within::before {
+    opacity: 1;
+    filter: saturate(1.16) brightness(1.04);
+    background-size: 220% 220%;
+    animation-duration: 5.5s;
+  }
+
+  .sidebar-gradient-border:hover::after,
+  .sidebar-gradient-border:focus-within::after {
+    opacity: 0.34;
+    filter: blur(18px);
+  }
+
+  .sidebar-gradient-border-overlay {
+    pointer-events: none;
+    border-radius: inherit;
+    z-index: 2;
+  }
+
+  .sidebar-gradient-border-overlay::before,
+  .sidebar-gradient-border-overlay::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  .sidebar-gradient-border-overlay::before {
+    padding: 1.25px;
+    background-image: var(--heading-gradient);
+    background-size: 240% 240%;
+    background-position: 0% 50%;
+    opacity: 0.92;
+    filter: saturate(1.08);
+    animation: navbarBorderFlow 7s ease-in-out infinite;
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
+
+  .sidebar-gradient-border-overlay::after {
+    inset: -2px;
+    background: linear-gradient(
+      135deg,
+      rgba(var(--neon-magenta), 0.14) 0%,
+      rgba(var(--neon-purple-2), 0.16) 42%,
+      rgba(var(--neon-blue-2), 0.14) 74%,
+      rgba(var(--neon-cyan), 0.16) 100%
+    );
+    opacity: 0.26;
+    filter: blur(14px);
+    z-index: -1;
+  }
+
+  .auth-gradient-shell {
+    @apply glass-panel-premium relative overflow-hidden;
+  }
+
+  .auth-gradient-shell > .sidebar-gradient-border-overlay {
+    opacity: 1;
+  }
+
+  .auth-nav-shell {
+    @apply relative grid grid-cols-2 gap-1 rounded-[1.35rem] border p-1 backdrop-blur-xl;
+    border-color: rgba(140, 235, 255, 0.16);
+    background:
+      linear-gradient(
+        180deg,
+        rgba(8, 18, 48, 0.78) 0%,
+        rgba(6, 16, 40, 0.74) 100%
+      );
+    box-shadow:
+      0 0 0 1px rgba(140, 235, 255, 0.04) inset,
+      0 10px 24px rgba(3, 10, 28, 0.24);
+  }
+
+  .auth-nav-tab {
+    @apply nav-item text-center font-semibold;
+  }
+
+  .auth-nav-tab-active {
+    @apply nav-item-active;
+    box-shadow:
+      0 0 18px rgba(140, 235, 255, 0.12),
+      0 0 0 1px rgba(140, 235, 255, 0.05) inset,
+      0 10px 22px rgba(3, 10, 28, 0.22);
+  }
+
+  .auth-nav-tab-idle {
+    @apply nav-item-idle;
+    background: rgba(255, 255, 255, 0.01);
+  }
+
   .teal-glow-card {
     @apply rounded-3xl border backdrop-blur-2xl;
     background:
@@ -270,13 +514,7 @@
 
   .page-heading-gradient {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(
-      135deg,
-      rgb(var(--neon-magenta)) 0%,
-      rgb(var(--neon-purple-2)) 42%,
-      rgb(var(--neon-blue-2)) 74%,
-      rgb(var(--neon-cyan)) 100%
-    );
+    background-image: var(--heading-gradient);
   }
 
   .app-title-gradient {
@@ -415,12 +653,13 @@
   }
 
   .nav-item {
-    @apply block rounded-2xl border px-3 py-2.5 text-sm transition-all duration-200;
+    @apply relative block rounded-2xl border px-3 py-2.5 text-sm transition-all duration-200;
+    isolation: isolate;
   }
 
   .nav-item-active {
     color: white;
-    border-color: rgba(140, 235, 255, 0.28);
+    border-color: rgba(255, 255, 255, 0.04);
     background: linear-gradient(
       135deg,
       rgba(79, 166, 255, 0.14) 0%,
@@ -429,6 +668,34 @@
     box-shadow:
       0 0 18px rgba(140, 235, 255, 0.12),
       0 0 0 1px rgba(140, 235, 255, 0.06) inset;
+  }
+
+  .nav-item-active::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1.4px;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image: linear-gradient(
+      90deg,
+      rgb(var(--neon-magenta)) 0%,
+      rgb(var(--neon-purple-2)) 35%,
+      rgb(var(--neon-blue-2)) 70%,
+      rgb(var(--neon-cyan)) 100%
+    );
+    background-size: 220% 100%;
+    background-position: 0% 50%;
+    opacity: 1;
+    animation: navItemBorderLoop 2.4s ease-in-out infinite;
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
   }
 
   .nav-item-idle {

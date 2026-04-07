@@ -18,6 +18,10 @@ import nokiaBellLabsLogo from "../assets/NokiaBellLabs.png";
 import nokiaLogo from "../assets/Nokia.png";
 import uxDesignInstituteLogo from "../assets/UXDesignInstitue.png";
 
+type AppFooterProps = {
+  onOpenLegal?: () => void;
+};
+
 const partnerLogos = [
   {
     name: "AWS",
@@ -57,17 +61,16 @@ const partnerLogos = [
   },
 ];
 
-export default function AppFooter() {
+export default function AppFooter({ onOpenLegal }: AppFooterProps) {
   return (
     <footer className="bg-transparent">
       <div className="w-full px-3 sm:px-4 lg:px-6 xl:px-8 2xl:px-10">
-        <div className="glass-panel min-h-[189px] p-0">
+        <div className="glass-panel relative min-h-[189px] p-0">
+          <div className="sidebar-gradient-border-overlay absolute inset-0" />
           <div className="flex h-full flex-col justify-between">
-
             {/* TOP SECTION */}
             <div className="px-6 pt-6 sm:px-8">
               <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.6fr_1fr]">
-
                 {/* Contact */}
                 <div className="space-y-3 text-sm text-white/82">
                   <h3 className="text-lg font-semibold text-white">
@@ -112,7 +115,7 @@ export default function AppFooter() {
                   <img
                     src={forgeLogo}
                     alt="Forge Academy"
-                    className="h-24 sm:h-28 lg:h-32 w-auto object-contain"
+                    className="h-24 w-auto object-contain sm:h-28 lg:h-32"
                   />
 
                   <div className="mt-2 text-sm font-medium text-white/75">
@@ -192,10 +195,19 @@ export default function AppFooter() {
               </div>
 
               <div className="mt-4 text-xs text-white/70">
-                © {new Date().getFullYear()} Forge Academy
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+                  <span>&copy; {new Date().getFullYear()} Forge Academy</span>
+                  <span className="hidden text-white/35 sm:inline">|</span>
+                  <button
+                    type="button"
+                    onClick={onOpenLegal}
+                    className="text-[#8CEBFF] transition hover:text-white focus:outline-none focus:text-white"
+                  >
+                    Legal &amp; Privacy
+                  </button>
+                </div>
               </div>
             </div>
-
           </div>
         </div>
       </div>

@@ -52,11 +52,41 @@ describe("Auth register role policy", () => {
     restoreEnvVar("AUTH_STAFF_REGISTER_PASSWORD");
   });
 
+  test("rejects registration when acceptedLegalTerms is missing", async () => {
+    const res = await request(app).post("/api/auth/register").send({
+      email: uniqueEmail("legal_missing"),
+      password: "Passw0rd!",
+      role: "PARENT",
+    });
+
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+    expect(String(res.body?.error?.message ?? "")).toBe(
+      "You must accept the POPIA Disclosure and IT Terms of Use before registering."
+    );
+  });
+
+  test("rejects registration when acceptedLegalTerms is false", async () => {
+    const res = await request(app).post("/api/auth/register").send({
+      email: uniqueEmail("legal_false"),
+      password: "Passw0rd!",
+      role: "PARENT",
+      acceptedLegalTerms: false,
+    });
+
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+    expect(String(res.body?.error?.message ?? "")).toBe(
+      "You must accept the POPIA Disclosure and IT Terms of Use before registering."
+    );
+  });
+
   test("allows STUDENT self-registration with SA ID and student number", async () => {
     const res = await request(app).post("/api/auth/register").send({
       email: uniqueEmail("student"),
       password: "Passw0rd!",
       role: "STUDENT",
+      acceptedLegalTerms: true,
       southAfricanId: uniqueSouthAfricanId(),
       studentNumber: uniqueStudentNumber("STU"),
     });
@@ -71,6 +101,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("short_password"),
       password: "12345",
       role: "PARENT",
+      acceptedLegalTerms: true,
     });
 
     expect(res.status).toBe(400);
@@ -83,6 +114,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("student_missing_identity"),
       password: "Passw0rd!",
       role: "STUDENT",
+      acceptedLegalTerms: true,
     });
 
     expect(res.status).toBe(400);
@@ -94,6 +126,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("parent"),
       password: "Passw0rd!",
       role: "PARENT",
+      acceptedLegalTerms: true,
     });
 
     expect(res.status).toBe(201);
@@ -107,6 +140,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("lecturer_missing"),
       password: "Passw0rd!",
       role: "LECTURER",
+      acceptedLegalTerms: true,
     });
 
     expect(res.status).toBe(403);
@@ -120,6 +154,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("admin_wrong"),
       password: "Passw0rd!",
       role: "ADMIN",
+      acceptedLegalTerms: true,
       staffRegisterPassword: "wrong-password",
     });
 
@@ -134,6 +169,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("lecturer_ok"),
       password: "Passw0rd!",
       role: "LECTURER",
+      acceptedLegalTerms: true,
       staffRegisterPassword: STAFF_PASSWORD,
     });
 
@@ -148,6 +184,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("admin_ok"),
       password: "Passw0rd!",
       role: "ADMIN",
+      acceptedLegalTerms: true,
       staffRegisterPassword: STAFF_PASSWORD,
     });
 
@@ -164,6 +201,7 @@ describe("Auth register role policy", () => {
       email,
       password,
       role: "STUDENT",
+      acceptedLegalTerms: true,
       southAfricanId: uniqueSouthAfricanId(),
       studentNumber,
     });
