@@ -35,6 +35,7 @@ import OTPInput from "../components/OTPInput";
 
 type LocationState = { from?: string };
 type Mode = "login" | "register";
+type OtpPurpose = "LOGIN" | "REGISTER";
 type LoginPage2Props = { onOpenLegal?: () => void };
 
 function landingFor(user: Pick<AuthUser, "role" | "adminScope">) {
@@ -131,6 +132,10 @@ function normalizeStudentNumber(v: string): string {
   return v.trim().toUpperCase();
 }
 
+function normalizeEmail(v: string): string {
+  return v.trim().toLowerCase();
+}
+
 function normalizeSouthAfricanId(v: string): string {
   return v.replace(/\D+/g, "");
 }
@@ -151,6 +156,10 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
   const [otp, setOtp] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedLegalTerms, setAcceptedLegalTerms] = useState(false);
+  const [lastOtpRequest, setLastOtpRequest] = useState<{
+    email: string;
+    purpose: OtpPurpose;
+  } | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(() => consumeLogoutNotice() ?? null);
@@ -180,8 +189,8 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     return fetchAuthMe(token);
   }
 
-  async function requestOtp(purpose: "LOGIN" | "REGISTER") {
-    const eNorm = email.trim().toLowerCase();
+  async function requestOtp(purpose: OtpPurpose) {
+    const eNorm = normalizeEmail(email);
     if (!eNorm) throw new Error("Please enter an email first.");
 
     setError(null);
@@ -189,16 +198,17 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
 
     const data = await requestOtpApi({ email: eNorm, purpose });
     const devOtp = String(data?.devOtp ?? data?.devCode ?? "").trim();
+    const purposeLabel = purpose === "REGISTER" ? "Registration" : "Sign-in";
+
+    setLastOtpRequest({ email: eNorm, purpose });
 
     if (devOtp) {
       setOtp(devOtp);
       setInfo(
-        `OTP generated and auto-filled. Expires: ${data.expiresAt ?? "soon"}`
+        `${purposeLabel} OTP generated and auto-filled. Expires: ${data.expiresAt ?? "soon"}`
       );
     } else {
-      setInfo(
-        "OTP request sent. Please check email"
-      );
+      setInfo(`${purposeLabel} OTP request sent. Please check email.`);
     }
   }
 
@@ -297,7 +307,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     setError(null);
     setInfo(null);
 
-    const eNorm = email.trim().toLowerCase();
+    const eNorm = normalizeEmail(email);
     const studentNumberNorm = normalizeStudentNumber(studentNumber);
     const southAfricanIdNorm = normalizeSouthAfricanId(southAfricanId);
 
@@ -344,6 +354,22 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
       return setError(
         "Please enter the full 6-digit OTP"
       );
+    }
+
+    if (otp.trim().length === 6 && lastOtpRequest) {
+      const expectedPurpose: OtpPurpose =
+        mode === "register" ? "REGISTER" : "LOGIN";
+
+      if (
+        lastOtpRequest.email !== eNorm ||
+        lastOtpRequest.purpose !== expectedPurpose
+      ) {
+        return setError(
+          expectedPurpose === "REGISTER"
+            ? "Request a registration OTP for this email before creating your account."
+            : "Request a sign-in OTP for this email before signing in."
+        );
+      }
     }
 
     try {
@@ -573,7 +599,17 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                   className="input-glass mt-2"
                   placeholder="name@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        const nextEmail = e.target.value;
+                        const nextEmailNorm = normalizeEmail(nextEmail);
+                        setEmail(nextEmail);
+
+                        if (lastOtpRequest && lastOtpRequest.email !== nextEmailNorm) {
+                          setLastOtpRequest(null);
+                          setOtp("");
+                          setInfo(null);
+                        }
+                      }}
                   required
                   autoComplete="username"
                   disabled={busy}
