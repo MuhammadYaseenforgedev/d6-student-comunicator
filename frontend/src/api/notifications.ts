@@ -1,5 +1,4 @@
 import { apiGet, apiPost } from "../lib/api";
-import { isMockDataEnabled } from "../lib/devMode";
 
 export type NotificationCategory =
   | "MESSAGE"
@@ -54,14 +53,6 @@ export async function listNotifications(params?: {
   unreadOnly?: boolean;
   categories?: NotificationCategory[];
 }): Promise<NotificationListResponse> {
-  if (isMockDataEnabled()) {
-    return {
-      value: [],
-      count: 0,
-      nextBefore: null,
-    };
-  }
-
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.before) qs.set("before", params.before);
@@ -77,29 +68,15 @@ export async function listNotifications(params?: {
 }
 
 export async function fetchNotificationSummary(): Promise<NotificationSummary> {
-  if (isMockDataEnabled()) {
-    return {
-      totalUnread: 0,
-      counts: {},
-    };
-  }
   return apiGet<NotificationSummary>("/api/notifications/summary");
 }
 
 export async function markNotificationRead(notificationId: string): Promise<void> {
-  if (isMockDataEnabled()) {
-    emitNotificationsRefresh();
-    return;
-  }
   await apiPost<{ ok: true }>(`/api/notifications/${notificationId}/read`, {});
   emitNotificationsRefresh();
 }
 
 export async function markAllNotificationsRead(categories?: NotificationCategory[]): Promise<number> {
-  if (isMockDataEnabled()) {
-    emitNotificationsRefresh();
-    return 0;
-  }
   const result = await apiPost<{ ok: boolean; updated: number }>("/api/notifications/read-all", {
     categories,
   });

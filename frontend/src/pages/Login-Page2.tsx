@@ -29,7 +29,6 @@ import {
   requestOtp as requestOtpApi,
 } from "../lib/authService";
 import { isFinanceAdmin } from "../lib/adminAccess";
-import { isMockAuthEnabled } from "../lib/devMode";
 import forgeLogo from "../assets/Forge.jpg";
 import AuthAssistant from "../components/AuthAssistant";
 import OTPInput from "../components/OTPInput";
@@ -37,42 +36,6 @@ import OTPInput from "../components/OTPInput";
 type LocationState = { from?: string };
 type Mode = "login" | "register";
 type LoginPage2Props = { onOpenLegal?: () => void };
-
-const MOCK_AUTH_ENABLED = isMockAuthEnabled();
-
-const DEMO_ACCOUNTS: Array<{
-  label: string;
-  email: string;
-  password: string;
-  role: UserRole;
-  studentNumber?: string;
-}> = [
-  {
-    label: "Student",
-    email: "student@localhost.test",
-    password: "Demo123!",
-    role: "STUDENT",
-    studentNumber: "STU-1001",
-  },
-  {
-    label: "Lecturer",
-    email: "lecturer@localhost.test",
-    password: "Demo123!",
-    role: "LECTURER",
-  },
-  {
-    label: "Admin",
-    email: "admin@localhost.test",
-    password: "Demo123!",
-    role: "ADMIN",
-  },
-  {
-    label: "Parent",
-    email: "parent@localhost.test",
-    password: "Demo123!",
-    role: "PARENT",
-  },
-];
 
 function landingFor(user: Pick<AuthUser, "role" | "adminScope">) {
   if (user.role === "PARENT") return "/app/parent";
@@ -190,13 +153,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
   const [acceptedLegalTerms, setAcceptedLegalTerms] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(
-    () =>
-      consumeLogoutNotice() ??
-      (MOCK_AUTH_ENABLED
-        ? "Mock auth is enabled for local development. Use a demo account below."
-        : null)
-  );
+  const [info, setInfo] = useState<string | null>(() => consumeLogoutNotice() ?? null);
   const [busy, setBusy] = useState(false);
 
   const title = useMemo(
@@ -217,41 +174,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     setStaffRegisterPassword("");
     setSouthAfricanId("");
     setAcceptedLegalTerms(false);
-  }
-
-  function applyDemoAccount(account: (typeof DEMO_ACCOUNTS)[number]) {
-    setMode("login");
-    setRole(account.role);
-    setEmail(account.email);
-    setPassword(account.password);
-    setStudentNumber(account.studentNumber ?? "");
-    setOtp("");
-    setSouthAfricanId("");
-    setConfirmPassword("");
-    setStaffRegisterPassword("");
-    setError(null);
-    setInfo(`Demo ${account.label.toLowerCase()} account loaded.`);
-  }
-
-  async function quickSignIn(account: (typeof DEMO_ACCOUNTS)[number]) {
-    try {
-      setBusy(true);
-      setError(null);
-      setInfo(`Signing in as demo ${account.label.toLowerCase()}...`);
-
-      await doLogin(
-        account.email,
-        account.password,
-        "",
-        account.studentNumber ?? ""
-      );
-    } catch (err) {
-      const e2 = err as HttpError;
-      setError(loginErrorBanner(e2, ""));
-      setInfo(null);
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function fetchMe(token: string) {
@@ -544,55 +466,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
             </div>
 
             <h2 className="mt-6 text-xl font-semibold text-white">{title}</h2>
-
-            {MOCK_AUTH_ENABLED && (
-              <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4">
-                <div className="text-sm font-semibold text-[#8CEBFF]">
-                  Demo Accounts
-                </div>
-                <div className="mt-2 text-xs text-white/70">
-                  Password for all demo users: <span className="font-semibold text-white">Demo123!</span>
-                </div>
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {DEMO_ACCOUNTS.map((account) => (
-                    <div
-                      key={account.email}
-                      className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(14,42,99,0.42)] px-3 py-3"
-                    >
-                      <div className="text-sm font-semibold text-white">
-                        {account.label}
-                      </div>
-                      <div className="mt-1 text-xs text-white/65">
-                        {account.email}
-                      </div>
-                      {account.studentNumber && (
-                        <div className="mt-1 text-xs text-white/50">
-                          Student No: {account.studentNumber}
-                        </div>
-                      )}
-                      <div className="mt-3 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => quickSignIn(account)}
-                          disabled={busy}
-                          className="btn-primary flex-1 px-3 py-2 text-xs disabled:opacity-60"
-                        >
-                          Sign In
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => applyDemoAccount(account)}
-                          disabled={busy}
-                          className="btn-secondary flex-1 px-3 py-2 text-xs disabled:opacity-60"
-                        >
-                          Fill
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {info && <div className="info-banner mt-4">{info}</div>}
 
