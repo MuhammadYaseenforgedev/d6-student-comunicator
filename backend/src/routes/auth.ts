@@ -506,6 +506,7 @@ authRouter.post("/request-otp", async (req, res) => {
        password,
        role,
        otp,
+       acceptedLegalTerms,              // required for self-registration
        staffRegisterPassword?,          // required for ADMIN/LECTURER
        studentNumber?, southAfricanId?  // required for STUDENT
      }
@@ -614,8 +615,16 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
 
     const result = await pool.query(
       `
-        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id, admin_scope)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (
+          email,
+          password_hash,
+          role,
+          public_student_id,
+          south_african_id,
+          admin_scope,
+          accepted_legal_terms_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, now())
         RETURNING id, email, role, admin_scope
       `,
       [

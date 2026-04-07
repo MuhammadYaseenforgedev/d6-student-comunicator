@@ -122,8 +122,10 @@ describe("Auth register role policy", () => {
   });
 
   test("allows PARENT self-registration", async () => {
+    const email = uniqueEmail("parent");
+
     const res = await request(app).post("/api/auth/register").send({
-      email: uniqueEmail("parent"),
+      email,
       password: "Passw0rd!",
       role: "PARENT",
       acceptedLegalTerms: true,
@@ -131,6 +133,18 @@ describe("Auth register role policy", () => {
 
     expect(res.status).toBe(201);
     expect(res.body?.user?.role).toBe("PARENT");
+
+    const stored = await pool.query<{ accepted_legal_terms_at: string | null }>(
+      `
+        SELECT accepted_legal_terms_at::text AS accepted_legal_terms_at
+        FROM users
+        WHERE lower(email) = lower($1)
+        LIMIT 1
+      `,
+      [email]
+    );
+
+    expect(stored.rows[0]?.accepted_legal_terms_at).toBeTruthy();
   });
 
   test("blocks LECTURER self-registration when staff password is missing", async () => {
