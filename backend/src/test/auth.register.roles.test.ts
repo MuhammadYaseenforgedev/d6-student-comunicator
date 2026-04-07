@@ -81,6 +81,67 @@ describe("Auth register role policy", () => {
     );
   });
 
+  test("rejects missing acceptedLegalTerms before OTP validation when OTP is required", async () => {
+    const previousRequireOtp = process.env.AUTH_REQUIRE_OTP;
+    const previousAllowPasswordRegister = process.env.AUTH_ALLOW_PASSWORD_REGISTER;
+    process.env.AUTH_REQUIRE_OTP = "true";
+    delete process.env.AUTH_ALLOW_PASSWORD_REGISTER;
+
+    try {
+      const res = await request(app).post("/api/auth/register").send({
+        email: uniqueEmail("legal_before_otp"),
+        password: "Passw0rd!",
+        role: "PARENT",
+        otp: "000000",
+      });
+
+      expect(res.status).toBe(400);
+      expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+      expect(String(res.body?.error?.message ?? "")).toBe(
+        "You must accept the POPIA Disclosure and IT Terms of Use before registering."
+      );
+    } finally {
+      if (typeof previousRequireOtp === "string") process.env.AUTH_REQUIRE_OTP = previousRequireOtp;
+      else process.env.AUTH_REQUIRE_OTP = "false";
+
+      if (typeof previousAllowPasswordRegister === "string") {
+        process.env.AUTH_ALLOW_PASSWORD_REGISTER = previousAllowPasswordRegister;
+      } else {
+        process.env.AUTH_ALLOW_PASSWORD_REGISTER = "true";
+      }
+    }
+  });
+
+  test("accepts true acceptedLegalTerms into normal OTP validation flow", async () => {
+    const previousRequireOtp = process.env.AUTH_REQUIRE_OTP;
+    const previousAllowPasswordRegister = process.env.AUTH_ALLOW_PASSWORD_REGISTER;
+    process.env.AUTH_REQUIRE_OTP = "true";
+    delete process.env.AUTH_ALLOW_PASSWORD_REGISTER;
+
+    try {
+      const res = await request(app).post("/api/auth/register").send({
+        email: uniqueEmail("legal_true_otp"),
+        password: "Passw0rd!",
+        role: "PARENT",
+        acceptedLegalTerms: true,
+        otp: "000000",
+      });
+
+      expect(res.status).toBe(400);
+      expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+      expect(String(res.body?.error?.message ?? "")).toBe("OTP not found");
+    } finally {
+      if (typeof previousRequireOtp === "string") process.env.AUTH_REQUIRE_OTP = previousRequireOtp;
+      else process.env.AUTH_REQUIRE_OTP = "false";
+
+      if (typeof previousAllowPasswordRegister === "string") {
+        process.env.AUTH_ALLOW_PASSWORD_REGISTER = previousAllowPasswordRegister;
+      } else {
+        process.env.AUTH_ALLOW_PASSWORD_REGISTER = "true";
+      }
+    }
+  });
+
   test("allows STUDENT self-registration with SA ID and student number", async () => {
     const res = await request(app).post("/api/auth/register").send({
       email: uniqueEmail("student"),

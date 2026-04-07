@@ -136,6 +136,23 @@ function otpConfig() {
   };
 }
 
+function buildOtpSuccessResponse(expiresAt: string, devCode?: string) {
+  return devCode
+    ? {
+        ok: true as const,
+        expiresAt,
+        devOtp: devCode,
+      }
+    : {
+        ok: true as const,
+        expiresAt,
+      };
+}
+
+function fallbackOtpExpiresAt(): string {
+  return new Date(Date.now() + otpConfig().ttlMinutes * 60_000).toISOString();
+}
+
 function normalizeIp(ip: string): string {
   const s = String(ip ?? "").trim();
   if (!s) return "unknown";
@@ -454,37 +471,29 @@ authRouter.post("/request-otp", async (req, res) => {
     });
   }
 
-  // Neutral response to avoid email enumeration on LOGIN
+  const includeDevOtp = shouldUseDemoOtpBypass(email);
+  let loginAccountExists = true;
+
   if (purpose === "LOGIN") {
     const r = await pool.query(`SELECT 1 FROM users WHERE lower(email)=lower($1) LIMIT 1`, [email]);
-    if ((r.rowCount ?? 0) === 0) {
-      return res.json({ ok: true });
-    }
+    loginAccountExists = (r.rowCount ?? 0) > 0;
   }
 
   try {
-    const includeDevOtp = shouldUseDemoOtpBypass(email);
     if (includeDevOtp) {
       logDemoBypassUsage("request-otp", email);
     }
+
     const out = await createOtp(email, purpose, ip, {
-      skipEmailDelivery: includeDevOtp,
+      skipEmailDelivery: includeDevOtp || (purpose === "LOGIN" && !loginAccountExists),
       forceDevCode: includeDevOtp,
     });
 
-    if (includeDevOtp) {
-      return res.json({
-        ok: true,
-        expiresAt: out.expiresAt,
-        devOtp: out.devCode,
-      });
-    }
-
-    return res.json({
-      ok: true,
-      expiresAt: out.expiresAt,
-    });
+    return res.json(buildOtpSuccessResponse(out.expiresAt, includeDevOtp ? out.devCode : undefined));
   } catch (e: any) {
+    if (purpose === "LOGIN" && e instanceof OtpDeliveryError) {
+      return res.json(buildOtpSuccessResponse(fallbackOtpExpiresAt()));
+    }
     if (e instanceof OtpDeliveryError) {
       return res.status(e.status).json({
         error: { code: "EMAIL_PROVIDER", message: e.message },
