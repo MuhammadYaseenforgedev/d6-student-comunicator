@@ -22,6 +22,12 @@ export type Upload = {
   targetUserId?: string | null;
   targetUserEmail?: string | null;
   targetUserRole?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
+  moduleId?: string | null;
+  moduleCode?: string | null;
+  moduleName?: string | null;
+  courseId?: string | null;
+  courseCode?: string | null;
+  courseName?: string | null;
   createdAt: string;
 };
 
@@ -246,6 +252,7 @@ export type CreateUploadInput = {
   storagePath: string;
   uploadedBy: string;
   targetUserId?: string | null;
+  moduleId?: string | null;
 };
 
 /* =========

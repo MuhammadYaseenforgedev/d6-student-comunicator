@@ -2,13 +2,15 @@ import { Router } from "express";
 import { pool } from "../config/db";
 import { requireAccess, requireRole } from "../middleware/rbac";
 import { createAttendanceNotifications } from "../lib/notifications";
-import { isAcademicOrSuperAdmin } from "../lib/adminAccess";
-import { isStudentActiveInCourse, isStudentAllowedForModule } from "../lib/courseAccess";
+import {
+  isLecturerAssignedToCourse,
+  isLecturerAssignedToModule,
+  isStudentActiveInCourse,
+  isStudentAllowedForModule,
+} from "../lib/courseAccess";
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE";
 const VALID_ATTENDANCE_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE"];
-
-type AuthRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
 
 type AttendanceSessionContext = {
   id: string;
@@ -33,21 +35,13 @@ function parseDateOnly(raw: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
+function compareDateOnly(a: string, b: string): number {
+  return Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`);
+}
+
 function normalizeStatus(raw: unknown): AttendanceStatus | null {
   const s = String(raw ?? "").trim().toUpperCase();
   return VALID_ATTENDANCE_STATUSES.includes(s as AttendanceStatus) ? (s as AttendanceStatus) : null;
-}
-
-async function isLecturerAssignedToModule(lecturerId: string, moduleId: string): Promise<boolean> {
-  const q = `
-    SELECT 1
-    FROM lecturer_module_assignments
-    WHERE lecturer_id = $1
-      AND module_id = $2
-    LIMIT 1
-  `;
-  const r = await pool.query(q, [lecturerId, moduleId]);
-  return (r.rowCount ?? 0) > 0;
 }
 
 async function isStudentEnrolledInModule(studentId: string, moduleId: string): Promise<boolean> {
@@ -77,8 +71,12 @@ async function getAttendanceSessionContext(sessionId: string): Promise<Attendanc
   return (r.rowCount ?? 0) > 0 ? r.rows[0] : null;
 }
 
-async function canStaffAccessSession(user: { id: string; role: AuthRole }): Promise<boolean> {
-  return user.role === "LECTURER" || isAcademicOrSuperAdmin(user);
+async function canLecturerManageModule(userId: string, moduleId: string): Promise<boolean> {
+  return isLecturerAssignedToModule(pool, userId, moduleId);
+}
+
+async function canLecturerManageCourse(userId: string, courseId: string): Promise<boolean> {
+  return isLecturerAssignedToCourse(pool, userId, courseId);
 }
 
 async function ensureParentCanAccessChild(parentId: string, childId: string): Promise<boolean> {
@@ -93,6 +91,59 @@ async function ensureParentCanAccessChild(parentId: string, childId: string): Pr
   return (r.rowCount ?? 0) > 0;
 }
 
+function buildAttendanceCsv(rows: Array<{
+  student_name: string;
+  student_number: string | null;
+  course_name: string | null;
+  module_code: string;
+  module_name: string;
+  attendance_date: string;
+  status: AttendanceStatus;
+}>): string {
+  const summary = {
+    present: rows.filter((row) => row.status === "PRESENT").length,
+    absent: rows.filter((row) => row.status === "ABSENT").length,
+    late: rows.filter((row) => row.status === "LATE").length,
+    total: rows.length,
+  };
+
+  const csvCell = (value: string | number | null | undefined): string => {
+    const raw = value == null ? "" : String(value);
+    if (!/[",\n\r]/.test(raw)) return raw;
+    return `"${raw.replace(/"/g, '""')}"`;
+  };
+
+  const lines = [
+    `Generated At,${csvCell(new Date().toISOString())}`,
+    `Present,${summary.present}`,
+    `Late,${summary.late}`,
+    `Absent,${summary.absent}`,
+    `Total,${summary.total}`,
+    "",
+    "Student Name,Student Number,Course,Module Code,Module Name,Attendance Date,Status",
+  ];
+
+  if (rows.length === 0) {
+    lines.push("No attendance records found,,,,,,");
+  } else {
+    for (const row of rows) {
+      lines.push(
+        [
+          csvCell(row.student_name),
+          csvCell(row.student_number),
+          csvCell(row.course_name),
+          csvCell(row.module_code),
+          csvCell(row.module_name),
+          csvCell(row.attendance_date),
+          csvCell(row.status),
+        ].join(",")
+      );
+    }
+  }
+
+  return `\uFEFF${lines.join("\n")}\n`;
+}
+
 export const attendanceRouter = Router();
 
 // Create module/faculty records for attendance setup.
@@ -101,6 +152,7 @@ attendanceRouter.post(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
+    const user = req.user!;
     const code = String(req.body?.code ?? "").trim().toUpperCase();
     const name = String(req.body?.name ?? "").trim();
     const courseId = String(req.body?.courseId ?? "").trim();
@@ -113,6 +165,13 @@ attendanceRouter.post(
 
     const courseRes = await pool.query(`SELECT 1 FROM courses WHERE id = $1 LIMIT 1`, [courseId]);
     if ((courseRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Course not found");
+
+    if (user.role === "LECTURER") {
+      const allowed = await canLecturerManageCourse(user.id, courseId);
+      if (!allowed) {
+        return err(res, 403, "FORBIDDEN", "Lecturer can only create modules for assigned courses");
+      }
+    }
 
     let facultyId = facultyIdRaw;
     if (facultyId) {
@@ -181,6 +240,7 @@ attendanceRouter.post(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
+    const user = req.user!;
     const moduleId = String(req.params.moduleId ?? "").trim();
     const lecturerId = String(req.body?.lecturerId ?? "").trim();
 
@@ -197,6 +257,20 @@ attendanceRouter.post(
       [moduleId]
     );
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
+
+    if (user.role === "LECTURER") {
+      const allowed = await canLecturerManageModule(user.id, moduleId);
+      if (!allowed) {
+        return err(res, 403, "FORBIDDEN", "Lecturer can only create sessions for assigned modules");
+      }
+    }
+
+    if (user.role === "LECTURER") {
+      const allowed = await canLecturerManageModule(user.id, moduleId);
+      if (!allowed) {
+        return err(res, 403, "FORBIDDEN", "Lecturer can only manage assigned modules");
+      }
+    }
 
     const lecturer = await pool.query(
       `
@@ -235,6 +309,7 @@ attendanceRouter.post(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
+    const user = req.user!;
     const moduleId = String(req.params.moduleId ?? "").trim();
     const studentId = String(req.body?.studentId ?? "").trim();
 
@@ -251,6 +326,13 @@ attendanceRouter.post(
       [moduleId]
     );
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
+
+    if (user.role === "LECTURER") {
+      const allowed = await canLecturerManageModule(user.id, moduleId);
+      if (!allowed) {
+        return err(res, 403, "FORBIDDEN", "Lecturer can only manage assigned modules");
+      }
+    }
 
     const student = await pool.query(
       `
@@ -310,6 +392,7 @@ attendanceRouter.delete(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
     try {
+      const user = req.user!;
       const moduleId = String(req.params.moduleId ?? "").trim();
       const studentId = String(req.params.studentId ?? "").trim();
 
@@ -318,6 +401,13 @@ attendanceRouter.delete(
 
       const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
       if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
+
+      if (user.role === "LECTURER") {
+        const allowed = await canLecturerManageModule(user.id, moduleId);
+        if (!allowed) {
+          return err(res, 403, "FORBIDDEN", "Lecturer can only manage assigned modules");
+        }
+      }
 
       const deleted = await pool.query(
         `
@@ -345,11 +435,19 @@ attendanceRouter.delete(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
     try {
+      const user = req.user!;
       const moduleId = String(req.params.moduleId ?? "").trim();
       const lecturerId = String(req.params.lecturerId ?? "").trim();
 
       if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
       if (!isUuid(lecturerId)) return err(res, 400, "VALIDATION", "lecturerId must be a UUID");
+
+      if (user.role === "LECTURER") {
+        const allowed = await canLecturerManageModule(user.id, moduleId);
+        if (!allowed) {
+          return err(res, 403, "FORBIDDEN", "Lecturer can only manage assigned modules");
+        }
+      }
 
       const deleted = await pool.query(
         `
@@ -380,6 +478,7 @@ attendanceRouter.get(
   try {
     const user = req.user!;
     const isStudent = user.role === "STUDENT";
+    const isLecturer = user.role === "LECTURER";
 
     const params: unknown[] = [];
     const where: string[] = [];
@@ -394,6 +493,16 @@ attendanceRouter.get(
          AND sc2.status = 'ACTIVE'
         WHERE sme2.module_id = fm.id
           AND sme2.student_id = $${params.length}
+      )`);
+    }
+
+    if (isLecturer) {
+      params.push(user.id);
+      where.push(`EXISTS (
+        SELECT 1
+        FROM lecturer_module_assignments lma2
+        WHERE lma2.module_id = fm.id
+          AND lma2.lecturer_id = $${params.length}
       )`);
     }
 
@@ -469,11 +578,19 @@ attendanceRouter.get(
   requireAccess({ roles: ["LECTURER", "ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
+    const user = req.user!;
     const moduleId = String(req.params.moduleId ?? "").trim();
     if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
 
     const moduleRes = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
+
+    if (user.role === "LECTURER") {
+      const allowed = await canLecturerManageModule(user.id, moduleId);
+      if (!allowed) {
+        return err(res, 403, "FORBIDDEN", "Lecturer can only view assigned module rosters");
+      }
+    }
 
     const rows = await pool.query<{
       id: string;
@@ -571,7 +688,7 @@ attendanceRouter.post(
       return err(res, 404, "NOT_FOUND", "Lecturer not found");
     }
 
-    const assigned = await isLecturerAssignedToModule(lecturerId, moduleId);
+    const assigned = await isLecturerAssignedToModule(pool, lecturerId, moduleId);
     if (!assigned) {
       await pool.query(
         `
@@ -652,6 +769,16 @@ attendanceRouter.get(
          AND sc.status = 'ACTIVE'
         WHERE sme.module_id = s.module_id
           AND sme.student_id = $${params.length}
+      )`);
+    }
+
+    if (user.role === "LECTURER") {
+      params.push(user.id);
+      where.push(`EXISTS (
+        SELECT 1
+        FROM lecturer_module_assignments lma
+        WHERE lma.module_id = s.module_id
+          AND lma.lecturer_id = $${params.length}
       )`);
     }
 
@@ -756,8 +883,12 @@ attendanceRouter.get(
     const session = await getAttendanceSessionContext(sessionId);
     if (!session) return err(res, 404, "NOT_FOUND", "Attendance session not found");
 
-    const canAccess = await canStaffAccessSession({ id: user.id, role: user.role as AuthRole });
-    if (!canAccess) return err(res, 403, "FORBIDDEN", "User cannot access this attendance session");
+    if (user.role === "LECTURER") {
+      const canAccess = await canLecturerManageModule(user.id, session.module_id);
+      if (!canAccess) {
+        return err(res, 403, "FORBIDDEN", "Lecturer cannot access this attendance session");
+      }
+    }
 
     const rows = await pool.query<{
       id: string;
@@ -951,6 +1082,13 @@ attendanceRouter.post(
     if ((sessionRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Attendance session not found");
     const session = sessionRes.rows[0];
 
+    if (user.role === "LECTURER") {
+      const allowed = await canLecturerManageModule(user.id, session.module_id);
+      if (!allowed) {
+        return err(res, 403, "FORBIDDEN", "Lecturer cannot mark attendance for this session");
+      }
+    }
+
     const studentIds = [...new Set(marks.map((m) => m.studentId))];
       const enrolledRes = await pool.query<{ student_id: string }>(
         `
@@ -1037,6 +1175,144 @@ attendanceRouter.post(
     console.error("[attendance] POST /attendance/sessions/:id/mark error", e);
     return err(res, 500, "INTERNAL", "Failed to mark attendance");
   }
+  }
+);
+
+attendanceRouter.get(
+  "/attendance/export",
+  requireAccess({ roles: ["ADMIN", "LECTURER", "STUDENT", "PARENT"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const user = req.user!;
+      const from = parseDateOnly(req.query.from);
+      const to = parseDateOnly(req.query.to);
+      const moduleId = String(req.query.moduleId ?? "").trim();
+      const studentIdQuery = String(req.query.studentId ?? "").trim();
+      const childIdQuery = String(req.query.childId ?? "").trim();
+
+      if (!from || !to) {
+        return err(res, 400, "VALIDATION", "from and to are required in YYYY-MM-DD format");
+      }
+      if (compareDateOnly(from, to) > 0) {
+        return err(res, 400, "VALIDATION", "from cannot be after to");
+      }
+      if (moduleId && !isUuid(moduleId)) {
+        return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      }
+      if (studentIdQuery && !isUuid(studentIdQuery)) {
+        return err(res, 400, "VALIDATION", "studentId must be a UUID");
+      }
+
+      let studentId: string | null = null;
+
+      if (user.role === "STUDENT") {
+        studentId = user.id;
+        if (moduleId) {
+          const allowed = await isStudentAllowedForModule(pool, user.id, moduleId);
+          if (!allowed) {
+            return err(res, 403, "FORBIDDEN", "Student is not enrolled in this module");
+          }
+        }
+      }
+
+      if (user.role === "PARENT") {
+        if (childIdQuery) {
+          if (!isUuid(childIdQuery)) return err(res, 400, "VALIDATION", "childId must be a UUID");
+          const linked = await ensureParentCanAccessChild(user.id, childIdQuery);
+          if (!linked) return err(res, 403, "FORBIDDEN", "Parent is not linked to this student");
+          studentId = childIdQuery;
+        } else {
+          const first = await pool.query<{ student_user_id: string }>(
+            `
+              SELECT student_user_id
+              FROM parent_links
+              WHERE parent_user_id = $1
+              ORDER BY created_at ASC
+              LIMIT 2
+            `,
+            [user.id]
+          );
+
+          if ((first.rowCount ?? 0) === 0) {
+            return err(res, 400, "VALIDATION", "No linked children found for parent");
+          }
+          if ((first.rowCount ?? 0) > 1) {
+            return err(res, 400, "VALIDATION", "childId is required when multiple children are linked");
+          }
+          studentId = first.rows[0].student_user_id;
+        }
+
+        if (moduleId && studentId) {
+          const allowed = await isStudentAllowedForModule(pool, studentId, moduleId);
+          if (!allowed) {
+            return err(res, 403, "FORBIDDEN", "Selected child is not enrolled in this module");
+          }
+        }
+      }
+
+      if (user.role === "LECTURER") {
+        if (!moduleId) {
+          return err(res, 400, "VALIDATION", "moduleId is required for lecturer attendance exports");
+        }
+        const allowed = await canLecturerManageModule(user.id, moduleId);
+        if (!allowed) {
+          return err(res, 403, "FORBIDDEN", "Lecturer can only export attendance for assigned modules");
+        }
+        studentId = studentIdQuery || null;
+        if (studentId) {
+          const enrolled = await isStudentAllowedForModule(pool, studentId, moduleId);
+          if (!enrolled) {
+            return err(res, 400, "VALIDATION", "Student is not enrolled in this module");
+          }
+        }
+      }
+
+      if (user.role === "ADMIN") {
+        studentId = studentIdQuery || null;
+      }
+
+      const rows = await pool.query<{
+        student_name: string;
+        student_number: string | null;
+        course_name: string | null;
+        module_code: string;
+        module_name: string;
+        attendance_date: string;
+        status: AttendanceStatus;
+      }>(
+        `
+          SELECT
+            COALESCE(NULLIF(trim(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''), u.email) AS student_name,
+            u.public_student_id AS student_number,
+            c.name AS course_name,
+            fm.code AS module_code,
+            fm.name AS module_name,
+            s.attendance_date,
+            ar.status
+          FROM attendance_records ar
+          JOIN attendance_sessions s ON s.id = ar.session_id
+          JOIN faculty_modules fm ON fm.id = s.module_id
+          JOIN courses c ON c.id = fm.course_id
+          JOIN users u ON u.id = ar.student_id
+          WHERE s.attendance_date >= $1::date
+            AND s.attendance_date <= $2::date
+            AND ($3::uuid IS NULL OR s.module_id = $3::uuid)
+            AND ($4::uuid IS NULL OR ar.student_id = $4::uuid)
+          ORDER BY s.attendance_date ASC, lower(u.email) ASC, fm.code ASC
+        `,
+        [from, to, moduleId || null, studentId]
+      );
+
+      const csv = buildAttendanceCsv(rows.rows);
+      const dateStamp = new Date().toISOString().slice(0, 10);
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="attendance-${dateStamp}.csv"`);
+      return res.status(200).send(csv);
+    } catch (e) {
+      console.error("[attendance] GET /attendance/export error", e);
+      return err(res, 500, "INTERNAL", "Failed to export attendance");
+    }
   }
 );
 

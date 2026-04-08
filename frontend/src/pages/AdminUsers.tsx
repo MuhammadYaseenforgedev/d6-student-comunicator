@@ -3,6 +3,8 @@ import PageHeader from "../components/PageHeader";
 import { getUser, type AdminScope } from "../lib/auth";
 import { adminScopeLabel } from "../lib/adminAccess";
 import {
+  ADMIN_ACCOUNT_ROLES,
+  createAdminAccount,
   deleteAdminAccount,
   listAdminAccounts,
   updateAdminAccount,
@@ -82,10 +84,17 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStudentNumber, setEditStudentNumber] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editAdminScope, setEditAdminScope] = useState<AdminScope>("ACADEMIC");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<AdminAccountRole>("STUDENT");
+  const [newStudentNumber, setNewStudentNumber] = useState("");
+  const [newSouthAfricanId, setNewSouthAfricanId] = useState("");
+  const [newAdminScope, setNewAdminScope] = useState<AdminScope>("ACADEMIC");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -167,6 +176,60 @@ export default function AdminUsers() {
     setEditPassword("");
     setEditAdminScope("ACADEMIC");
     setShowPassword(false);
+  }
+
+  async function onCreateAccount(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const email = newEmail.trim().toLowerCase();
+    const password = newPassword;
+    const studentNumber = normalizeStudentNumber(newStudentNumber);
+    const southAfricanId = String(newSouthAfricanId ?? "").replace(/\D+/g, "");
+
+    if (!email || !password) {
+      setError("Email and password are required.");
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Passwords must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
+    if (newRole === "STUDENT") {
+      if (!studentNumber) {
+        setError("Student number is required for student accounts.");
+        return;
+      }
+      if (!/^\d{13}$/.test(southAfricanId)) {
+        setError("South African ID must be exactly 13 digits for student accounts.");
+        return;
+      }
+    }
+
+    try {
+      setCreating(true);
+      setError(null);
+      setInfo(null);
+      await createAdminAccount({
+        email,
+        password,
+        role: newRole,
+        studentNumber: newRole === "STUDENT" ? studentNumber : undefined,
+        southAfricanId: newRole === "STUDENT" ? southAfricanId : undefined,
+        adminScope: newRole === "ADMIN" ? newAdminScope : undefined,
+      });
+      setNewEmail("");
+      setNewPassword("");
+      setNewRole("STUDENT");
+      setNewStudentNumber("");
+      setNewSouthAfricanId("");
+      setNewAdminScope("ACADEMIC");
+      setInfo(`Created ${email}.`);
+      await loadAccounts();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create account");
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function onSave(account: AdminAccount) {
@@ -266,6 +329,101 @@ export default function AdminUsers() {
       </div>
 
       <section className="teal-glow-card p-5 space-y-4">
+        <div>
+          <div className="text-lg font-semibold text-white">Create Account</div>
+          <div className="mt-1 text-sm text-white/72">
+            Create protected admin-managed accounts with any valid app role. Public registration stays limited to safe self-service roles.
+          </div>
+        </div>
+
+        <form
+          onSubmit={onCreateAccount}
+          className="grid grid-cols-1 gap-3 xl:grid-cols-2"
+        >
+          <input
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="name@example.com"
+            className="input-glass"
+            title="Account email"
+            aria-label="Account email"
+          />
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Temporary password"
+            className="input-glass"
+            title="Temporary password"
+            aria-label="Temporary password"
+          />
+          <select
+            value={newRole}
+            onChange={(e) => setNewRole(e.target.value as AdminAccountRole)}
+            className="select-glass"
+            title="Account role"
+            aria-label="Account role"
+          >
+            {ADMIN_ACCOUNT_ROLES.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+          {newRole === "ADMIN" ? (
+            <select
+              value={newAdminScope}
+              onChange={(e) => setNewAdminScope(e.target.value as AdminScope)}
+              className="select-glass"
+              title="Admin access"
+              aria-label="Admin access"
+            >
+              {ADMIN_SCOPE_OPTIONS.map((scope) => (
+                <option key={scope} value={scope}>
+                  {adminScopeLabel(scope)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="info-banner text-white/70">
+              {newRole === "STUDENT"
+                ? "Student accounts need a student number and South African ID."
+                : "This role uses the selected app role without extra admin access fields."}
+            </div>
+          )}
+          {newRole === "STUDENT" && (
+            <>
+              <input
+                value={newStudentNumber}
+                onChange={(e) => setNewStudentNumber(e.target.value.toUpperCase())}
+                placeholder="Student number"
+                className="input-glass"
+                title="Student number"
+                aria-label="Student number"
+              />
+              <input
+                value={newSouthAfricanId}
+                onChange={(e) => setNewSouthAfricanId(e.target.value)}
+                placeholder="13-digit South African ID"
+                className="input-glass"
+                title="South African ID"
+                aria-label="South African ID"
+              />
+            </>
+          )}
+          <div className="xl:col-span-2">
+            <button
+              type="submit"
+              disabled={creating}
+              className="btn-primary min-w-[150px]"
+            >
+              {creating ? "Creating..." : "Create account"}
+            </button>
+          </div>
+        </form>
+
+        <div className="divider-soft" />
+
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
           <form
             onSubmit={(e) => {

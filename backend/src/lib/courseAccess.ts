@@ -25,6 +25,71 @@ export async function isStudentActiveInCourse(
   return (result.rowCount ?? 0) > 0;
 }
 
+export async function isLecturerAssignedToModule(
+  db: Queryable,
+  lecturerId: string,
+  moduleId: string
+): Promise<boolean> {
+  const result = await db.query(
+    `
+      SELECT 1
+      FROM lecturer_module_assignments
+      WHERE lecturer_id = $1
+        AND module_id = $2
+      LIMIT 1
+    `,
+    [lecturerId, moduleId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function isLecturerAssignedToCourse(
+  db: Queryable,
+  lecturerId: string,
+  courseId: string
+): Promise<boolean> {
+  const result = await db.query(
+    `
+      SELECT 1
+      FROM lecturer_module_assignments lma
+      JOIN faculty_modules fm ON fm.id = lma.module_id
+      WHERE lma.lecturer_id = $1
+        AND fm.course_id = $2
+      LIMIT 1
+    `,
+    [lecturerId, courseId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function isLecturerAllowedForStudent(
+  db: Queryable,
+  lecturerId: string,
+  studentId: string
+): Promise<boolean> {
+  const result = await db.query(
+    `
+      SELECT 1
+      FROM lecturer_module_assignments lma
+      JOIN faculty_modules fm ON fm.id = lma.module_id
+      JOIN student_module_enrollments sme
+        ON sme.module_id = fm.id
+       AND sme.student_id = $2
+      JOIN student_courses sc
+        ON sc.student_user_id = sme.student_id
+       AND sc.course_id = fm.course_id
+       AND sc.status = 'ACTIVE'
+      WHERE lma.lecturer_id = $1
+      LIMIT 1
+    `,
+    [lecturerId, studentId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
 export async function isStudentAllowedForModule(
   db: Queryable,
   studentId: string,

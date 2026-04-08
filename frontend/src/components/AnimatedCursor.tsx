@@ -102,8 +102,8 @@ export default function AnimatedCursor() {
       const current = currentPositionRef.current;
       const target = targetPositionRef.current;
 
-      current.x += (target.x - current.x) * 0.22;
-      current.y += (target.y - current.y) * 0.22;
+      current.x += (target.x - current.x) * 0.34;
+      current.y += (target.y - current.y) * 0.34;
 
       if (node) {
         node.style.transform = `translate3d(${current.x}px, ${current.y}px, 0)`;

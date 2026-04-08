@@ -7,6 +7,11 @@ import {
   createParentLinkDecisionNotification,
   createResultNotifications,
 } from "../lib/notifications";
+import {
+  isLecturerAllowedForStudent,
+  isLecturerAssignedToModule,
+  isStudentAllowedForModule,
+} from "../lib/courseAccess";
 
 export const parentRouter = Router();
 
@@ -36,6 +41,9 @@ type AssessmentResultRow = {
   score: number;
   outOf: number;
   date: string;
+  moduleId?: string | null;
+  moduleCode?: string | null;
+  moduleName?: string | null;
 };
 
 const LEGACY_DEMO_RESULT_SIGNATURES = [
@@ -100,14 +108,144 @@ function parseIntField(raw: unknown): number | null {
 async function listAssessmentResultsForStudent(studentId: string): Promise<AssessmentResultRow[]> {
   const r = await pool.query<AssessmentResultRow>(
     `
-      SELECT id, subject, score, out_of AS "outOf", assessed_at AS "date"
-      FROM assessment_results
+      SELECT
+        ar.id,
+        ar.subject,
+        ar.score,
+        ar.out_of AS "outOf",
+        ar.assessed_at AS "date",
+        fm.id AS "moduleId",
+        fm.code AS "moduleCode",
+        fm.name AS "moduleName"
+      FROM assessment_results ar
+      LEFT JOIN faculty_modules fm ON fm.id = ar.module_id
       WHERE student_user_id = $1
-      ORDER BY assessed_at DESC, subject ASC
+      ORDER BY ar.assessed_at DESC, ar.subject ASC
     `,
     [studentId]
   );
   return r.rows;
+}
+
+async function canStaffManageStudentResults(
+  user: { id: string; role: string; adminScope?: string | null },
+  studentId: string
+): Promise<boolean> {
+  const adminScope = String(user.adminScope ?? "").trim().toUpperCase();
+  if (user.role === "ADMIN" && (adminScope === "ACADEMIC" || adminScope === "SUPER")) return true;
+  if (user.role !== "LECTURER") return false;
+  return isLecturerAllowedForStudent(pool, user.id, studentId);
+}
+
+async function canStaffManageModuleResults(
+  user: { id: string; role: string; adminScope?: string | null },
+  moduleId: string
+): Promise<boolean> {
+  const adminScope = String(user.adminScope ?? "").trim().toUpperCase();
+  if (user.role === "ADMIN" && (adminScope === "ACADEMIC" || adminScope === "SUPER")) return true;
+  if (user.role !== "LECTURER") return false;
+  return isLecturerAssignedToModule(pool, user.id, moduleId);
+}
+
+async function assertModuleStudentEnrollment(moduleId: string, studentId: string): Promise<boolean> {
+  return isStudentAllowedForModule(pool, studentId, moduleId);
+}
+
+async function upsertAssessmentResultForStudent(input: {
+  studentId: string;
+  subject: string;
+  score: number;
+  outOf: number;
+  date: string;
+  moduleId: string | null;
+}): Promise<AssessmentResultRow> {
+  if (input.moduleId) {
+    const existing = await pool.query<{ id: string }>(
+      `
+        SELECT id
+        FROM assessment_results
+        WHERE student_user_id = $1
+          AND module_id = $2
+          AND lower(subject) = lower($3)
+          AND assessed_at = $4::date
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+      `,
+      [input.studentId, input.moduleId, input.subject, input.date]
+    );
+
+    if ((existing.rowCount ?? 0) > 0) {
+      const updated = await pool.query<AssessmentResultRow>(
+        `
+          UPDATE assessment_results ar
+          SET
+            score = $2,
+            out_of = $3,
+            subject = $4,
+            assessed_at = $5::date
+          FROM faculty_modules fm
+          WHERE ar.id = $1
+            AND fm.id = ar.module_id
+          RETURNING
+            ar.id,
+            ar.subject,
+            ar.score,
+            ar.out_of AS "outOf",
+            ar.assessed_at AS "date",
+            fm.id AS "moduleId",
+            fm.code AS "moduleCode",
+            fm.name AS "moduleName"
+        `,
+        [existing.rows[0].id, input.score, input.outOf, input.subject, input.date]
+      );
+      return updated.rows[0];
+    }
+  }
+
+  const created = await pool.query<AssessmentResultRow>(
+    `
+      INSERT INTO assessment_results (
+        id,
+        student_user_id,
+        subject,
+        score,
+        out_of,
+        assessed_at,
+        module_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING
+        id,
+        subject,
+        score,
+        out_of AS "outOf",
+        assessed_at AS "date",
+        module_id AS "moduleId"
+    `,
+    [newId(), input.studentId, input.subject, input.score, input.outOf, input.date, input.moduleId]
+  );
+
+  if (!input.moduleId) return created.rows[0];
+
+  const withModule = await pool.query<AssessmentResultRow>(
+    `
+      SELECT
+        ar.id,
+        ar.subject,
+        ar.score,
+        ar.out_of AS "outOf",
+        ar.assessed_at AS "date",
+        fm.id AS "moduleId",
+        fm.code AS "moduleCode",
+        fm.name AS "moduleName"
+      FROM assessment_results ar
+      LEFT JOIN faculty_modules fm ON fm.id = ar.module_id
+      WHERE ar.id = $1
+      LIMIT 1
+    `,
+    [created.rows[0].id]
+  );
+  return withModule.rows[0];
 }
 
 async function getStudentResultLabel(studentId: string): Promise<string> {
@@ -843,11 +981,15 @@ parentRouter.get(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
+    const user = req.user!;
     const childId = String(req.query.childId ?? "").trim();
     if (!childId) return err(res, 400, "VALIDATION", "childId query param is required");
 
     const studentId = await resolveStudentUserId(childId);
     if (!studentId) return err(res, 404, "NOT_FOUND", "Student not found");
+
+    const allowed = await canStaffManageStudentResults(user, studentId);
+    if (!allowed) return err(res, 403, "FORBIDDEN", "Lecturer cannot access results for this student");
 
     const rows = await listAssessmentResultsForStudent(studentId);
     return res.json({ value: rows, count: rows.length });
@@ -864,11 +1006,15 @@ parentRouter.get(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
+    const user = req.user!;
     const childId = String(req.query.childId ?? "").trim();
     if (!childId) return err(res, 400, "VALIDATION", "childId query param is required");
 
     const studentId = await resolveStudentUserId(childId);
     if (!studentId) return err(res, 404, "NOT_FOUND", "Student not found");
+
+    const allowed = await canStaffManageStudentResults(user, studentId);
+    if (!allowed) return err(res, 403, "FORBIDDEN", "Lecturer cannot access results for this student");
 
     const rows = await listAssessmentResultsForStudent(studentId);
     const csv = buildResultsCsv(childId, rows);
@@ -1025,11 +1171,13 @@ parentRouter.post(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
+    const user = req.user!;
     const childId = String(req.body?.childId ?? "").trim();
     const subject = String(req.body?.subject ?? "").trim();
     const score = parseIntField(req.body?.score);
     const outOfRaw = parseIntField(req.body?.outOf);
     const dateRaw = req.body?.date;
+    const moduleId = String(req.body?.moduleId ?? "").trim();
 
     if (!childId) return err(res, 400, "VALIDATION", "childId is required");
     if (!subject) return err(res, 400, "VALIDATION", "subject is required");
@@ -1039,6 +1187,9 @@ parentRouter.post(
     if (outOf <= 0) return err(res, 400, "VALIDATION", "outOf must be greater than 0");
     if (score < 0 || score > outOf) {
       return err(res, 400, "VALIDATION", "score must be between 0 and outOf");
+    }
+    if (moduleId && !isUuid(moduleId)) {
+      return err(res, 400, "VALIDATION", "moduleId must be a UUID");
     }
 
     let date = new Date().toISOString().slice(0, 10);
@@ -1051,13 +1202,27 @@ parentRouter.post(
     const studentId = await resolveStudentUserId(childId);
     if (!studentId) return err(res, 404, "NOT_FOUND", "Student not found");
 
+    if (moduleId) {
+      const moduleAllowed = await canStaffManageModuleResults(user, moduleId);
+      if (!moduleAllowed) {
+        return err(res, 403, "FORBIDDEN", "Lecturer cannot manage this module marksheet");
+      }
+      const enrolled = await assertModuleStudentEnrollment(moduleId, studentId);
+      if (!enrolled) {
+        return err(res, 400, "VALIDATION", "Student is not enrolled in this module");
+      }
+    } else {
+      const allowed = await canStaffManageStudentResults(user, studentId);
+      if (!allowed) return err(res, 403, "FORBIDDEN", "Lecturer cannot create results for this student");
+    }
+
     const created = await pool.query<AssessmentResultRow>(
       `
-        INSERT INTO assessment_results (id, student_user_id, subject, score, out_of, assessed_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, subject, score, out_of AS "outOf", assessed_at AS "date"
+        INSERT INTO assessment_results (id, student_user_id, subject, score, out_of, assessed_at, module_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, subject, score, out_of AS "outOf", assessed_at AS "date", module_id AS "moduleId"
       `,
-      [newId(), studentId, subject, score, outOf, date]
+      [newId(), studentId, subject, score, outOf, date, moduleId || null]
     );
 
     await createResultNotifications({
@@ -1087,6 +1252,7 @@ parentRouter.post(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
+    const user = req.user!;
     const id = String(req.params.id ?? "").trim();
     if (!isUuid(id)) return err(res, 400, "VALIDATION", "id must be a UUID");
 
@@ -1105,9 +1271,10 @@ parentRouter.post(
       score: number;
       out_of: number;
       assessed_at: string;
+      module_id: string | null;
     }>(
       `
-        SELECT student_user_id, subject, score, out_of, assessed_at
+        SELECT student_user_id, subject, score, out_of, assessed_at, module_id
         FROM assessment_results
         WHERE id = $1
         LIMIT 1
@@ -1115,6 +1282,14 @@ parentRouter.post(
       [id]
     );
     if ((current.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Result not found");
+
+    const currentRow = current.rows[0];
+    const allowed = currentRow.module_id
+      ? await canStaffManageModuleResults(user, currentRow.module_id)
+      : await canStaffManageStudentResults(user, currentRow.student_user_id);
+    if (!allowed) {
+      return err(res, 403, "FORBIDDEN", "Lecturer cannot update this result");
+    }
 
     let subject: string | null = null;
     if (hasSubject) {
@@ -1140,7 +1315,6 @@ parentRouter.post(
       if (!date) return err(res, 400, "VALIDATION", "date must be YYYY-MM-DD");
     }
 
-    const currentRow = current.rows[0];
     const nextOutOf = outOf ?? currentRow.out_of;
     const nextScore = score ?? currentRow.score;
 
@@ -1188,8 +1362,27 @@ parentRouter.delete(
   requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
+    const user = req.user!;
     const id = String(req.params.id ?? "").trim();
     if (!isUuid(id)) return err(res, 400, "VALIDATION", "id must be a UUID");
+
+    const existing = await pool.query<{ student_user_id: string; module_id: string | null }>(
+      `
+        SELECT student_user_id, module_id
+        FROM assessment_results
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [id]
+    );
+    if ((existing.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Result not found");
+
+    const allowed = existing.rows[0].module_id
+      ? await canStaffManageModuleResults(user, String(existing.rows[0].module_id))
+      : await canStaffManageStudentResults(user, existing.rows[0].student_user_id);
+    if (!allowed) {
+      return err(res, 403, "FORBIDDEN", "Lecturer cannot delete this result");
+    }
 
     const r = await pool.query(`DELETE FROM assessment_results WHERE id = $1`, [id]);
     if ((r.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Result not found");
@@ -1199,6 +1392,231 @@ parentRouter.delete(
     console.error("[parent] DELETE /admin/results/:id error", e);
     return err(res, 500, "INTERNAL", "Failed to delete result");
   }
+  }
+);
+
+parentRouter.get(
+  "/admin/results/module/:moduleId/marksheet",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const user = req.user!;
+      const moduleId = String(req.params.moduleId ?? "").trim();
+      const subject = String(req.query.subject ?? "").trim();
+      const date = parseDateOnly(req.query.date) ?? new Date().toISOString().slice(0, 10);
+
+      if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+
+      const allowed = await canStaffManageModuleResults(user, moduleId);
+      if (!allowed) return err(res, 403, "FORBIDDEN", "Lecturer cannot access this module marksheet");
+
+      const moduleResult = await pool.query<{ id: string; code: string; name: string; course_name: string }>(
+        `
+          SELECT fm.id, fm.code, fm.name, c.name AS course_name
+          FROM faculty_modules fm
+          JOIN courses c ON c.id = fm.course_id
+          WHERE fm.id = $1
+          LIMIT 1
+        `,
+        [moduleId]
+      );
+      if ((moduleResult.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
+
+      const rows = await pool.query<{
+        id: string;
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+        public_student_id: string | null;
+        result_id: string | null;
+        score: number | null;
+        out_of: number | null;
+        assessed_at: string | null;
+      }>(
+        `
+          SELECT
+            u.id,
+            u.email,
+            u.first_name,
+            u.last_name,
+            u.public_student_id,
+            ar.id AS result_id,
+            ar.score,
+            ar.out_of,
+            ar.assessed_at
+          FROM faculty_modules fm
+          JOIN student_module_enrollments sme
+            ON sme.module_id = fm.id
+          JOIN student_courses sc
+            ON sc.student_user_id = sme.student_id
+           AND sc.course_id = fm.course_id
+           AND sc.status = 'ACTIVE'
+          JOIN users u ON u.id = sme.student_id
+          LEFT JOIN LATERAL (
+            SELECT ar2.id, ar2.score, ar2.out_of, ar2.assessed_at
+            FROM assessment_results ar2
+            WHERE ar2.student_user_id = u.id
+              AND ar2.module_id = fm.id
+              AND ($2::text = '' OR lower(ar2.subject) = lower($2))
+              AND ar2.assessed_at = $3::date
+            ORDER BY ar2.created_at DESC, ar2.id DESC
+            LIMIT 1
+          ) ar ON TRUE
+          WHERE fm.id = $1
+          ORDER BY lower(u.email) ASC
+        `,
+        [moduleId, subject, date]
+      );
+
+      return res.json({
+        module: {
+          id: moduleResult.rows[0].id,
+          code: moduleResult.rows[0].code,
+          name: moduleResult.rows[0].name,
+          courseName: moduleResult.rows[0].course_name,
+        },
+        subject,
+        date,
+        value: rows.rows.map((row) => ({
+          id: row.id,
+          email: row.email,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          studentNumber: row.public_student_id,
+          resultId: row.result_id,
+          score: row.score,
+          outOf: row.out_of,
+          assessedAt: row.assessed_at,
+        })),
+        count: rows.rows.length,
+      });
+    } catch (e: any) {
+      console.error("[parent] GET /admin/results/module/:moduleId/marksheet error", e);
+      return err(res, 500, "INTERNAL", "Failed to load lecturer marksheet");
+    }
+  }
+);
+
+parentRouter.post(
+  "/admin/results/module/:moduleId/bulk",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const user = req.user!;
+      const moduleId = String(req.params.moduleId ?? "").trim();
+      const subject = String(req.body?.subject ?? "").trim();
+      const outOf = parseIntField(req.body?.outOf);
+      const date = parseDateOnly(req.body?.date) ?? new Date().toISOString().slice(0, 10);
+      const rowsRaw = Array.isArray(req.body?.rows) ? req.body.rows : [];
+
+      if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      if (!subject) return err(res, 400, "VALIDATION", "subject is required");
+      if (outOf === null || outOf <= 0) return err(res, 400, "VALIDATION", "outOf must be greater than 0");
+      if (rowsRaw.length === 0) return err(res, 400, "VALIDATION", "rows must be a non-empty array");
+
+      const allowed = await canStaffManageModuleResults(user, moduleId);
+      if (!allowed) return err(res, 403, "FORBIDDEN", "Lecturer cannot manage this module marksheet");
+
+      const rows: Array<{ studentId: string; score: number | null }> = rowsRaw.map((row: unknown) => ({
+        studentId: String((row as { studentId?: unknown }).studentId ?? "").trim(),
+        score: parseIntField((row as { score?: unknown }).score),
+      }));
+
+      if (rows.some((row) => !isUuid(row.studentId) || row.score === null || row.score < 0 || row.score > outOf)) {
+        return err(res, 400, "VALIDATION", "Each row must include studentId and score within range");
+      }
+
+      for (const row of rows) {
+        const enrolled = await assertModuleStudentEnrollment(moduleId, row.studentId);
+        if (!enrolled) {
+          return err(res, 400, "VALIDATION", "One or more students are not enrolled in this module");
+        }
+      }
+
+      const saved: AssessmentResultRow[] = [];
+      for (const row of rows) {
+        const result = await upsertAssessmentResultForStudent({
+          studentId: row.studentId,
+          subject,
+          score: row.score as number,
+          outOf,
+          date,
+          moduleId,
+        });
+        saved.push(result);
+        await createResultNotifications({
+          resultId: result.id,
+          studentId: row.studentId,
+          subject: result.subject,
+          score: result.score,
+          outOf: result.outOf,
+          date: result.date,
+          action: "UPDATED",
+        }).catch((notificationError) => {
+          console.error("[parent] module marksheet notification failed", notificationError);
+        });
+      }
+
+      return res.json({ ok: true, count: saved.length, value: saved });
+    } catch (e: any) {
+      console.error("[parent] POST /admin/results/module/:moduleId/bulk error", e);
+      return err(res, 500, "INTERNAL", "Failed to save lecturer marksheet");
+    }
+  }
+);
+
+parentRouter.post(
+  "/admin/results/module/:moduleId/students/:studentId",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const user = req.user!;
+      const moduleId = String(req.params.moduleId ?? "").trim();
+      const studentId = String(req.params.studentId ?? "").trim();
+      const subject = String(req.body?.subject ?? "").trim();
+      const score = parseIntField(req.body?.score);
+      const outOf = parseIntField(req.body?.outOf);
+      const date = parseDateOnly(req.body?.date) ?? new Date().toISOString().slice(0, 10);
+
+      if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      if (!isUuid(studentId)) return err(res, 400, "VALIDATION", "studentId must be a UUID");
+      if (!subject) return err(res, 400, "VALIDATION", "subject is required");
+      if (score === null) return err(res, 400, "VALIDATION", "score must be an integer");
+      if (outOf === null || outOf <= 0) return err(res, 400, "VALIDATION", "outOf must be greater than 0");
+      if (score < 0 || score > outOf) return err(res, 400, "VALIDATION", "score must be between 0 and outOf");
+
+      const allowed = await canStaffManageModuleResults(user, moduleId);
+      if (!allowed) return err(res, 403, "FORBIDDEN", "Lecturer cannot manage this module marksheet");
+
+      const enrolled = await assertModuleStudentEnrollment(moduleId, studentId);
+      if (!enrolled) return err(res, 400, "VALIDATION", "Student is not enrolled in this module");
+
+      const saved = await upsertAssessmentResultForStudent({
+        studentId,
+        subject,
+        score,
+        outOf,
+        date,
+        moduleId,
+      });
+
+      await createResultNotifications({
+        resultId: saved.id,
+        studentId,
+        subject: saved.subject,
+        score: saved.score,
+        outOf: saved.outOf,
+        date: saved.date,
+        action: "UPDATED",
+      }).catch((notificationError) => {
+        console.error("[parent] single marksheet notification failed", notificationError);
+      });
+
+      return res.json(saved);
+    } catch (e: any) {
+      console.error("[parent] POST /admin/results/module/:moduleId/students/:studentId error", e);
+      return err(res, 500, "INTERNAL", "Failed to save learner result");
+    }
   }
 );
 

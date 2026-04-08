@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
+import CourseAssessmentsPanel from "../components/CourseAssessmentsPanel";
+import CourseMarksheetPanel from "../components/CourseMarksheetPanel";
 import CourseModulesManager from "../components/CourseModulesManager";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
@@ -299,83 +301,92 @@ function StudentCoursesView() {
           message="Your student account is not enrolled in a course yet. Ask an academic admin to enroll you before modules can appear here."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          {courses.map((course, index) => {
-            const modules = course.modules.filter((module) => module.isStudentLinked);
-            const lecturers = uniqueLecturerEmails(modules);
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            {courses.map((course, index) => {
+              const modules = course.modules.filter((module) => module.isStudentLinked);
+              const lecturers = uniqueLecturerEmails(modules);
 
-            return (
-              <div
-                key={course.id}
-                className="relative overflow-hidden rounded-3xl border border-[rgba(140,235,255,0.20)] bg-[rgba(8,18,48,0.66)] p-5 shadow-[0_0_20px_rgba(140,235,255,0.10)]"
-              >
-                <div className="pointer-events-none absolute inset-0 opacity-100">
-                  <div className="absolute -left-10 -top-10 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
-                  <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
-                </div>
+              return (
+                <div
+                  key={course.id}
+                  className="relative overflow-hidden rounded-3xl border border-[rgba(140,235,255,0.20)] bg-[rgba(8,18,48,0.66)] p-5 shadow-[0_0_20px_rgba(140,235,255,0.10)]"
+                >
+                  <div className="pointer-events-none absolute inset-0 opacity-100">
+                    <div className="absolute -left-10 -top-10 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
+                    <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
+                  </div>
 
-                <div className="relative flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold text-white">{course.name}</div>
-                    <div className="mt-1 text-sm text-white/65">
-                      {course.code}
-                      {index === 0 ? " | Primary course in your dashboard" : ""}
+                  <div className="relative flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-semibold text-white">{course.name}</div>
+                      <div className="mt-1 text-sm text-white/65">
+                        {course.code}
+                        {index === 0 ? " | Primary course in your dashboard" : ""}
+                      </div>
+                    </div>
+                    <StatusBadge status={course.enrollmentStatus ?? "ACTIVE"} />
+                  </div>
+
+                  <div className="relative mt-3 text-sm text-white/72">
+                    {course.description?.trim() || "No course description has been added yet."}
+                  </div>
+
+                  <div className="relative mt-4 grid grid-cols-3 gap-3">
+                    <SummaryCard label="Modules" value={modules.length} />
+                    <SummaryCard label="Lecturers" value={lecturers.length} />
+                    <div className="teal-glow-card p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
+                      <div className="mt-3">
+                        <StatusBadge status={course.enrollmentStatus ?? "ACTIVE"} />
+                      </div>
                     </div>
                   </div>
-                  <StatusBadge status={course.enrollmentStatus ?? "ACTIVE"} />
-                </div>
 
-                <div className="relative mt-3 text-sm text-white/72">
-                  {course.description?.trim() || "No course description has been added yet."}
-                </div>
+                  <div className="relative mt-3 text-xs text-white/60">
+                    Enrolled: {formatDate(course.enrolledAt)}
+                  </div>
 
-                <div className="relative mt-4 grid grid-cols-3 gap-3">
-                  <SummaryCard label="Modules" value={modules.length} />
-                  <SummaryCard label="Lecturers" value={lecturers.length} />
-                  <div className="teal-glow-card p-4">
-                    <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
-                    <div className="mt-3">
-                      <StatusBadge status={course.enrollmentStatus ?? "ACTIVE"} />
+                  <div className="relative mt-5">
+                    <SectionTitle title="Linked modules" />
+                    <div className="mt-3 space-y-3">
+                      {modules.length === 0 ? (
+                        <EmptyState
+                          title="No modules in course"
+                          message="Your course is active, but no modules are linked to your student account yet."
+                        />
+                      ) : (
+                        modules.map((module) => (
+                          <div
+                            key={module.id}
+                            className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
+                          >
+                            <div className="font-semibold text-white">
+                              {module.code} - {module.name}
+                            </div>
+                            <div className="mt-1 text-xs text-white/60">{module.facultyName}</div>
+                            <div className="mt-2 text-xs text-white/72">
+                              Lecturers:{" "}
+                              {module.lecturers.length > 0
+                                ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
+                                : "Not assigned yet"}
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
 
-                <div className="relative mt-3 text-xs text-white/60">
-                  Enrolled: {formatDate(course.enrolledAt)}
-                </div>
-
-                <div className="relative mt-5">
-                  <SectionTitle title="Linked modules" />
-                  <div className="mt-3 space-y-3">
-                    {modules.length === 0 ? (
-                      <EmptyState
-                        title="No modules in course"
-                        message="Your course is active, but no modules are linked to your student account yet."
-                      />
-                    ) : (
-                      modules.map((module) => (
-                        <div
-                          key={module.id}
-                          className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
-                        >
-                          <div className="font-semibold text-white">
-                            {module.code} - {module.name}
-                          </div>
-                          <div className="mt-1 text-xs text-white/60">{module.facultyName}</div>
-                          <div className="mt-2 text-xs text-white/72">
-                            Lecturers:{" "}
-                            {module.lecturers.length > 0
-                              ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
-                              : "Not assigned yet"}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          <CourseAssessmentsPanel
+            modules={linkedModules}
+            canManage={false}
+            title="Assessments"
+            subtitle="Download lecturer-uploaded assessments for the modules linked to your student account."
+          />
         </div>
       )}
     </div>
@@ -385,6 +396,7 @@ function StudentCoursesView() {
 function LecturerCoursesView() {
   const [courses, setCourses] = useState<CourseRecord[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedModuleId, setSelectedModuleId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -484,7 +496,23 @@ function LecturerCoursesView() {
                 idPrefix="courses-lecturer-modules"
                 title="Modules"
                 subtitle="Manage module setup and module membership from inside Courses."
+                onSelectedModuleIdChange={setSelectedModuleId}
                 onChanged={loadCoursesData}
+              />
+
+              <CourseMarksheetPanel
+                modules={selectedCourse.modules}
+                selectedModuleId={selectedModuleId}
+                onSelectedModuleIdChange={setSelectedModuleId}
+              />
+
+              <CourseAssessmentsPanel
+                modules={selectedCourse.modules}
+                selectedModuleId={selectedModuleId}
+                onSelectedModuleIdChange={setSelectedModuleId}
+                canManage
+                title="Assessments"
+                subtitle="Upload and manage assessment files for the selected course modules."
               />
             </>
           ) : null}
@@ -499,6 +527,7 @@ function AdminCoursesView() {
   const [modules, setModules] = useState<AttendanceModule[]>([]);
   const [students, setStudents] = useState<AttendanceDirectoryUser[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedCourseModuleId, setSelectedCourseModuleId] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [newCode, setNewCode] = useState("");
@@ -937,7 +966,23 @@ function AdminCoursesView() {
                 idPrefix="courses-admin-modules"
                 title="Modules"
                 subtitle="Create modules for the selected course and manage lecturer plus learner membership here."
+                onSelectedModuleIdChange={setSelectedCourseModuleId}
                 onChanged={loadAll}
+              />
+
+              <CourseMarksheetPanel
+                modules={selectedCourse.modules}
+                selectedModuleId={selectedCourseModuleId}
+                onSelectedModuleIdChange={setSelectedCourseModuleId}
+              />
+
+              <CourseAssessmentsPanel
+                modules={selectedCourse.modules}
+                selectedModuleId={selectedCourseModuleId}
+                onSelectedModuleIdChange={setSelectedCourseModuleId}
+                canManage
+                title="Assessments"
+                subtitle="Upload and manage assessment files for the selected course modules."
               />
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">

@@ -6,6 +6,7 @@ import { getUser } from "../lib/auth";
 import {
   checkInToAttendanceSession,
   createAttendanceSession,
+  downloadAttendanceExport,
   getMyAttendance,
   listAttendanceDirectoryUsers,
   listAttendanceModules,
@@ -81,6 +82,25 @@ function formatDateTime(raw: string | null): string {
   return new Date(ms).toLocaleString();
 }
 
+async function triggerAttendanceExport(input: {
+  from: string;
+  to: string;
+  moduleId?: string;
+}) {
+  const { blob, fileName } = await downloadAttendanceExport(input);
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName || `attendance-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export default function AttendancePage() {
   const user = getUser();
   const role = roleLabel(user?.role ?? "");
@@ -110,6 +130,8 @@ function LecturerAttendanceView({
   const [moduleId, setModuleId] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [date, setDate] = useState(todayDate());
+  const [exportFrom, setExportFrom] = useState(defaultFromDate(30));
+  const [exportTo, setExportTo] = useState(todayDate());
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [lecturerId, setLecturerId] = useState("");
@@ -281,6 +303,24 @@ function LecturerAttendanceView({
       await loadRoster(sessionId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit attendance");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exportAttendanceRange() {
+    if (!moduleId) {
+      setError("Select a module before exporting attendance.");
+      return;
+    }
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+      await triggerAttendanceExport({ from: exportFrom, to: exportTo, moduleId });
+      setInfo("Attendance export downloaded.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to export attendance");
     } finally {
       setBusy(false);
     }
@@ -505,6 +545,44 @@ function LecturerAttendanceView({
           >
             {busy ? "Submitting..." : "Submit Attendance"}
           </button>
+
+          <div className="divider-soft" />
+
+          <div className="text-sm font-semibold text-white">Export Attendance</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label="Start date" htmlFor="attendance-export-from">
+              <input
+                id="attendance-export-from"
+                title="Attendance export start date"
+                aria-label="Attendance export start date"
+                type="date"
+                value={exportFrom}
+                onChange={(e) => setExportFrom(e.target.value)}
+                className="input-glass"
+              />
+            </Field>
+            <Field label="End date" htmlFor="attendance-export-to">
+              <input
+                id="attendance-export-to"
+                title="Attendance export end date"
+                aria-label="Attendance export end date"
+                type="date"
+                value={exportTo}
+                onChange={(e) => setExportTo(e.target.value)}
+                className="input-glass"
+              />
+            </Field>
+            <div className="sm:self-end">
+              <button
+                type="button"
+                onClick={() => void exportAttendanceRange()}
+                disabled={busy || !moduleId || !exportFrom || !exportTo}
+                className="btn-secondary w-full px-4 py-2 text-sm disabled:opacity-60"
+              >
+                {busy ? "Working..." : "Download CSV"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -605,6 +683,20 @@ function StudentAttendanceView() {
     }
   }
 
+  async function onExport() {
+    try {
+      setLoading(true);
+      setError(null);
+      setInfo(null);
+      await triggerAttendanceExport({ from, to });
+      setInfo("Attendance export downloaded.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to export attendance");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadAttendanceView();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -658,6 +750,16 @@ function StudentAttendanceView() {
             className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
           >
             {loading ? "Loading..." : "Refresh"}
+          </button>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => void onExport()}
+            disabled={loading || !from || !to}
+            className="btn-secondary px-4 py-2 text-sm disabled:opacity-60"
+          >
+            {loading ? "Working..." : "Download CSV"}
           </button>
         </div>
       </div>

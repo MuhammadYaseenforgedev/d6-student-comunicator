@@ -70,6 +70,12 @@ export type UploadRecord = {
   targetUserId?: string | null;
   targetUserEmail?: string | null;
   targetUserRole?: UserRole | null;
+  moduleId?: string | null;
+  moduleCode?: string | null;
+  moduleName?: string | null;
+  courseId?: string | null;
+  courseCode?: string | null;
+  courseName?: string | null;
 };
 
 // ---------- Calendar ----------

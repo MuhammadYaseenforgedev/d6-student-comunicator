@@ -113,6 +113,7 @@ export default function CourseModulesManager({
   const [newFacultyName, setNewFacultyName] = useState("");
   const [newModuleCode, setNewModuleCode] = useState("");
   const [newModuleName, setNewModuleName] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [selectedLecturerId, setSelectedLecturerId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -149,6 +150,21 @@ export default function CourseModulesManager({
     const enrolledIds = new Set(moduleStudents.map((student) => student.id));
     return studentPool.filter((student) => !enrolledIds.has(student.id));
   }, [moduleStudents, studentPool]);
+
+  const visibleModuleStudents = useMemo(() => {
+    const query = studentSearch.trim().toLowerCase();
+    if (!query) return moduleStudents;
+    return moduleStudents.filter((student) => {
+      const haystack = [
+        studentDisplayName(student),
+        studentMeta(student),
+        student.email,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [moduleStudents, studentSearch]);
 
   const availableLecturers = useMemo(() => {
     const assignedIds = new Set((selectedModule?.lecturers ?? []).map((lecturer) => lecturer.id));
@@ -327,6 +343,8 @@ export default function CourseModulesManager({
 
   async function onRemoveLecturer(lecturerId: string) {
     if (!activeModuleId) return;
+    const confirmed = window.confirm("Remove this lecturer from the selected module?");
+    if (!confirmed) return;
 
     try {
       setBusy(true);
@@ -368,6 +386,8 @@ export default function CourseModulesManager({
 
   async function onRemoveStudent(studentId: string) {
     if (!activeModuleId) return;
+    const confirmed = window.confirm("Remove this learner from the selected module?");
+    if (!confirmed) return;
 
     try {
       setBusy(true);
@@ -516,14 +536,19 @@ export default function CourseModulesManager({
         ) : (
           <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] p-3 text-sm text-white/75">
             {selectedModule
-              ? `Managing ${selectedModule.code} - ${selectedModule.name}.`
+              ? `Managing ${selectedModule.code} - ${selectedModule.name}. ${selectedModule.enrolledCount} learner(s) are currently linked to this module.`
               : "Select a module above to manage lecturer and learner membership."}
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4">
-            <div className="text-sm font-semibold text-white">Assigned lecturers</div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-white">Assigned lecturers</div>
+              <div className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
+                {(selectedModule?.lecturers ?? []).length} linked
+              </div>
+            </div>
 
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
               <select
@@ -583,7 +608,12 @@ export default function CourseModulesManager({
           </div>
 
           <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4">
-            <div className="text-sm font-semibold text-white">Assigned learners</div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-white">Assigned learners</div>
+              <div className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
+                {moduleStudents.length} linked
+              </div>
+            </div>
 
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
               <select
@@ -617,12 +647,25 @@ export default function CourseModulesManager({
             </div>
 
             <div className="mt-4 space-y-2">
+              <input
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Search learners by name, number, or email"
+                className="input-glass"
+                aria-label="Search learners in selected module"
+                title="Search learners in selected module"
+              />
+
               {moduleStudents.length === 0 ? (
                 <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] p-3 text-sm text-white/75">
                   No learners linked to this module yet.
                 </div>
+              ) : visibleModuleStudents.length === 0 ? (
+                <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] p-3 text-sm text-white/75">
+                  No learners matched your search.
+                </div>
               ) : (
-                moduleStudents.map((student) => (
+                visibleModuleStudents.map((student) => (
                   <div
                     key={student.id}
                     className="flex items-center justify-between gap-3 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] p-3"

@@ -37,6 +37,7 @@ type LocationState = { from?: string };
 type Mode = "login" | "register";
 type OtpPurpose = "LOGIN" | "REGISTER";
 type LoginPage2Props = { onOpenLegal?: () => void };
+const PUBLIC_REGISTRATION_ROLES: UserRole[] = ["STUDENT", "PARENT"];
 
 function landingFor(user: Pick<AuthUser, "role" | "adminScope">) {
   if (user.role === "PARENT") return "/app/parent";
@@ -183,6 +184,9 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     setStaffRegisterPassword("");
     setSouthAfricanId("");
     setAcceptedLegalTerms(false);
+    if (nextMode === "register" && !PUBLIC_REGISTRATION_ROLES.includes(role)) {
+      setRole("STUDENT");
+    }
   }
 
   async function fetchMe(token: string) {
@@ -528,11 +532,15 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                     }}
                     disabled={busy}
                   >
-                    <option value="STUDENT">Student</option>
-                    <option value="PARENT">Parent</option>
-                    <option value="LECTURER">Lecturer</option>
-                    <option value="ADMIN">Admin</option>
+                    {PUBLIC_REGISTRATION_ROLES.map((allowedRole) => (
+                      <option key={allowedRole} value={allowedRole}>
+                        {allowedRole === "STUDENT" ? "Student" : "Parent"}
+                      </option>
+                    ))}
                   </select>
+                  <p className="mt-2 text-xs text-white/55">
+                    Staff and admin accounts are created from the protected admin account flow.
+                  </p>
                 </div>
               )}
 

@@ -2,6 +2,7 @@ import type { AdminScope } from "./auth";
 import { apiClient } from "./apiClient";
 
 export type AdminAccountRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+export const ADMIN_ACCOUNT_ROLES: AdminAccountRole[] = ["ADMIN", "LECTURER", "STUDENT", "PARENT"];
 
 export type AdminAccount = {
   id: string;
@@ -37,6 +38,17 @@ export async function deleteAdminAccount(userId: string) {
   return apiClient.delete<{ ok: boolean; user: { id: string; email: string; role: AdminAccountRole } }>(
     `/users/admin/accounts/${encodeURIComponent(userId)}`
   );
+}
+
+export async function createAdminAccount(input: {
+  email: string;
+  password: string;
+  role: AdminAccountRole;
+  studentNumber?: string;
+  southAfricanId?: string;
+  adminScope?: AdminScope;
+}) {
+  return apiClient.post<{ user: AdminAccount }>(`/auth/admin-create`, input);
 }
 
 export async function updateAdminAccount(

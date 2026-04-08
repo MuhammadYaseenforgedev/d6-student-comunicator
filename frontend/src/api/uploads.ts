@@ -32,6 +32,12 @@ type BackendUpload = {
   targetUserId?: string | null;
   targetUserEmail?: string | null;
   targetUserRole?: UserRole | null;
+  moduleId?: string | null;
+  moduleCode?: string | null;
+  moduleName?: string | null;
+  courseId?: string | null;
+  courseCode?: string | null;
+  courseName?: string | null;
   createdAt: string;
 };
 
@@ -60,23 +66,44 @@ function toUiUpload(row: BackendUpload): UploadRecord {
     targetUserId: row.targetUserId ?? null,
     targetUserEmail: row.targetUserEmail ?? null,
     targetUserRole: row.targetUserRole ?? null,
+    moduleId: row.moduleId ?? null,
+    moduleCode: row.moduleCode ?? null,
+    moduleName: row.moduleName ?? null,
+    courseId: row.courseId ?? null,
+    courseCode: row.courseCode ?? null,
+    courseName: row.courseName ?? null,
   };
 }
 
 /** GET /api/uploads (may be wrapped by apiListWrapper) */
-export async function listUploads(): Promise<UploadRecord[]> {
-  const raw = await apiGet<unknown>("/api/uploads");
+export async function listUploads(params?: {
+  kind?: UploadKind;
+  moduleId?: string;
+}): Promise<UploadRecord[]> {
+  const qs = new URLSearchParams();
+  if (params?.kind) qs.set("kind", params.kind);
+  if (params?.moduleId?.trim()) qs.set("moduleId", params.moduleId.trim());
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  const raw = await apiGet<unknown>(`/api/uploads${suffix}`);
   const rows = unwrapList<BackendUpload>(raw);
   return rows.map(toUiUpload);
 }
 
 /** POST /api/uploads (multipart: file + kind) */
-export async function uploadFile(input: { file: File; kind: UploadKind; targetUserId?: string }): Promise<UploadRecord> {
+export async function uploadFile(input: {
+  file: File;
+  kind: UploadKind;
+  targetUserId?: string;
+  moduleId?: string;
+}): Promise<UploadRecord> {
   const form = new FormData();
   form.append("file", input.file);
   form.append("kind", input.kind);
   if (input.targetUserId?.trim()) {
     form.append("targetUserId", input.targetUserId.trim());
+  }
+  if (input.moduleId?.trim()) {
+    form.append("moduleId", input.moduleId.trim());
   }
 
   const created = await apiPostForm<BackendUpload>("/api/uploads", form);

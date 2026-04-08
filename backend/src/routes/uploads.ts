@@ -8,6 +8,7 @@ import { requireRole } from "../middleware/rbac";
 import { uploadLimiter } from "../middleware/rateLimit";
 import { repos } from "../persistence";
 import type { UploadKind } from "../persistence/types";
+import { isLecturerAssignedToModule, isStudentAllowedForModule } from "../lib/courseAccess";
 import {
   buildStoredUploadFileName,
   buildSupabaseUploadStoragePath,
@@ -117,15 +118,30 @@ async function canParentAccessUpload(
 
 async function canAccessUpload(
   user: { id: string; role: string },
-  u: { kind: UploadKind; uploadedBy: string; uploadedByRole?: string | null; targetUserId?: string | null }
+  u: {
+    kind: UploadKind;
+    uploadedBy: string;
+    uploadedByRole?: string | null;
+    targetUserId?: string | null;
+    moduleId?: string | null;
+  }
 ) {
   const uploaderRole = String(u.uploadedByRole ?? "").toUpperCase();
   const isStaffMaterial = u.kind === "LECTURER_MATERIAL" && (uploaderRole === "ADMIN" || uploaderRole === "LECTURER");
 
-  if (user.role === "ADMIN" || user.role === "LECTURER") return true;
+  if (user.role === "ADMIN") return true;
+  if (user.role === "LECTURER") {
+    if (!u.moduleId) return true;
+    if (u.uploadedBy === user.id) return true;
+    return isLecturerAssignedToModule(pool, user.id, u.moduleId);
+  }
   if (user.role === "PARENT") return canParentAccessUpload(user.id, u);
   // STUDENT
-  return isStaffMaterial || (u.kind === "STUDENT_SUBMISSION" && (u.uploadedBy === user.id || u.targetUserId === user.id));
+  if (isStaffMaterial) {
+    if (!u.moduleId) return true;
+    return isStudentAllowedForModule(pool, user.id, u.moduleId);
+  }
+  return u.kind === "STUDENT_SUBMISSION" && (u.uploadedBy === user.id || u.targetUserId === user.id);
 }
 
 function isUploadKind(value: string): value is UploadKind {
@@ -194,6 +210,47 @@ async function resolveUploadTarget(
   }
 
   return { ok: true, targetUserId };
+}
+
+async function resolveUploadModule(
+  user: { id: string; role: string },
+  kind: UploadKind,
+  rawModuleId: unknown
+): Promise<{ ok: true; moduleId: string | null } | { ok: false; status: number; code: string; message: string }> {
+  const moduleId = String(rawModuleId ?? "").trim();
+  if (!moduleId) return { ok: true, moduleId: null };
+
+  if (!isUuid(moduleId)) {
+    return { ok: false, status: 400, code: "VALIDATION", message: "moduleId must be a UUID" };
+  }
+
+  if (kind !== "LECTURER_MATERIAL") {
+    return {
+      ok: false,
+      status: 400,
+      code: "VALIDATION",
+      message: "moduleId is only supported for lecturer materials.",
+    };
+  }
+
+  const moduleResult = await pool.query(`SELECT id FROM faculty_modules WHERE id = $1 LIMIT 1`, [moduleId]);
+  if ((moduleResult.rowCount ?? 0) === 0) {
+    return { ok: false, status: 404, code: "NOT_FOUND", message: "Module not found" };
+  }
+
+  if (user.role === "LECTURER") {
+    const allowed = await isLecturerAssignedToModule(pool, user.id, moduleId);
+    if (!allowed) {
+      return {
+        ok: false,
+        status: 403,
+        code: "FORBIDDEN",
+        message: "Lecturer can only upload assessments for assigned modules.",
+      };
+    }
+  }
+
+  return { ok: true, moduleId };
 }
 
 /**
@@ -374,6 +431,12 @@ uploadRouter.post(
         return err(res, target.status, target.code, target.message);
       }
 
+      const moduleSelection = await resolveUploadModule(user, kind, req.body?.moduleId);
+      if (!moduleSelection.ok) {
+        await cleanupUploadedFile(req.file?.path, "POST / invalid module");
+        return err(res, moduleSelection.status, moduleSelection.code, moduleSelection.message);
+      }
+
       const storedFileName = buildStoredUploadFileName(req.file.originalname);
       const storagePath = USE_SUPABASE_UPLOAD_STORAGE
         ? buildSupabaseUploadStoragePath(storedFileName)
@@ -403,6 +466,7 @@ uploadRouter.post(
         storagePath,
         uploadedBy: user.id,
         targetUserId: target.targetUserId,
+        moduleId: moduleSelection.moduleId,
       });
 
       return res.status(201).json(withDownloadUrl(req, created));
@@ -425,10 +489,39 @@ uploadRouter.post(
 uploadRouter.get("/", requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"), async (req: Request, res: Response) => {
   try {
     const user = req.user!;
+    const moduleId = String(req.query.moduleId ?? "").trim();
+    const kind = String(req.query.kind ?? "").trim().toUpperCase();
+    if (moduleId && !isUuid(moduleId)) {
+      return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+    }
+    if (kind && !isUploadKind(kind)) {
+      return err(res, 400, "VALIDATION", "kind must be LECTURER_MATERIAL or STUDENT_SUBMISSION");
+    }
+
+    if (moduleId) {
+      if (user.role === "LECTURER") {
+        const allowed = await isLecturerAssignedToModule(pool, user.id, moduleId);
+        if (!allowed) {
+          return err(res, 403, "FORBIDDEN", "Lecturer can only access assigned module assessments");
+        }
+      }
+      if (user.role === "STUDENT") {
+        const allowed = await isStudentAllowedForModule(pool, user.id, moduleId);
+        if (!allowed) {
+          return err(res, 403, "FORBIDDEN", "Student is not enrolled in this module");
+        }
+      }
+      if (user.role === "PARENT") {
+        return err(res, 403, "FORBIDDEN", "Parents cannot access module assessment files");
+      }
+    }
+
     const items = await repos.uploads.listForUser({ id: user.id, role: user.role });
     const available: typeof items = [];
 
     for (const item of items) {
+      if (moduleId && item.moduleId !== moduleId) continue;
+      if (kind && item.kind !== kind) continue;
       if (await pruneUnavailableUpload(item)) continue;
       available.push(item);
     }
@@ -499,11 +592,21 @@ uploadRouter.get(
  */
 uploadRouter.delete("/:id", requireRole("ADMIN", "LECTURER"), async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
     const id = String(req.params.id || "").trim();
     if (!id) return err(res, 400, "VALIDATION", "Invalid upload id");
 
     const existing = await repos.uploads.getById(id);
     if (!existing) return err(res, 404, "NOT_FOUND", "Not found");
+
+    if (user.role === "LECTURER") {
+      const allowed = existing.moduleId
+        ? existing.uploadedBy === user.id || (await isLecturerAssignedToModule(pool, user.id, existing.moduleId))
+        : existing.uploadedBy === user.id;
+      if (!allowed) {
+        return err(res, 403, "FORBIDDEN", "Lecturer cannot delete this file");
+      }
+    }
 
     const deleted = await repos.uploads.delete(id);
     if (!deleted) return err(res, 404, "NOT_FOUND", "Not found");

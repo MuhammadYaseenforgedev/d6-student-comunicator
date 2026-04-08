@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
+import { getUser } from "../lib/auth";
 import {
   listNotifications,
   markAllNotificationsRead,
@@ -23,6 +24,13 @@ const CATEGORY_OPTIONS: Array<{
   { value: "FINANCE", label: "Finance" },
   { value: "PARENT_LINK", label: "Parent Links" },
 ];
+
+const ROLE_NOTIFICATION_CATEGORIES: Record<string, NotificationCategory[]> = {
+  STUDENT: ["MESSAGE", "ANNOUNCEMENT", "EMERGENCY", "ATTENDANCE", "RESULT"],
+  PARENT: ["MESSAGE", "ANNOUNCEMENT", "EMERGENCY", "ATTENDANCE", "RESULT", "FINANCE", "PARENT_LINK"],
+  LECTURER: ["MESSAGE", "ANNOUNCEMENT", "EMERGENCY", "ATTENDANCE", "RESULT"],
+  ADMIN: ["MESSAGE", "ANNOUNCEMENT", "EMERGENCY", "ATTENDANCE", "RESULT", "FINANCE", "PARENT_LINK"],
+};
 
 function badgeClass(category: NotificationCategory): string {
   if (category === "MESSAGE") {
@@ -59,6 +67,7 @@ function notificationHref(notification: NotificationRecord): string | null {
 }
 
 export default function NotificationsPage() {
+  const user = getUser();
   const [items, setItems] = useState<NotificationRecord[]>([]);
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [category, setCategory] = useState<"ALL" | NotificationCategory>("ALL");
@@ -69,6 +78,19 @@ export default function NotificationsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyAll, setBusyAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const allowedCategories =
+    ROLE_NOTIFICATION_CATEGORIES[String(user?.role ?? "").toUpperCase()] ??
+    ROLE_NOTIFICATION_CATEGORIES.STUDENT;
+  const visibleCategoryOptions = CATEGORY_OPTIONS.filter(
+    (option) => option.value === "ALL" || allowedCategories.includes(option.value)
+  );
+
+  useEffect(() => {
+    if (category === "ALL") return;
+    if (!allowedCategories.includes(category)) {
+      setCategory("ALL");
+    }
+  }, [allowedCategories, category]);
 
   useEffect(() => {
     let cancelled = false;
@@ -224,7 +246,7 @@ export default function NotificationsPage() {
             <div>
               <h2 className="text-lg font-semibold text-white">Filters</h2>
               <p className="mt-1 text-sm text-white/72">
-                Narrow notifications by category or unread state.
+                Narrow notifications by category or unread state for this account.
               </p>
             </div>
 
@@ -243,7 +265,7 @@ export default function NotificationsPage() {
           <div className="divider-soft" />
 
           <div className="flex flex-wrap gap-2">
-            {CATEGORY_OPTIONS.map((option) => {
+            {visibleCategoryOptions.map((option) => {
               const active = category === option.value;
               return (
                 <button
