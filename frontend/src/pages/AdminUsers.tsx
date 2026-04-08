@@ -3,7 +3,6 @@ import PageHeader from "../components/PageHeader";
 import { getUser, type AdminScope } from "../lib/auth";
 import { adminScopeLabel } from "../lib/adminAccess";
 import {
-  ADMIN_ACCOUNT_ROLES,
   createAdminAccount,
   deleteAdminAccount,
   listAdminAccounts,
@@ -13,6 +12,13 @@ import {
 } from "../lib/userAdminApi";
 
 type RoleFilter = "ALL" | AdminAccountRole;
+type AccountType =
+  | "STUDENT"
+  | "PARENT"
+  | "LECTURER"
+  | "ACADEMIC_ADMIN"
+  | "SUPER_ADMIN"
+  | "FINANCE_ADMIN";
 
 const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
   { value: "ALL", label: "All" },
@@ -24,6 +30,29 @@ const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
 
 const MIN_PASSWORD_LENGTH = 6;
 const ADMIN_SCOPE_OPTIONS: AdminScope[] = ["FINANCE", "ACADEMIC", "SUPER"];
+const ACCOUNT_TYPE_OPTIONS: Array<{ value: AccountType; label: string }> = [
+  { value: "STUDENT", label: "Student" },
+  { value: "PARENT", label: "Parent" },
+  { value: "LECTURER", label: "Lecturer" },
+  { value: "ACADEMIC_ADMIN", label: "Academic Admin" },
+  { value: "SUPER_ADMIN", label: "Super Admin" },
+  { value: "FINANCE_ADMIN", label: "Finance Admin" },
+];
+
+function accountTypeToPayload(
+  accountType: AccountType
+): { role: AdminAccountRole; adminScope?: AdminScope } {
+  if (accountType === "ACADEMIC_ADMIN") {
+    return { role: "ADMIN", adminScope: "ACADEMIC" };
+  }
+  if (accountType === "SUPER_ADMIN") {
+    return { role: "ADMIN", adminScope: "SUPER" };
+  }
+  if (accountType === "FINANCE_ADMIN") {
+    return { role: "ADMIN", adminScope: "FINANCE" };
+  }
+  return { role: accountType };
+}
 
 function roleTone(role: AdminAccountRole): string {
   if (role === "ADMIN") {
@@ -91,10 +120,9 @@ export default function AdminUsers() {
   const [editAdminScope, setEditAdminScope] = useState<AdminScope>("ACADEMIC");
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState<AdminAccountRole>("STUDENT");
+  const [newAccountType, setNewAccountType] = useState<AccountType>("STUDENT");
   const [newStudentNumber, setNewStudentNumber] = useState("");
   const [newSouthAfricanId, setNewSouthAfricanId] = useState("");
-  const [newAdminScope, setNewAdminScope] = useState<AdminScope>("ACADEMIC");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -185,6 +213,8 @@ export default function AdminUsers() {
     const password = newPassword;
     const studentNumber = normalizeStudentNumber(newStudentNumber);
     const southAfricanId = String(newSouthAfricanId ?? "").replace(/\D+/g, "");
+    const { role: nextRole, adminScope: nextAdminScope } =
+      accountTypeToPayload(newAccountType);
 
     if (!email || !password) {
       setError("Email and password are required.");
@@ -194,7 +224,7 @@ export default function AdminUsers() {
       setError(`Passwords must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
-    if (newRole === "STUDENT") {
+    if (nextRole === "STUDENT") {
       if (!studentNumber) {
         setError("Student number is required for student accounts.");
         return;
@@ -212,17 +242,16 @@ export default function AdminUsers() {
       await createAdminAccount({
         email,
         password,
-        role: newRole,
-        studentNumber: newRole === "STUDENT" ? studentNumber : undefined,
-        southAfricanId: newRole === "STUDENT" ? southAfricanId : undefined,
-        adminScope: newRole === "ADMIN" ? newAdminScope : undefined,
+        role: nextRole,
+        studentNumber: nextRole === "STUDENT" ? studentNumber : undefined,
+        southAfricanId: nextRole === "STUDENT" ? southAfricanId : undefined,
+        adminScope: nextRole === "ADMIN" ? nextAdminScope : undefined,
       });
       setNewEmail("");
       setNewPassword("");
-      setNewRole("STUDENT");
+      setNewAccountType("STUDENT");
       setNewStudentNumber("");
       setNewSouthAfricanId("");
-      setNewAdminScope("ACADEMIC");
       setInfo(`Created ${email}.`);
       await loadAccounts();
     } catch (e) {
@@ -332,7 +361,7 @@ export default function AdminUsers() {
         <div>
           <div className="text-lg font-semibold text-white">Create Account</div>
           <div className="mt-1 text-sm text-white/72">
-            Create protected admin-managed accounts with any valid app role. Public registration stays limited to safe self-service roles.
+            Create protected admin-managed student, parent, lecturer, academic admin, super admin, and finance admin accounts. Public registration stays limited to safe self-service roles.
           </div>
         </div>
 
@@ -358,40 +387,28 @@ export default function AdminUsers() {
             aria-label="Temporary password"
           />
           <select
-            value={newRole}
-            onChange={(e) => setNewRole(e.target.value as AdminAccountRole)}
+            value={newAccountType}
+            onChange={(e) => setNewAccountType(e.target.value as AccountType)}
             className="select-glass"
-            title="Account role"
-            aria-label="Account role"
+            title="Account type"
+            aria-label="Account type"
           >
-            {ADMIN_ACCOUNT_ROLES.map((role) => (
-              <option key={role} value={role}>
-                {role}
+            {ACCOUNT_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
-          {newRole === "ADMIN" ? (
-            <select
-              value={newAdminScope}
-              onChange={(e) => setNewAdminScope(e.target.value as AdminScope)}
-              className="select-glass"
-              title="Admin access"
-              aria-label="Admin access"
-            >
-              {ADMIN_SCOPE_OPTIONS.map((scope) => (
-                <option key={scope} value={scope}>
-                  {adminScopeLabel(scope)}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="info-banner text-white/70">
-              {newRole === "STUDENT"
-                ? "Student accounts need a student number and South African ID."
-                : "This role uses the selected app role without extra admin access fields."}
-            </div>
-          )}
-          {newRole === "STUDENT" && (
+          <div className="info-banner text-white/70">
+            {newAccountType === "STUDENT"
+              ? "Student accounts need a student number and South African ID."
+              : newAccountType === "ACADEMIC_ADMIN" ||
+                  newAccountType === "SUPER_ADMIN" ||
+                  newAccountType === "FINANCE_ADMIN"
+                ? "Admin account type sets the correct admin scope automatically."
+                : "This account type uses the selected app role without extra admin access fields."}
+          </div>
+          {newAccountType === "STUDENT" && (
             <>
               <input
                 value={newStudentNumber}

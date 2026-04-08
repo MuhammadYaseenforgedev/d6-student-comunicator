@@ -1,8 +1,7 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   AnimatePresence,
   motion,
-  useDragControls,
   useMotionValue,
 } from "framer-motion";
 import {
@@ -53,6 +52,10 @@ type AssistantWidgetProps = {
   ) => AssistantReply | Promise<AssistantReply>;
 };
 
+const POSITION_STORAGE_KEY = "assistant.widget.position";
+const DRAG_THRESHOLD_PX = 10;
+const VIEWPORT_MARGIN_PX = 12;
+
 function makeMessage(
   role: AssistantMessage["role"],
   text: string,
@@ -86,6 +89,7 @@ function GradientIconButton({
   return (
     <button
       type="button"
+      data-no-drag
       onClick={onClick}
       aria-label={label}
       title={title ?? label}
@@ -184,7 +188,7 @@ export default function AssistantWidget({
   onAsk,
 }: AssistantWidgetProps) {
   const [open, setOpen] = useState(false);
-  const [hidden, setHidden] = useState(false);
+  const [hidden, setHidden] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -194,14 +198,84 @@ export default function AssistantWidget({
   ]);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const widgetRef = useRef<HTMLDivElement | null>(null);
   const dragBoundsRef = useRef<HTMLDivElement | null>(null);
   const speakingTimerRef = useRef<number | null>(null);
   const focusFrameRef = useRef<number | null>(null);
   const restoreOpenRef = useRef(false);
-  const dragControls = useDragControls();
+  const pendingDragRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startX: number;
+    startY: number;
+    dragging: boolean;
+  } | null>(null);
+  const lastDragEndedAtRef = useRef(0);
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
   const assistantBrand = "Sparky";
+
+  const persistPosition = useCallback((x: number, y: number) => {
+    try {
+      window.sessionStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify({ x, y }));
+    } catch {
+      // Ignore storage failures and continue with in-memory position.
+    }
+  }, []);
+
+  const clampPosition = useCallback((nextX: number, nextY: number) => {
+    const widget = widgetRef.current;
+    if (!widget) return { x: nextX, y: nextY };
+
+    const currentX = dragX.get();
+    const currentY = dragY.get();
+    const rect = widget.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let x = nextX;
+    let y = nextY;
+    let nextLeft = rect.left + (x - currentX);
+    let nextRight = rect.right + (x - currentX);
+    let nextTop = rect.top + (y - currentY);
+    let nextBottom = rect.bottom + (y - currentY);
+
+    if (nextLeft < VIEWPORT_MARGIN_PX) {
+      x += VIEWPORT_MARGIN_PX - nextLeft;
+      nextRight += VIEWPORT_MARGIN_PX - nextLeft;
+      nextLeft = VIEWPORT_MARGIN_PX;
+    }
+    if (nextRight > viewportWidth - VIEWPORT_MARGIN_PX) {
+      x -= nextRight - (viewportWidth - VIEWPORT_MARGIN_PX);
+    }
+    if (nextTop < VIEWPORT_MARGIN_PX) {
+      y += VIEWPORT_MARGIN_PX - nextTop;
+      nextBottom += VIEWPORT_MARGIN_PX - nextTop;
+      nextTop = VIEWPORT_MARGIN_PX;
+    }
+    if (nextBottom > viewportHeight - VIEWPORT_MARGIN_PX) {
+      y -= nextBottom - (viewportHeight - VIEWPORT_MARGIN_PX);
+    }
+
+    return { x, y };
+  }, [dragX, dragY]);
+
+  const clampWidgetToViewport = useCallback(
+    (shouldPersist = false) => {
+      const { x, y } = clampPosition(dragX.get(), dragY.get());
+      dragX.set(x);
+      dragY.set(y);
+      if (shouldPersist) {
+        persistPosition(x, y);
+      }
+    },
+    [clampPosition, dragX, dragY, persistPosition]
+  );
+
+  function beganRecentDrag() {
+    return Date.now() - lastDragEndedAtRef.current < 220;
+  }
 
   function clearSpeakingTimer() {
     if (speakingTimerRef.current !== null) {
@@ -240,6 +314,28 @@ export default function AssistantWidget({
       mediaQuery.removeListener(updateIsMobile);
     };
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(POSITION_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
+      const savedX = Number(parsed?.x);
+      const savedY = Number(parsed?.y);
+      if (Number.isFinite(savedX)) dragX.set(savedX);
+      if (Number.isFinite(savedY)) dragY.set(savedY);
+    } catch {
+      // Ignore malformed persisted positions.
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      clampWidgetToViewport(false);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [clampWidgetToViewport, dragX, dragY]);
 
   useEffect(() => {
     setMessages([makeMessage("assistant", welcome.text, welcome.actions)]);
@@ -290,46 +386,110 @@ export default function AssistantWidget({
     };
   }, []);
 
-  function startDragging(event: React.PointerEvent<HTMLElement>) {
-    dragControls.start(event);
-  }
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      const pendingDrag = pendingDragRef.current;
+      if (!pendingDrag || pendingDrag.pointerId !== event.pointerId) return;
 
-  function handleFloatingPointerDown(event: React.PointerEvent<HTMLElement>) {
+      const deltaX = event.clientX - pendingDrag.startClientX;
+      const deltaY = event.clientY - pendingDrag.startClientY;
+
+      if (!pendingDrag.dragging) {
+        if (Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD_PX) return;
+        pendingDrag.dragging = true;
+      }
+
+      event.preventDefault();
+      const clamped = clampPosition(
+        pendingDrag.startX + deltaX,
+        pendingDrag.startY + deltaY
+      );
+      dragX.set(clamped.x);
+      dragY.set(clamped.y);
+    }
+
+    function finishPointerDrag(event: PointerEvent) {
+      const pendingDrag = pendingDragRef.current;
+      if (!pendingDrag || pendingDrag.pointerId !== event.pointerId) return;
+
+      if (pendingDrag.dragging) {
+        const clamped = clampPosition(dragX.get(), dragY.get());
+        dragX.set(clamped.x);
+        dragY.set(clamped.y);
+        persistPosition(clamped.x, clamped.y);
+        lastDragEndedAtRef.current = Date.now();
+      }
+
+      pendingDragRef.current = null;
+    }
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", finishPointerDrag);
+    window.addEventListener("pointercancel", finishPointerDrag);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishPointerDrag);
+      window.removeEventListener("pointercancel", finishPointerDrag);
+    };
+  }, [clampPosition, dragX, dragY, persistPosition]);
+
+  useEffect(() => {
+    const handleViewportChange = () => {
+      window.requestAnimationFrame(() => {
+        clampWidgetToViewport(true);
+      });
+    };
+
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("orientationchange", handleViewportChange);
+
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("orientationchange", handleViewportChange);
+    };
+  }, [clampWidgetToViewport]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      clampWidgetToViewport(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [clampWidgetToViewport, hidden, isMobile, open]);
+
+  function handleDragPointerDown(
+    event: React.PointerEvent<HTMLElement>,
+    options?: { allowButtons?: boolean }
+  ) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
     const target = event.target instanceof HTMLElement ? event.target : null;
     if (!target) return;
 
-    if (target.closest("button, textarea, input, select, a, [data-no-drag]")) {
+    const selector = options?.allowButtons
+      ? "textarea, input, select, a, [data-no-drag]"
+      : "button, textarea, input, select, a, [data-no-drag]";
+    if (target.closest(selector)) {
       return;
     }
 
-    startDragging(event);
-  }
-
-  function handlePanelPointerDown(event: React.PointerEvent<HTMLElement>) {
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    if (!target) return;
-
-    if (target.closest("button, textarea, input, select, a, [data-no-drag]")) {
-      return;
-    }
-
-    startDragging(event);
-  }
-
-  function handleHeaderPointerDown(event: React.PointerEvent<HTMLElement>) {
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    if (!target) return;
-
-    if (target.closest("button, textarea, input, select, a, [data-no-drag]")) {
-      return;
-    }
-
-    startDragging(event);
+    pendingDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: dragX.get(),
+      startY: dragY.get(),
+      dragging: false,
+    };
   }
 
   function handleDock() {
     dragX.set(0);
     dragY.set(0);
+    persistPosition(0, 0);
   }
 
   function minimizeToSmallest() {
@@ -343,12 +503,14 @@ export default function AssistantWidget({
   }
 
   function handleOpenAssistant() {
+    if (beganRecentDrag()) return;
     restoreOpenRef.current = true;
     setHidden(false);
     setOpen(true);
   }
 
   function handleShow() {
+    if (beganRecentDrag()) return;
     setHidden(false);
     setOpen(true);
     restoreOpenRef.current = true;
@@ -432,12 +594,7 @@ export default function AssistantWidget({
       className="pointer-events-none fixed inset-0 z-40"
     >
       <motion.div
-        drag
-        dragListener={false}
-        dragControls={dragControls}
-        dragConstraints={dragBoundsRef}
-        dragMomentum={false}
-        dragElastic={0.08}
+        ref={widgetRef}
         style={{ x: dragX, y: dragY }}
         className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6"
       >
@@ -450,13 +607,15 @@ export default function AssistantWidget({
               exit={{ opacity: 0, y: 14, scale: 0.96 }}
               transition={{ duration: 0.24, ease: "easeOut" }}
               className="pointer-events-auto"
-              onPointerDown={handleFloatingPointerDown}
+              onPointerDown={(event) =>
+                handleDragPointerDown(event, { allowButtons: true })
+              }
             >
               <button
                 type="button"
                 onClick={handleOpenAssistant}
                 aria-label="Open assistant"
-                className="flex h-[4.25rem] w-[4.25rem] items-center justify-center rounded-full border border-transparent bg-[linear-gradient(135deg,rgba(56,189,248,0.72),rgba(124,99,255,0.76),rgba(168,85,247,0.72))] p-[1px] shadow-[0_0_24px_rgba(56,189,248,0.18)] transition hover:brightness-110"
+                className="touch-none select-none flex h-[4.25rem] w-[4.25rem] items-center justify-center rounded-full border border-transparent bg-[linear-gradient(135deg,rgba(56,189,248,0.72),rgba(124,99,255,0.76),rgba(168,85,247,0.72))] p-[1px] shadow-[0_0_24px_rgba(56,189,248,0.18)] transition hover:brightness-110"
               >
                 <span className="flex h-full w-full items-center justify-center rounded-full bg-[linear-gradient(180deg,rgba(6,18,46,0.98),rgba(4,14,38,0.96))]">
                   <ChatbotAvatar
@@ -477,8 +636,10 @@ export default function AssistantWidget({
               className="pointer-events-auto"
             >
               <div
-                onPointerDown={handlePanelPointerDown}
-                className="relative flex cursor-grab items-center gap-2 overflow-hidden rounded-[1.4rem] border border-transparent bg-[linear-gradient(135deg,rgba(56,189,248,0.55),rgba(124,99,255,0.6),rgba(168,85,247,0.55))] p-[1px] shadow-[0_0_20px_rgba(56,189,248,0.12)] active:cursor-grabbing"
+                onPointerDown={(event) =>
+                  handleDragPointerDown(event, { allowButtons: true })
+                }
+                className="relative flex cursor-grab touch-none select-none items-center gap-2 overflow-hidden rounded-[1.4rem] border border-transparent bg-[linear-gradient(135deg,rgba(56,189,248,0.55),rgba(124,99,255,0.6),rgba(168,85,247,0.55))] p-[1px] shadow-[0_0_20px_rgba(56,189,248,0.12)] active:cursor-grabbing"
               >
                 <div className="relative flex w-full items-center gap-2 rounded-[calc(1.4rem-1px)] bg-[linear-gradient(180deg,rgba(6,18,46,0.97),rgba(4,14,38,0.95))] px-2.5 py-2">
                   <ChatbotAvatar
@@ -525,7 +686,6 @@ export default function AssistantWidget({
                 scale: 0.97,
                 transition: { duration: 0.24, ease: "easeOut" },
               }}
-              onPointerDown={handlePanelPointerDown}
               aria-label={`${assistantBrand} assistant. ${contextSummary}`}
               className={[
                 "pointer-events-auto relative flex flex-col overflow-hidden border border-transparent bg-[linear-gradient(135deg,rgba(56,189,248,0.55),rgba(124,99,255,0.6),rgba(168,85,247,0.55))] p-[1px] shadow-[0_0_24px_rgba(56,189,248,0.14)]",
@@ -551,9 +711,9 @@ export default function AssistantWidget({
                 </div>
 
                 <div
-                  onPointerDown={isMobile ? handleHeaderPointerDown : undefined}
+                  onPointerDown={handleDragPointerDown}
                   className={[
-                    "relative overflow-hidden border-b border-[#8CEBFF]/10",
+                    "relative overflow-hidden border-b border-[#8CEBFF]/10 touch-none select-none",
                     isMobile ? "px-3 py-3" : "px-4 py-3.5",
                   ].join(" ")}
                 >
@@ -798,7 +958,9 @@ export default function AssistantWidget({
               className="pointer-events-auto"
             >
               <div
-                onPointerDown={handlePanelPointerDown}
+                onPointerDown={(event) =>
+                  handleDragPointerDown(event, { allowButtons: true })
+                }
                 className="group relative overflow-hidden rounded-[1.6rem] border border-transparent bg-[linear-gradient(135deg,rgba(56,189,248,0.55),rgba(124,99,255,0.6),rgba(168,85,247,0.55))] p-[1px] text-sm font-semibold text-white"
               >
                 <div className="relative flex w-full items-center rounded-[calc(1.6rem-1px)] bg-[linear-gradient(180deg,rgba(6,18,46,0.97),rgba(4,14,38,0.95))] px-2.5 py-2.5">
@@ -807,7 +969,7 @@ export default function AssistantWidget({
                     <button
                       type="button"
                       onClick={handleOpenAssistant}
-                      className="flex min-w-0 items-center gap-3 rounded-[1.2rem] px-1 py-1 text-left transition hover:bg-white/5"
+                      className="flex min-w-0 touch-none select-none items-center gap-3 rounded-[1.2rem] px-1 py-1 text-left transition hover:bg-white/5"
                       aria-label="Open assistant"
                     >
                       <ChatbotAvatar
