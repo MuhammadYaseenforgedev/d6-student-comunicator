@@ -162,7 +162,12 @@ attendanceRouter.post(
     });
   } catch (e: any) {
     if (String(e?.code ?? "") === "23505") {
-      return err(res, 400, "VALIDATION", "Module code already exists");
+      return err(
+        res,
+        400,
+        "VALIDATION",
+        "Module code already exists. Courses can have multiple modules, but each module needs its own unique code."
+      );
     }
     console.error("[attendance] POST /attendance/modules error", e);
     return err(res, 500, "INTERNAL", "Failed to create module");

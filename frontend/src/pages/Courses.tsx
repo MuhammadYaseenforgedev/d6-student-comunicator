@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
+import CourseModulesManager from "../components/CourseModulesManager";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
 import { isAcademicOrSuperAdmin, isFinanceAdmin } from "../lib/adminAccess";
@@ -383,15 +384,29 @@ function StudentCoursesView() {
 
 function LecturerCoursesView() {
   const [courses, setCourses] = useState<CourseRecord[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedCourse = useMemo(
+    () => courses.find((course) => course.id === selectedCourseId) ?? null,
+    [courses, selectedCourseId]
+  );
+
+  async function loadCoursesData() {
+    const rows = await listCourses();
+    setCourses(rows);
+    setSelectedCourseId((current) =>
+      rows.some((course) => course.id === current) ? current : (rows[0]?.id ?? "")
+    );
+  }
 
   useEffect(() => {
     void (async () => {
       try {
         setLoading(true);
         setError(null);
-        setCourses(await listCourses());
+        await loadCoursesData();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load lecturer courses");
       } finally {
@@ -417,49 +432,36 @@ function LecturerCoursesView() {
           message="You are not assigned to any course-linked modules yet."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          {courses.map((course) => (
-            <div
-              key={course.id}
-              className="relative overflow-hidden rounded-3xl border border-[rgba(140,235,255,0.20)] bg-[rgba(8,18,48,0.66)] p-5 shadow-[0_0_20px_rgba(140,235,255,0.10)]"
-            >
-              <div className="pointer-events-none absolute inset-0 opacity-100">
-                <div className="absolute -left-10 -top-10 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
-                <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
-              </div>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {courses.map((course) => (
+              <PremiumCourseCard
+                key={course.id}
+                course={course}
+                selected={course.id === selectedCourseId}
+                onClick={() => setSelectedCourseId(course.id)}
+              />
+            ))}
+          </div>
 
-              <div className="relative flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-lg font-semibold text-white">{course.name}</div>
-                  <div className="mt-1 text-sm text-white/65">{course.code}</div>
+          {selectedCourse ? (
+            <>
+              <div className="teal-glow-card p-5">
+                <SectionTitle
+                  title="Selected Course"
+                  subtitle="Review modules already linked to this course, then manage module setup and membership below."
+                />
+                <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.12)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-white/72">
+                  {selectedCourse.code} - {selectedCourse.name}
                 </div>
-                <StatusBadge status={course.isActive ? "ACTIVE" : "INACTIVE"} />
-              </div>
-
-              <div className="relative mt-3 text-sm text-white/72">
-                {course.description?.trim() || "No course description has been added yet."}
-              </div>
-
-              <div className="relative mt-3 rounded-2xl border border-[rgba(140,235,255,0.12)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-xs text-white/65">
-                Linked modules: {summarizeModules(course.modules, 4)}
-              </div>
-
-              <div className="relative mt-4 grid grid-cols-3 gap-3">
-                <SummaryCard label="Modules" value={course.summary.moduleCount} />
-                <SummaryCard label="Students" value={course.summary.studentCount} />
-                <SummaryCard label="Lecturers" value={course.summary.lecturerCount} />
-              </div>
-
-              <div className="relative mt-5">
-                <SectionTitle title="Modules in this course" />
-                <div className="mt-3 space-y-3">
-                  {course.modules.length === 0 ? (
+                <div className="mt-4 space-y-3">
+                  {selectedCourse.modules.length === 0 ? (
                     <EmptyState
                       title="No modules in course"
-                      message="This course does not have any linked modules yet."
+                      message="Create the first module for this course below."
                     />
                   ) : (
-                    course.modules.map((module) => (
+                    selectedCourse.modules.map((module) => (
                       <div
                         key={module.id}
                         className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
@@ -475,8 +477,17 @@ function LecturerCoursesView() {
                   )}
                 </div>
               </div>
-            </div>
-          ))}
+
+              <CourseModulesManager
+                courses={courses}
+                selectedCourseId={selectedCourseId}
+                idPrefix="courses-lecturer-modules"
+                title="Modules"
+                subtitle="Manage module setup and module membership from inside Courses."
+                onChanged={loadCoursesData}
+              />
+            </>
+          ) : null}
         </div>
       )}
     </div>
@@ -918,6 +929,16 @@ function AdminCoursesView() {
                   </button>
                 </div>
               </div>
+
+              <CourseModulesManager
+                courses={courses}
+                selectedCourseId={selectedCourseId}
+                eligibleStudentIds={selectedCourse.students.map((student) => student.id)}
+                idPrefix="courses-admin-modules"
+                title="Modules"
+                subtitle="Create modules for the selected course and manage lecturer plus learner membership here."
+                onChanged={loadAll}
+              />
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <div className="teal-glow-card p-5">

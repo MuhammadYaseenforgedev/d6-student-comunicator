@@ -476,27 +476,35 @@ export default function AdminFinance() {
 
                 <div className="divider-soft my-5" />
 
-                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
                   <div className="glass-panel p-4">
-                    <div className="text-xs text-white/55">Balance</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/55">
+                      Balance
+                    </div>
                     <div className="mt-2 text-lg font-semibold text-white">
                       {money(detail.summary.balance, detail.summary.currency)}
                     </div>
                   </div>
                   <div className="glass-panel p-4">
-                    <div className="text-xs text-white/55">Status</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/55">
+                      Status
+                    </div>
                     <div className="mt-2 text-lg font-semibold text-white">
                       {detail.summary.status}
                     </div>
                   </div>
                   <div className="glass-panel p-4">
-                    <div className="text-xs text-white/55">Statements</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/55">
+                      Statements
+                    </div>
                     <div className="mt-2 text-lg font-semibold text-white">
                       {detail.summary.statements}
                     </div>
                   </div>
                   <div className="glass-panel p-4">
-                    <div className="text-xs text-white/55">Last payment</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/55">
+                      Last payment
+                    </div>
                     <div className="mt-2 text-lg font-semibold text-white">
                       {when(detail.summary.lastPayment)}
                     </div>
@@ -504,15 +512,22 @@ export default function AdminFinance() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
                 <div className="teal-glow-card p-5 space-y-4">
-                  <div className="text-lg font-semibold text-white">Account</div>
+                  <div className="space-y-2">
+                    <div className="text-lg font-semibold text-white">Account</div>
+                    <p className="text-sm leading-6 text-white/65">
+                      Review the student balance, keep the currency clear, and
+                      update the account status without fields crowding each
+                      other.
+                    </p>
+                  </div>
 
-                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_120px_120px]">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-balance"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Balance
                       </label>
@@ -529,7 +544,7 @@ export default function AdminFinance() {
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-currency"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Currency
                       </label>
@@ -548,7 +563,7 @@ export default function AdminFinance() {
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-status"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Status
                       </label>
@@ -576,7 +591,7 @@ export default function AdminFinance() {
                   <div>
                     <label
                       htmlFor="finance-status-note"
-                      className="mb-2 block text-sm font-medium text-white/80"
+                      className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                     >
                       Status note
                     </label>
@@ -619,15 +634,21 @@ export default function AdminFinance() {
                 </div>
 
                 <div className="teal-glow-card p-5 space-y-4">
-                  <div className="text-lg font-semibold text-white">
-                    Ledger entry
+                  <div className="space-y-2">
+                    <div className="text-lg font-semibold text-white">
+                      Ledger entry
+                    </div>
+                    <p className="text-sm leading-6 text-white/65">
+                      Add charges or payments with enough spacing for dates and
+                      descriptions to stay readable.
+                    </p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-tx-amount"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Amount
                       </label>
@@ -644,7 +665,7 @@ export default function AdminFinance() {
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-tx-occurred-at"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Occurred at
                       </label>
@@ -662,7 +683,7 @@ export default function AdminFinance() {
                   <div>
                     <label
                       htmlFor="finance-tx-description"
-                      className="mb-2 block text-sm font-medium text-white/80"
+                      className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                     >
                       Description
                     </label>
@@ -689,15 +710,21 @@ export default function AdminFinance() {
                 </div>
 
                 <div className="teal-glow-card p-5 space-y-4">
-                  <div className="text-lg font-semibold text-white">
-                    Send document
+                  <div className="space-y-2">
+                    <div className="text-lg font-semibold text-white">
+                      Send document
+                    </div>
+                    <p className="text-sm leading-6 text-white/65">
+                      Share statements, invoices, or notices with a layout that
+                      keeps the document details easy to scan.
+                    </p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-doc-type"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Document type
                       </label>
@@ -724,7 +751,7 @@ export default function AdminFinance() {
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-doc-issued-at"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Issued at
                       </label>
@@ -742,7 +769,7 @@ export default function AdminFinance() {
                   <div>
                     <label
                       htmlFor="finance-doc-title"
-                      className="mb-2 block text-sm font-medium text-white/80"
+                      className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                     >
                       Document title
                     </label>
@@ -756,11 +783,11 @@ export default function AdminFinance() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-doc-amount"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Optional amount
                       </label>
@@ -777,7 +804,7 @@ export default function AdminFinance() {
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-doc-url"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Optional document URL
                       </label>
@@ -795,7 +822,7 @@ export default function AdminFinance() {
                   <div>
                     <label
                       htmlFor="finance-doc-description"
-                      className="mb-2 block text-sm font-medium text-white/80"
+                      className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                     >
                       Document description
                     </label>
@@ -823,15 +850,21 @@ export default function AdminFinance() {
                 </div>
 
                 <div className="teal-glow-card p-5 space-y-4">
-                  <div className="text-lg font-semibold text-white">
-                    Send notification
+                  <div className="space-y-2">
+                    <div className="text-lg font-semibold text-white">
+                      Send notification
+                    </div>
+                    <p className="text-sm leading-6 text-white/65">
+                      Use short updates for parents with clear severity and
+                      message spacing.
+                    </p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_160px]">
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_180px]">
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-note-title"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Notification title
                       </label>
@@ -848,7 +881,7 @@ export default function AdminFinance() {
                     <div className="min-w-0">
                       <label
                         htmlFor="finance-note-severity"
-                        className="mb-2 block text-sm font-medium text-white/80"
+                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                       >
                         Severity
                       </label>
@@ -876,7 +909,7 @@ export default function AdminFinance() {
                   <div>
                     <label
                       htmlFor="finance-note-body"
-                      className="mb-2 block text-sm font-medium text-white/80"
+                      className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/65"
                     >
                       Message
                     </label>
@@ -906,7 +939,7 @@ export default function AdminFinance() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
                 <div className="teal-glow-card p-5">
                   <div className="text-lg font-semibold text-white">Documents</div>
 
@@ -919,8 +952,8 @@ export default function AdminFinance() {
                           key={document.id}
                           className="glass-panel p-4"
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
                               <div className="text-sm font-semibold text-white">
                                 {document.title}
                               </div>
@@ -943,7 +976,7 @@ export default function AdminFinance() {
                                 </a>
                               )}
                             </div>
-                            <div className="text-sm font-semibold text-white">
+                            <div className="shrink-0 text-sm font-semibold text-white">
                               {document.amount == null
                                 ? "No amount"
                                 : money(document.amount, document.currency)}
@@ -968,8 +1001,8 @@ export default function AdminFinance() {
                     ) : (
                       detail.notifications.map((note) => (
                         <div key={note.id} className="glass-panel p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
                               <div className="text-sm font-semibold text-white">
                                 {note.title}
                               </div>
@@ -977,7 +1010,7 @@ export default function AdminFinance() {
                                 {note.body}
                               </div>
                             </div>
-                            <div className="text-right text-xs">
+                            <div className="shrink-0 text-left text-xs sm:text-right">
                               <div
                                 className={[
                                   "inline-flex rounded-full border px-2.5 py-1 font-medium",
