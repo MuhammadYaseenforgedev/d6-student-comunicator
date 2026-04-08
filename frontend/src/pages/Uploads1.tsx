@@ -195,8 +195,8 @@ export default function Uploads1() {
                   ? "Student submissions are visible to staff and to the selected student."
                   : "Student submissions are visible to staff and to you."
                 : isAdmin
-                  ? "Saved to backend (disk) + metadata in PostgreSQL, assigned to the selected lecturer."
-                  : "Saved to backend (disk) + metadata in PostgreSQL."}
+                  ? "Stored securely in cloud storage when configured, assigned to the selected lecturer."
+                  : "Stored securely in cloud storage when configured."}
             </div>
 
             <form onSubmit={onUpload} className="mt-4 space-y-3">

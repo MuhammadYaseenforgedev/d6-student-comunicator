@@ -4,7 +4,8 @@ import path from "path";
 import crypto from "crypto";
 
 function hashSql(sql: string): string {
-  return crypto.createHash("sha256").update(sql, "utf8").digest("hex");
+  const normalized = String(sql).replace(/\r\n/g, "\n");
+  return crypto.createHash("sha256").update(normalized, "utf8").digest("hex");
 }
 
 async function runMigrations() {
