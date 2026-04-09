@@ -10,7 +10,11 @@ export type CalendarEntry = {
   endsAt: string;
   createdAt: string;
   channelId?: string | null;
-  source?: "CALENDAR_ENTRY" | "CHANNEL_EVENT" | null;
+  courseId?: string | null;
+  courseCode?: string | null;
+  courseName?: string | null;
+  canDelete?: boolean;
+  source?: "CALENDAR_ENTRY" | "COURSE_ENTRY" | "CHANNEL_EVENT" | null;
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -54,6 +58,7 @@ export async function createCalendarEntry(input: {
   location?: string | null;
   startsAt: string;
   endsAt: string;
+  courseId?: string | null;
 }): Promise<CalendarEntry> {
   return apiPost<CalendarEntry>("/api/calendar", input);
 }

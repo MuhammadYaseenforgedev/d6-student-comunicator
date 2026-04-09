@@ -13,6 +13,7 @@ export type AdminAccount = {
   lastName: string | null;
   courseName: string | null;
   studentNumber: string | null;
+  idNumber?: string | null;
   canLinkChildren: boolean;
   createdAt: string;
 };

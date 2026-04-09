@@ -97,6 +97,7 @@ export function useCalendarApi(date?: string, childId?: string) {
       location?: string;
       startsLocal: string;
       endsLocal: string;
+      courseId?: string;
     }) => {
       setError(null);
 
@@ -126,6 +127,7 @@ export function useCalendarApi(date?: string, childId?: string) {
           location: payload.location?.trim() || null,
           startsAt,
           endsAt,
+          courseId: payload.courseId?.trim() || null,
         });
         await reload();
       } catch (e) {

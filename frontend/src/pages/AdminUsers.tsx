@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
+import StudentProfileDetailPanel from "../components/StudentProfileDetailPanel";
 import { getUser, type AdminScope } from "../lib/auth";
 import { adminScopeLabel } from "../lib/adminAccess";
+import {
+  getStudentProfileDetail,
+  type StudentProfileDetail,
+} from "../lib/studentProfileApi";
 import {
   createAdminAccount,
   deleteAdminAccount,
@@ -115,6 +120,9 @@ export default function AdminUsers() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [studentProfileOpenId, setStudentProfileOpenId] = useState<string | null>(null);
+  const [studentProfileLoadingId, setStudentProfileLoadingId] = useState<string | null>(null);
+  const [studentProfiles, setStudentProfiles] = useState<Record<string, StudentProfileDetail>>({});
   const [editStudentNumber, setEditStudentNumber] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editAdminScope, setEditAdminScope] = useState<AdminScope>("ACADEMIC");
@@ -179,6 +187,14 @@ export default function AdminUsers() {
       setError(null);
       setInfo(null);
       await deleteAdminAccount(account.id);
+      setStudentProfiles((current) => {
+        const next = { ...current };
+        delete next[account.id];
+        return next;
+      });
+      if (studentProfileOpenId === account.id) {
+        setStudentProfileOpenId(null);
+      }
       setInfo(`Deleted ${account.email}.`);
       await loadAccounts();
     } catch (e) {
@@ -204,6 +220,33 @@ export default function AdminUsers() {
     setEditPassword("");
     setEditAdminScope("ACADEMIC");
     setShowPassword(false);
+  }
+
+  async function toggleStudentProfile(account: AdminAccount) {
+    if (account.role !== "STUDENT") return;
+
+    if (studentProfileOpenId === account.id) {
+      setStudentProfileOpenId(null);
+      return;
+    }
+
+    setStudentProfileOpenId(account.id);
+    if (studentProfiles[account.id]) return;
+
+    try {
+      setStudentProfileLoadingId(account.id);
+      setError(null);
+      const profile = await getStudentProfileDetail(account.id);
+      setStudentProfiles((current) => ({
+        ...current,
+        [account.id]: profile,
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load student profile");
+      setStudentProfileOpenId(null);
+    } finally {
+      setStudentProfileLoadingId(null);
+    }
   }
 
   async function onCreateAccount(e: React.FormEvent<HTMLFormElement>) {
@@ -309,6 +352,11 @@ export default function AdminUsers() {
       setError(null);
       setInfo(null);
       await updateAdminAccount(account.id, payload);
+      setStudentProfiles((current) => {
+        const next = { ...current };
+        delete next[account.id];
+        return next;
+      });
       await loadAccounts();
 
       const changed: string[] = [];
@@ -450,13 +498,13 @@ export default function AdminUsers() {
             className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]"
           >
             <label htmlFor="accounts-search" className="sr-only">
-              Search by email, name, course, or student number
+              Search by email, name, course, student number, or ID number
             </label>
             <input
               id="accounts-search"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search by email, name, course, or student number"
+              placeholder="Search by email, name, course, student number, or ID number"
               className="input-glass w-full"
               title="Search accounts"
               aria-label="Search accounts"
@@ -581,10 +629,15 @@ export default function AdminUsers() {
                       </div>
 
                       {account.role === "STUDENT" && (
-                        <div className="text-xs text-white/72">
-                          Student number:{" "}
-                          {account.studentNumber?.trim() || "Not set"}
-                        </div>
+                        <>
+                          <div className="text-xs text-white/72">
+                            Student number:{" "}
+                            {account.studentNumber?.trim() || "Not set"}
+                          </div>
+                          <div className="text-xs text-white/60">
+                            ID number: {account.idNumber?.trim() || "Not set"}
+                          </div>
+                        </>
                       )}
 
                       <div className="text-xs text-white/45">
@@ -593,6 +646,23 @@ export default function AdminUsers() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                      {account.role === "STUDENT" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void toggleStudentProfile(account);
+                          }}
+                          disabled={studentProfileLoadingId === account.id}
+                          className="btn-secondary"
+                        >
+                          {studentProfileOpenId === account.id
+                            ? "Hide student profile"
+                            : studentProfileLoadingId === account.id
+                              ? "Loading profile..."
+                              : "Student profile"}
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => {
@@ -626,6 +696,44 @@ export default function AdminUsers() {
                       </button>
                     </div>
                   </div>
+
+                  {account.role === "STUDENT" &&
+                    studentProfileOpenId === account.id && (
+                      <div className="mt-4 rounded-3xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.42)] p-4">
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-base font-semibold text-white">
+                              Student Profile
+                            </div>
+                            <div className="mt-1 text-sm text-white/68">
+                              Personal details, course information, and payment capture linked to this account.
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void toggleStudentProfile(account);
+                            }}
+                            className="btn-secondary"
+                          >
+                            Close
+                          </button>
+                        </div>
+
+                        {studentProfileLoadingId === account.id ? (
+                          <div className="info-banner">Loading student profile...</div>
+                        ) : studentProfiles[account.id] ? (
+                          <StudentProfileDetailPanel
+                            profile={studentProfiles[account.id]}
+                          />
+                        ) : (
+                          <div className="info-banner">
+                            Student profile is not available yet.
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                   {editingId === account.id && (
                     <div className="mt-4 rounded-3xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.42)] p-4">

@@ -4,10 +4,11 @@
 // - Lists upcoming calendar entries grouped by day
 // - Uses the shared neon glass button system for consistent hover and border effects
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { useCalendarApi } from "../hooks/useCalendarApi";
+import { listCourses, type CourseRecord } from "../lib/courseApi";
 
 /**
  * Format ISO date strings into a readable local date/time string.
@@ -39,7 +40,7 @@ export default function Calendar() {
 
   const subtitle = useMemo(() => {
     if (role === "PARENT") return "View-only calendar.";
-    return "Your calendar entries (stored in PostgreSQL).";
+    return "Your personal calendar and course-relevant items.";
   }, [role]);
 
   const now = new Date();
@@ -49,6 +50,8 @@ export default function Calendar() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
+  const [courseOptions, setCourseOptions] = useState<CourseRecord[]>([]);
+  const [courseId, setCourseId] = useState("");
   const [startsLocal, setStartsLocal] = useState(
     toLocalInputValue(startDefault.toISOString())
   );
@@ -61,11 +64,36 @@ export default function Calendar() {
    */
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
-    await create({ title, description, location, startsLocal, endsLocal });
+    await create({ title, description, location, startsLocal, endsLocal, courseId });
     setTitle("");
     setDescription("");
     setLocation("");
+    setCourseId("");
   }
+
+  useEffect(() => {
+    if (!(role === "ADMIN" || role === "LECTURER")) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void listCourses()
+      .then((rows) => {
+        if (!cancelled) {
+          setCourseOptions(rows.filter((course) => course.isActive));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCourseOptions([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
 
   if (role === "PARENT") return <Navigate to="/app/parent/calendar" replace />;
 
@@ -166,6 +194,29 @@ export default function Calendar() {
                 />
               </div>
 
+              {(role === "ADMIN" || role === "LECTURER") && (
+                <div>
+                  <label htmlFor="calendar-course" className="text-sm text-white/80">
+                    Course visibility (optional)
+                  </label>
+                  <select
+                    id="calendar-course"
+                    value={courseId}
+                    onChange={(e) => setCourseId(e.target.value)}
+                    className="select-glass mt-1"
+                    aria-label="Course visibility"
+                    title="Course visibility"
+                  >
+                    <option value="">Personal entry only</option>
+                    {courseOptions.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.code} - {course.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label
                   htmlFor="calendar-description"
@@ -231,6 +282,23 @@ export default function Calendar() {
                             <div className="truncate font-semibold text-white">
                               {it.title}
                             </div>
+                            {(it.source === "COURSE_ENTRY" || it.source === "CHANNEL_EVENT") && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {it.source === "COURSE_ENTRY" && (
+                                  <span className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-2.5 py-1 text-[11px] font-semibold text-white/75">
+                                    Course{it.courseCode?.trim() ? ` • ${it.courseCode}` : ""}
+                                    {!it.courseCode?.trim() && it.courseName?.trim()
+                                      ? ` • ${it.courseName}`
+                                      : ""}
+                                  </span>
+                                )}
+                                {it.source === "CHANNEL_EVENT" && (
+                                  <span className="rounded-full border border-[rgba(79,166,255,0.24)] bg-[rgba(79,166,255,0.14)] px-2.5 py-1 text-[11px] font-semibold text-[#d9eeff]">
+                                    Channel event
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             <div className="mt-1 text-xs text-white/70">
                               {fmt(it.startsAt)} → {fmt(it.endsAt)}
                             </div>
@@ -246,7 +314,7 @@ export default function Calendar() {
                             )}
                           </div>
 
-                          {canDelete && (
+                          {canDelete && it.canDelete && (
                             <button
                               type="button"
                               onClick={() => remove(it.id)}

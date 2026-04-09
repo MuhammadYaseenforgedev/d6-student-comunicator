@@ -140,16 +140,27 @@ export default function AppShell() {
 
     let cancelled = false;
 
-    void fetchMeProfile()
-      .then((p) => {
-        if (!cancelled) setProfile(p);
-      })
-      .catch(() => {
-        if (!cancelled) setProfile(null);
-      });
+    const loadProfile = () => {
+      void fetchMeProfile()
+        .then((p) => {
+          if (!cancelled) setProfile(p);
+        })
+        .catch(() => {
+          if (!cancelled) setProfile(null);
+        });
+    };
+
+    loadProfile();
+
+    const handleStudentProfileUpdated = () => {
+      loadProfile();
+    };
+
+    window.addEventListener("student-profile-updated", handleStudentProfileUpdated);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("student-profile-updated", handleStudentProfileUpdated);
     };
   }, [userId, userRole]);
 
@@ -243,6 +254,13 @@ export default function AppShell() {
                 badge={totalUnread}
                 onNavigate={closeMobileMenu}
               />
+              {user?.role === "STUDENT" && (
+                <Item
+                  to="/app/personal-details"
+                  label="Personal Details"
+                  onNavigate={closeMobileMenu}
+                />
+              )}
             </>
           )}
 

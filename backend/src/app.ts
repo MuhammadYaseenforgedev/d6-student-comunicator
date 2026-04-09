@@ -19,6 +19,7 @@ import { calendarRouter } from "./routes/calendar";
 import { financeRouter } from "./routes/finance";
 import { userRouter } from "./routes/users";
 import { meRouter } from "./routes/me";
+import { studentRouter } from "./routes/students";
 import { attendanceRouter } from "./routes/attendance";
 import { courseRouter } from "./routes/courses";
 import { demoRouter } from "./routes/demo";
@@ -139,6 +140,7 @@ export function createApp() {
 
   app.use("/api/uploads", uploadRouter);
   app.use("/api/users", userRouter);
+  app.use("/api", studentRouter);
   app.use("/api/integrations", teamsLinksRouter);
 
   app.use("/api/parent", parentRouter);

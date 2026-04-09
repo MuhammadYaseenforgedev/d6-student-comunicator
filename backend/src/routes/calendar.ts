@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { pgCalendarRepo } from "../repos/pgCalendarRepo";
 import { pool } from "../config/db";
+import { isLecturerAssignedToCourse } from "../lib/courseAccess";
+import { requireAccess } from "../middleware/rbac";
 
 function err(res: any, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
@@ -44,7 +46,10 @@ async function parentHasChild(parentId: string, childId: string): Promise<boolea
 }
 
 // GET /calendar?limit= & (optional) childId= (PARENT only)
-calendarRouter.get("/calendar", async (req, res) => {
+calendarRouter.get(
+  "/calendar",
+  requireAccess({ roles: ["ADMIN", "LECTURER", "STUDENT", "PARENT"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const user = req.user!;
     const limit = parseLimit(req.query.limit, 50);
@@ -80,12 +85,17 @@ calendarRouter.get("/calendar", async (req, res) => {
     console.error("[calendar] GET /calendar error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
-});
+  }
+);
 
 // POST /calendar
-calendarRouter.post("/calendar", async (req, res) => {
+calendarRouter.post(
+  "/calendar",
+  requireAccess({ roles: ["ADMIN", "LECTURER", "STUDENT"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const user = req.user!;
+    const courseId = String(req.body?.courseId ?? "").trim();
 
     // Parent is view-only; STUDENT/LECTURER/ADMIN can create their own entries.
     if (!(user.role === "STUDENT" || user.role === "LECTURER" || user.role === "ADMIN")) {
@@ -97,12 +107,41 @@ calendarRouter.post("/calendar", async (req, res) => {
       );
     }
 
+    if (courseId) {
+      if (!isUuid(courseId)) return err(res, 400, "VALIDATION", "courseId must be a UUID");
+
+      if (user.role === "STUDENT") {
+        return err(res, 403, "FORBIDDEN", "Students can only create personal calendar entries");
+      }
+
+      const courseExists = await pool.query(
+        `
+          SELECT 1
+          FROM courses
+          WHERE id = $1
+          LIMIT 1
+        `,
+        [courseId]
+      );
+      if ((courseExists.rowCount ?? 0) === 0) {
+        return err(res, 404, "NOT_FOUND", "Course not found");
+      }
+
+      if (user.role === "LECTURER") {
+        const allowed = await isLecturerAssignedToCourse(pool, user.id, courseId);
+        if (!allowed) {
+          return err(res, 403, "FORBIDDEN", "Lecturer can only create calendar items for assigned courses");
+        }
+      }
+    }
+
     const created = await pgCalendarRepo.createForUser(user.id, {
       title: req.body?.title,
       description: req.body?.description ?? null,
       location: req.body?.location ?? null,
       startsAt: req.body?.startsAt,
       endsAt: req.body?.endsAt,
+      courseId: courseId || null,
     });
 
     return res.status(201).json(created);
@@ -113,10 +152,14 @@ calendarRouter.post("/calendar", async (req, res) => {
     console.error("[calendar] POST /calendar error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
-});
+  }
+);
 
 // DELETE /calendar/:id
-calendarRouter.delete("/calendar/:id", async (req, res) => {
+calendarRouter.delete(
+  "/calendar/:id",
+  requireAccess({ roles: ["ADMIN", "LECTURER", "STUDENT"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
   try {
     const user = req.user!;
 
@@ -133,7 +176,7 @@ calendarRouter.delete("/calendar/:id", async (req, res) => {
     const id = String(req.params.id ?? "").trim();
     if (!id) return err(res, 400, "VALIDATION", "Invalid calendar entry id");
 
-    const ok = await pgCalendarRepo.deleteForUser(user.id, id);
+    const ok = await pgCalendarRepo.deleteForUser(user.id, id, user.role);
     if (!ok) return err(res, 404, "NOT_FOUND", "Calendar entry not found");
 
     return res.status(204).send();
@@ -144,4 +187,5 @@ calendarRouter.delete("/calendar/:id", async (req, res) => {
     console.error("[calendar] DELETE /calendar/:id error", e);
     return err(res, 500, "INTERNAL", "Unexpected error");
   }
-});
+  }
+);

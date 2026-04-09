@@ -4,6 +4,7 @@ import CourseAssessmentsPanel from "../components/CourseAssessmentsPanel";
 import CourseMarksheetPanel from "../components/CourseMarksheetPanel";
 import CourseModulesManager from "../components/CourseModulesManager";
 import PageHeader from "../components/PageHeader";
+import StudentProfileDetailPanel from "../components/StudentProfileDetailPanel";
 import { getUser } from "../lib/auth";
 import { isAcademicOrSuperAdmin, isFinanceAdmin } from "../lib/adminAccess";
 import {
@@ -22,6 +23,12 @@ import {
   type AttendanceDirectoryUser,
   type AttendanceModule,
 } from "../lib/attendanceApi";
+import {
+  getStudentProfileDetail,
+  listStudentProfiles,
+  type StudentProfileDetail,
+  type StudentProfileListItem,
+} from "../lib/studentProfileApi";
 
 function formatDate(raw: string | null): string {
   if (!raw) return "Not recorded";
@@ -399,6 +406,15 @@ function LecturerCoursesView() {
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [studentSearchInput, setStudentSearchInput] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentRows, setStudentRows] = useState<StudentProfileListItem[]>([]);
+  const [studentLoading, setStudentLoading] = useState(false);
+  const [studentError, setStudentError] = useState<string | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [selectedStudentProfile, setSelectedStudentProfile] =
+    useState<StudentProfileDetail | null>(null);
+  const [studentDetailLoading, setStudentDetailLoading] = useState(false);
 
   const selectedCourse = useMemo(
     () => courses.find((course) => course.id === selectedCourseId) ?? null,
@@ -426,6 +442,87 @@ function LecturerCoursesView() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!selectedCourseId) {
+      setStudentRows([]);
+      setSelectedStudentId("");
+      setSelectedStudentProfile(null);
+      setStudentError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        setStudentLoading(true);
+        setStudentError(null);
+        const rows = await listStudentProfiles({
+          courseId: selectedCourseId,
+          q: studentSearch || undefined,
+          limit: 100,
+        });
+        if (cancelled) return;
+        setStudentRows(rows);
+        setSelectedStudentId((current) =>
+          rows.some((row) => row.userId === current) ? current : (rows[0]?.userId ?? "")
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setStudentRows([]);
+          setSelectedStudentId("");
+          setSelectedStudentProfile(null);
+          setStudentError(
+            e instanceof Error ? e.message : "Failed to load student profiles"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setStudentLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCourseId, studentSearch]);
+
+  useEffect(() => {
+    if (!selectedStudentId) {
+      setSelectedStudentProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        setStudentDetailLoading(true);
+        setStudentError(null);
+        const profile = await getStudentProfileDetail(selectedStudentId);
+        if (!cancelled) {
+          setSelectedStudentProfile(profile);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setSelectedStudentProfile(null);
+          setStudentError(
+            e instanceof Error ? e.message : "Failed to load student profile"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setStudentDetailLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStudentId]);
 
   return (
     <div className="space-y-6">
@@ -487,6 +584,103 @@ function LecturerCoursesView() {
                       </div>
                     ))
                   )}
+                </div>
+              </div>
+
+              <div className="teal-glow-card p-5">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <SectionTitle
+                    title="Student Profiles"
+                    subtitle="Search learners in your allowed course and inspect their personal, academic, and payment capture details."
+                  />
+
+                  <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+                    {studentRows.length} learner{studentRows.length === 1 ? "" : "s"}
+                  </div>
+                </div>
+
+                <div className="divider-soft my-5" />
+
+                <form
+                  className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setStudentSearch(studentSearchInput.trim());
+                  }}
+                >
+                  <input
+                    value={studentSearchInput}
+                    onChange={(e) => setStudentSearchInput(e.target.value)}
+                    className="input-glass"
+                    placeholder="Search by email or ID number"
+                    title="Search student profiles"
+                    aria-label="Search student profiles"
+                  />
+                  <button type="submit" className="btn-primary min-w-[110px]">
+                    Search
+                  </button>
+                </form>
+
+                {studentError && <div className="error-banner mt-4">{studentError}</div>}
+
+                <div className="mt-5 grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                  <div className="space-y-3">
+                    {studentLoading ? (
+                      <div className="info-banner">Loading student profiles...</div>
+                    ) : studentRows.length === 0 ? (
+                      <EmptyState
+                        title="No learners matched"
+                        message="Try another email or ID number, or pick a different course."
+                      />
+                    ) : (
+                      studentRows.map((student) => (
+                        <button
+                          key={student.userId}
+                          type="button"
+                          onClick={() => setSelectedStudentId(student.userId)}
+                          className={[
+                            "w-full rounded-3xl border p-4 text-left transition-all duration-200",
+                            student.userId === selectedStudentId
+                              ? "border-[rgba(140,235,255,0.30)] bg-[rgba(14,42,99,0.28)] shadow-[0_0_0_1px_rgba(140,235,255,0.05),0_0_18px_rgba(140,235,255,0.08)]"
+                              : "border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)] hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.24)] hover:bg-[rgba(8,18,48,0.66)]",
+                          ].join(" ")}
+                        >
+                          <div className="text-sm font-semibold text-white">
+                            {`${student.fullName} ${student.surname}`.trim() || student.email}
+                          </div>
+                          <div className="mt-1 text-xs text-white/60">{student.email}</div>
+                          <div className="mt-2 text-xs text-white/72">
+                            {student.idNumber || "No ID number"} |{" "}
+                            {student.studentNumber || "No student number"}
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-2.5 py-1 text-[11px] text-white/70">
+                              {student.courseCode?.trim() || student.courseName?.trim() || "Course not assigned"}
+                            </span>
+                            <span className="rounded-full border border-[rgba(255,196,87,0.24)] bg-[rgba(97,59,9,0.45)] px-2.5 py-1 text-[11px] text-[#ffe8b0]">
+                              {student.feeStatus || "No fee status"}
+                            </span>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  <div>
+                    {!selectedStudentId ? (
+                      <div className="info-banner">
+                        Select a learner to view their profile.
+                      </div>
+                    ) : studentDetailLoading ? (
+                      <div className="info-banner">Loading selected learner...</div>
+                    ) : selectedStudentProfile ? (
+                      <StudentProfileDetailPanel profile={selectedStudentProfile} />
+                    ) : (
+                      <div className="info-banner">
+                        Student profile detail is unavailable for the selected learner.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

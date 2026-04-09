@@ -1,0 +1,827 @@
+import { Router, type Response } from "express";
+import type { PoolClient } from "pg";
+import { pool } from "../config/db";
+import {
+  isLecturerAllowedForStudent,
+  isLecturerAssignedToCourse,
+  syncStudentCourseName,
+} from "../lib/courseAccess";
+import { requireAccess, requireRole } from "../middleware/rbac";
+
+type StudentProfileRow = {
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  surname: string | null;
+  student_number: string | null;
+  id_number: string | null;
+  date_of_birth: string | null;
+  mobile_number: string | null;
+  alternative_contact_number: string | null;
+  street_address: string | null;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_number: string | null;
+  fee_status: string | null;
+  payment_method: string | null;
+  amount_due_cents: number | null;
+  amount_paid_cents: number | null;
+  last_payment_date: string | null;
+  payment_reference: string | null;
+  completed_at: string | null;
+  updated_at: string | null;
+  course_id: string | null;
+  course_code: string | null;
+  course_name: string | null;
+};
+
+type StudentListRow = {
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  surname: string | null;
+  student_number: string | null;
+  id_number: string | null;
+  fee_status: string | null;
+  amount_due_cents: number | null;
+  amount_paid_cents: number | null;
+  last_payment_date: string | null;
+  course_id: string | null;
+  course_code: string | null;
+  course_name: string | null;
+  completed_at: string | null;
+};
+
+type CourseOptionRow = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+type StudentProfileDetail = {
+  userId: string;
+  email: string;
+  fullName: string;
+  surname: string;
+  studentNumber: string;
+  idNumber: string;
+  dateOfBirth: string | null;
+  mobileNumber: string;
+  alternativeContactNumber: string | null;
+  streetAddress: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  emergencyContactName: string | null;
+  emergencyContactNumber: string | null;
+  feeStatus: "PAID" | "PARTIAL" | "OUTSTANDING" | "";
+  paymentMethod: string;
+  amountDue: number | null;
+  amountPaid: number | null;
+  lastPaymentDate: string | null;
+  paymentReference: string | null;
+  courseId: string | null;
+  courseCode: string | null;
+  courseName: string | null;
+  completedAt: string | null;
+  updatedAt: string | null;
+  isComplete: boolean;
+  missingFields: string[];
+};
+
+function err(res: Response, status: number, code: string, message: string) {
+  return res.status(status).json({ error: { code, message } });
+}
+
+function isUuid(v: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function hasOwn(input: unknown, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(input ?? {}, key);
+}
+
+function toTrimmedString(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function toNullableTrimmedString(value: unknown): string | null {
+  const normalized = toTrimmedString(value);
+  return normalized ? normalized : null;
+}
+
+function normalizeStudentNumber(value: unknown): string | null {
+  const normalized = toTrimmedString(value).toUpperCase();
+  return normalized ? normalized : null;
+}
+
+function normalizeSouthAfricanId(value: unknown): string | null {
+  const normalized = String(value ?? "").replace(/\D+/g, "");
+  return normalized ? normalized : null;
+}
+
+function isValidSouthAfricanId(value: string | null): boolean {
+  return Boolean(value && /^\d{13}$/.test(value));
+}
+
+function parseDateOnly(value: unknown): string | null {
+  const normalized = toTrimmedString(value);
+  if (!normalized) return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+}
+
+function parseMoneyInput(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.round(parsed * 100);
+}
+
+function parseLimit(raw: unknown, fallback = 50, max = 100) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.floor(n), max);
+}
+
+function normalizeFeeStatus(raw: unknown): "PAID" | "PARTIAL" | "OUTSTANDING" | null {
+  const normalized = toTrimmedString(raw).toUpperCase();
+  if (normalized === "PAID" || normalized === "PARTIAL" || normalized === "OUTSTANDING") {
+    return normalized;
+  }
+  return null;
+}
+
+function amountFromCents(value: number | null): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return value / 100;
+}
+
+function buildMissingFields(profile: {
+  email: string;
+  fullName: string;
+  surname: string;
+  studentNumber: string;
+  idNumber: string;
+  mobileNumber: string;
+  streetAddress: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  courseId: string | null;
+  feeStatus: string;
+  paymentMethod: string;
+  amountDue: number | null;
+  amountPaid: number | null;
+  lastPaymentDate: string | null;
+}): string[] {
+  const missing: string[] = [];
+
+  if (!profile.email.trim()) missing.push("email");
+  if (!profile.fullName.trim()) missing.push("fullName");
+  if (!profile.surname.trim()) missing.push("surname");
+  if (!profile.studentNumber.trim()) missing.push("studentNumber");
+  if (!isValidSouthAfricanId(profile.idNumber)) missing.push("idNumber");
+  if (!profile.mobileNumber.trim()) missing.push("mobileNumber");
+  if (!profile.streetAddress.trim()) missing.push("streetAddress");
+  if (!profile.city.trim()) missing.push("city");
+  if (!profile.province.trim()) missing.push("province");
+  if (!profile.postalCode.trim()) missing.push("postalCode");
+  if (!profile.courseId) missing.push("courseId");
+  if (!profile.feeStatus.trim()) missing.push("feeStatus");
+  if (!profile.paymentMethod.trim()) missing.push("paymentMethod");
+  if (profile.amountDue == null) missing.push("amountDue");
+  if (profile.amountPaid == null) missing.push("amountPaid");
+
+  const needsPaymentDate =
+    profile.amountPaid != null && profile.amountPaid > 0
+      ? true
+      : profile.feeStatus === "PAID" || profile.feeStatus === "PARTIAL";
+  if (needsPaymentDate && !profile.lastPaymentDate) {
+    missing.push("lastPaymentDate");
+  }
+
+  return missing;
+}
+
+function mapStudentProfile(row: StudentProfileRow | null): StudentProfileDetail | null {
+  if (!row) return null;
+
+  const feeStatus: StudentProfileDetail["feeStatus"] =
+    normalizeFeeStatus(row.fee_status) ?? "";
+
+  const profile = {
+    userId: row.user_id,
+    email: row.email,
+    fullName: row.full_name?.trim() ?? "",
+    surname: row.surname?.trim() ?? "",
+    studentNumber: row.student_number?.trim() ?? "",
+    idNumber: row.id_number?.trim() ?? "",
+    dateOfBirth: row.date_of_birth,
+    mobileNumber: row.mobile_number?.trim() ?? "",
+    alternativeContactNumber: row.alternative_contact_number?.trim() ?? null,
+    streetAddress: row.street_address?.trim() ?? "",
+    city: row.city?.trim() ?? "",
+    province: row.province?.trim() ?? "",
+    postalCode: row.postal_code?.trim() ?? "",
+    emergencyContactName: row.emergency_contact_name?.trim() ?? null,
+    emergencyContactNumber: row.emergency_contact_number?.trim() ?? null,
+    feeStatus,
+    paymentMethod: row.payment_method?.trim() ?? "",
+    amountDue: amountFromCents(row.amount_due_cents),
+    amountPaid: amountFromCents(row.amount_paid_cents),
+    lastPaymentDate: row.last_payment_date,
+    paymentReference: row.payment_reference?.trim() ?? null,
+    courseId: row.course_id,
+    courseCode: row.course_code,
+    courseName: row.course_name,
+    completedAt: row.completed_at,
+    updatedAt: row.updated_at,
+  };
+
+  const missingFields = buildMissingFields(profile);
+  return {
+    ...profile,
+    isComplete: missingFields.length === 0,
+    missingFields,
+  };
+}
+
+async function listAvailableCourses(
+  db: Pick<PoolClient, "query"> | typeof pool
+): Promise<Array<{ id: string; code: string; name: string }>> {
+  const result = await db.query<CourseOptionRow>(
+    `
+      SELECT id, code, name
+      FROM courses
+      WHERE is_active = true
+      ORDER BY lower(name) ASC, code ASC
+    `
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+  }));
+}
+
+async function loadStudentProfile(
+  db: Pick<PoolClient, "query"> | typeof pool,
+  userId: string
+): Promise<StudentProfileDetail | null> {
+  const result = await db.query<StudentProfileRow>(
+    `
+      SELECT
+        u.id AS user_id,
+        u.email,
+        u.first_name AS full_name,
+        u.last_name AS surname,
+        u.public_student_id AS student_number,
+        u.south_african_id AS id_number,
+        sp.date_of_birth,
+        sp.mobile_number,
+        sp.alternative_contact_number,
+        sp.street_address,
+        sp.city,
+        sp.province,
+        sp.postal_code,
+        sp.emergency_contact_name,
+        sp.emergency_contact_number,
+        sp.fee_status,
+        sp.payment_method,
+        sp.amount_due_cents,
+        sp.amount_paid_cents,
+        sp.last_payment_date,
+        sp.payment_reference,
+        sp.completed_at,
+        sp.updated_at,
+        active_course.id AS course_id,
+        active_course.code AS course_code,
+        active_course.name AS course_name
+      FROM users u
+      LEFT JOIN student_profiles sp ON sp.user_id = u.id
+      LEFT JOIN LATERAL (
+        SELECT c.id, c.code, c.name
+        FROM student_courses sc
+        JOIN courses c ON c.id = sc.course_id
+        WHERE sc.student_user_id = u.id
+          AND sc.status = 'ACTIVE'
+        ORDER BY sc.enrolled_at DESC, lower(c.name) ASC
+        LIMIT 1
+      ) active_course ON true
+      WHERE u.id = $1
+        AND u.role = 'STUDENT'
+      LIMIT 1
+    `,
+    [userId]
+  );
+
+  return mapStudentProfile(result.rows[0] ?? null);
+}
+
+async function ensureStudentExists(userId: string): Promise<boolean> {
+  const result = await pool.query(
+    `
+      SELECT 1
+      FROM users
+      WHERE id = $1
+        AND role = 'STUDENT'
+      LIMIT 1
+    `,
+    [userId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+async function ensureViewerCanAccessStudent(viewer: {
+  id: string;
+  role: string;
+  adminScope?: string | null;
+}, studentId: string): Promise<boolean> {
+  if (viewer.role === "ADMIN") {
+    return viewer.adminScope === "ACADEMIC" || viewer.adminScope === "SUPER" || viewer.adminScope == null;
+  }
+  if (viewer.role === "LECTURER") {
+    return isLecturerAllowedForStudent(pool, viewer.id, studentId);
+  }
+  return false;
+}
+
+export const studentRouter = Router();
+
+studentRouter.get(
+  "/student/profile",
+  requireRole("STUDENT"),
+  async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const [profile, availableCourses] = await Promise.all([
+        loadStudentProfile(pool, userId),
+        listAvailableCourses(pool),
+      ]);
+
+      if (!profile) {
+        return err(res, 404, "NOT_FOUND", "Student profile could not be loaded");
+      }
+
+      return res.json({
+        profile,
+        availableCourses,
+      });
+    } catch (e) {
+      console.error("[students] GET /student/profile error", e);
+      return err(res, 500, "INTERNAL", "Failed to load student profile");
+    }
+  }
+);
+
+studentRouter.put(
+  "/student/profile",
+  requireRole("STUDENT"),
+  async (req, res) => {
+    const userId = req.user!.id;
+    const client = await pool.connect();
+    let transactionOpen = false;
+
+    try {
+      const current = await loadStudentProfile(client, userId);
+      if (!current) {
+        return err(res, 404, "NOT_FOUND", "Student profile could not be loaded");
+      }
+
+      const nextProfile = {
+        fullName: hasOwn(req.body, "fullName")
+          ? toTrimmedString(req.body?.fullName)
+          : current.fullName,
+        surname: hasOwn(req.body, "surname")
+          ? toTrimmedString(req.body?.surname)
+          : current.surname,
+        studentNumber: hasOwn(req.body, "studentNumber")
+          ? normalizeStudentNumber(req.body?.studentNumber) ?? ""
+          : current.studentNumber,
+        idNumber: hasOwn(req.body, "idNumber")
+          ? normalizeSouthAfricanId(req.body?.idNumber) ?? ""
+          : current.idNumber,
+        dateOfBirth: hasOwn(req.body, "dateOfBirth")
+          ? parseDateOnly(req.body?.dateOfBirth)
+          : current.dateOfBirth,
+        mobileNumber: hasOwn(req.body, "mobileNumber")
+          ? toTrimmedString(req.body?.mobileNumber)
+          : current.mobileNumber,
+        alternativeContactNumber: hasOwn(req.body, "alternativeContactNumber")
+          ? toNullableTrimmedString(req.body?.alternativeContactNumber)
+          : current.alternativeContactNumber,
+        streetAddress: hasOwn(req.body, "streetAddress")
+          ? toTrimmedString(req.body?.streetAddress)
+          : current.streetAddress,
+        city: hasOwn(req.body, "city") ? toTrimmedString(req.body?.city) : current.city,
+        province: hasOwn(req.body, "province")
+          ? toTrimmedString(req.body?.province)
+          : current.province,
+        postalCode: hasOwn(req.body, "postalCode")
+          ? toTrimmedString(req.body?.postalCode)
+          : current.postalCode,
+        emergencyContactName: hasOwn(req.body, "emergencyContactName")
+          ? toNullableTrimmedString(req.body?.emergencyContactName)
+          : current.emergencyContactName,
+        emergencyContactNumber: hasOwn(req.body, "emergencyContactNumber")
+          ? toNullableTrimmedString(req.body?.emergencyContactNumber)
+          : current.emergencyContactNumber,
+        courseId: hasOwn(req.body, "courseId")
+          ? toNullableTrimmedString(req.body?.courseId)
+          : current.courseId,
+        feeStatus: hasOwn(req.body, "feeStatus")
+          ? normalizeFeeStatus(req.body?.feeStatus) ?? ""
+          : current.feeStatus,
+        paymentMethod: hasOwn(req.body, "paymentMethod")
+          ? toTrimmedString(req.body?.paymentMethod)
+          : current.paymentMethod,
+        amountDueCents: hasOwn(req.body, "amountDue")
+          ? parseMoneyInput(req.body?.amountDue)
+          : current.amountDue == null
+            ? null
+            : Math.round(current.amountDue * 100),
+        amountPaidCents: hasOwn(req.body, "amountPaid")
+          ? parseMoneyInput(req.body?.amountPaid)
+          : current.amountPaid == null
+            ? null
+            : Math.round(current.amountPaid * 100),
+        lastPaymentDate: hasOwn(req.body, "lastPaymentDate")
+          ? parseDateOnly(req.body?.lastPaymentDate)
+          : current.lastPaymentDate,
+        paymentReference: hasOwn(req.body, "paymentReference")
+          ? toNullableTrimmedString(req.body?.paymentReference)
+          : current.paymentReference,
+      };
+
+      if (hasOwn(req.body, "studentNumber") && nextProfile.studentNumber.length > 64) {
+        return err(res, 400, "VALIDATION", "studentNumber must be 64 characters or fewer");
+      }
+
+      if (hasOwn(req.body, "idNumber") && nextProfile.idNumber && !isValidSouthAfricanId(nextProfile.idNumber)) {
+        return err(res, 400, "VALIDATION", "idNumber must be exactly 13 digits");
+      }
+
+      if (hasOwn(req.body, "dateOfBirth") && req.body?.dateOfBirth && !nextProfile.dateOfBirth) {
+        return err(res, 400, "VALIDATION", "dateOfBirth must be YYYY-MM-DD");
+      }
+
+      if (hasOwn(req.body, "lastPaymentDate") && req.body?.lastPaymentDate && !nextProfile.lastPaymentDate) {
+        return err(res, 400, "VALIDATION", "lastPaymentDate must be YYYY-MM-DD");
+      }
+
+      if (hasOwn(req.body, "amountDue") && req.body?.amountDue !== null && req.body?.amountDue !== "" && nextProfile.amountDueCents == null) {
+        return err(res, 400, "VALIDATION", "amountDue must be a non-negative number");
+      }
+
+      if (hasOwn(req.body, "amountPaid") && req.body?.amountPaid !== null && req.body?.amountPaid !== "" && nextProfile.amountPaidCents == null) {
+        return err(res, 400, "VALIDATION", "amountPaid must be a non-negative number");
+      }
+
+      if (nextProfile.courseId && !isUuid(nextProfile.courseId)) {
+        return err(res, 400, "VALIDATION", "courseId must be a UUID");
+      }
+
+      if (nextProfile.courseId) {
+        const courseResult = await client.query(
+          `
+            SELECT 1
+            FROM courses
+            WHERE id = $1
+              AND is_active = true
+            LIMIT 1
+          `,
+          [nextProfile.courseId]
+        );
+        if ((courseResult.rowCount ?? 0) === 0) {
+          return err(res, 404, "NOT_FOUND", "Selected course was not found");
+        }
+      }
+
+      const missingFields = buildMissingFields({
+        email: current.email,
+        fullName: nextProfile.fullName,
+        surname: nextProfile.surname,
+        studentNumber: nextProfile.studentNumber,
+        idNumber: nextProfile.idNumber,
+        mobileNumber: nextProfile.mobileNumber,
+        streetAddress: nextProfile.streetAddress,
+        city: nextProfile.city,
+        province: nextProfile.province,
+        postalCode: nextProfile.postalCode,
+        courseId: nextProfile.courseId,
+        feeStatus: nextProfile.feeStatus,
+        paymentMethod: nextProfile.paymentMethod,
+        amountDue: amountFromCents(nextProfile.amountDueCents),
+        amountPaid: amountFromCents(nextProfile.amountPaidCents),
+        lastPaymentDate: nextProfile.lastPaymentDate,
+      });
+
+      await client.query("BEGIN");
+      transactionOpen = true;
+
+      await client.query(
+        `
+          UPDATE users
+          SET
+            first_name = $2,
+            last_name = $3,
+            public_student_id = $4,
+            south_african_id = $5
+          WHERE id = $1
+            AND role = 'STUDENT'
+        `,
+        [
+          userId,
+          nextProfile.fullName || null,
+          nextProfile.surname || null,
+          nextProfile.studentNumber || null,
+          nextProfile.idNumber || null,
+        ]
+      );
+
+      await client.query(
+        `
+          INSERT INTO student_profiles (
+            user_id,
+            date_of_birth,
+            mobile_number,
+            alternative_contact_number,
+            street_address,
+            city,
+            province,
+            postal_code,
+            emergency_contact_name,
+            emergency_contact_number,
+            fee_status,
+            payment_method,
+            amount_due_cents,
+            amount_paid_cents,
+            last_payment_date,
+            payment_reference,
+            completed_at,
+            updated_at
+          )
+          VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+            $11, $12, $13, $14, $15, $16,
+            CASE WHEN $17::boolean THEN now() ELSE NULL END,
+            now()
+          )
+          ON CONFLICT (user_id) DO UPDATE
+          SET
+            date_of_birth = EXCLUDED.date_of_birth,
+            mobile_number = EXCLUDED.mobile_number,
+            alternative_contact_number = EXCLUDED.alternative_contact_number,
+            street_address = EXCLUDED.street_address,
+            city = EXCLUDED.city,
+            province = EXCLUDED.province,
+            postal_code = EXCLUDED.postal_code,
+            emergency_contact_name = EXCLUDED.emergency_contact_name,
+            emergency_contact_number = EXCLUDED.emergency_contact_number,
+            fee_status = EXCLUDED.fee_status,
+            payment_method = EXCLUDED.payment_method,
+            amount_due_cents = EXCLUDED.amount_due_cents,
+            amount_paid_cents = EXCLUDED.amount_paid_cents,
+            last_payment_date = EXCLUDED.last_payment_date,
+            payment_reference = EXCLUDED.payment_reference,
+            completed_at = CASE
+              WHEN $17::boolean THEN now()
+              ELSE NULL
+            END,
+            updated_at = now()
+        `,
+        [
+          userId,
+          nextProfile.dateOfBirth,
+          nextProfile.mobileNumber || null,
+          nextProfile.alternativeContactNumber,
+          nextProfile.streetAddress || null,
+          nextProfile.city || null,
+          nextProfile.province || null,
+          nextProfile.postalCode || null,
+          nextProfile.emergencyContactName,
+          nextProfile.emergencyContactNumber,
+          nextProfile.feeStatus || null,
+          nextProfile.paymentMethod || null,
+          nextProfile.amountDueCents,
+          nextProfile.amountPaidCents,
+          nextProfile.lastPaymentDate,
+          nextProfile.paymentReference,
+          missingFields.length === 0,
+        ]
+      );
+
+      if (hasOwn(req.body, "courseId")) {
+        await client.query(
+          `
+            UPDATE student_courses
+            SET status = 'INACTIVE'
+            WHERE student_user_id = $1
+          `,
+          [userId]
+        );
+
+        if (nextProfile.courseId) {
+          await client.query(
+            `
+              INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
+              VALUES ($1, $2, 'ACTIVE', now())
+              ON CONFLICT (student_user_id, course_id)
+              DO UPDATE SET
+                status = 'ACTIVE',
+                enrolled_at = now()
+            `,
+            [userId, nextProfile.courseId]
+          );
+        }
+      }
+
+      await syncStudentCourseName(client, userId);
+      await client.query("COMMIT");
+      transactionOpen = false;
+
+      const [profile, availableCourses] = await Promise.all([
+        loadStudentProfile(pool, userId),
+        listAvailableCourses(pool),
+      ]);
+
+      return res.json({
+        ok: true,
+        profile,
+        availableCourses,
+      });
+    } catch (e: any) {
+      if (transactionOpen) {
+        await client.query("ROLLBACK");
+      }
+
+      if (String(e?.code ?? "") === "23505") {
+        if (String(e?.constraint ?? "").includes("public_student_id")) {
+          return err(res, 400, "VALIDATION", "Student number already exists");
+        }
+        if (String(e?.constraint ?? "").includes("south_african_id")) {
+          return err(res, 400, "VALIDATION", "ID number already exists");
+        }
+      }
+
+      console.error("[students] PUT /student/profile error", e);
+      return err(res, 500, "INTERNAL", "Failed to save student profile");
+    } finally {
+      client.release();
+    }
+  }
+);
+
+studentRouter.get(
+  "/students",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const viewer = req.user!;
+      const limit = parseLimit(req.query.limit, 50, 250);
+      const q = toTrimmedString(req.query.q).toLowerCase();
+      const courseId = toTrimmedString(req.query.courseId);
+      const params: unknown[] = [];
+      const where: string[] = [`u.role = 'STUDENT'`];
+
+      if (courseId) {
+        if (!isUuid(courseId)) return err(res, 400, "VALIDATION", "courseId must be a UUID");
+
+        params.push(courseId);
+        where.push(`active_course.id = $${params.length}`);
+      }
+
+      if (viewer.role === "LECTURER") {
+        if (courseId) {
+          const allowed = await isLecturerAssignedToCourse(pool, viewer.id, courseId);
+          if (!allowed) {
+            return res.json({ value: [], count: 0 });
+          }
+        }
+
+        params.push(viewer.id);
+        const lecturerParamIndex = params.length;
+        where.push(`
+          EXISTS (
+            SELECT 1
+            FROM lecturer_module_assignments lma
+            JOIN faculty_modules fm ON fm.id = lma.module_id
+            JOIN student_module_enrollments sme
+              ON sme.module_id = fm.id
+             AND sme.student_id = u.id
+            JOIN student_courses sc
+              ON sc.student_user_id = sme.student_id
+             AND sc.course_id = fm.course_id
+             AND sc.status = 'ACTIVE'
+            WHERE lma.lecturer_id = $${lecturerParamIndex}
+          )
+        `);
+      }
+
+      if (q) {
+        params.push(`%${q}%`);
+        where.push(`(
+          lower(u.email) LIKE $${params.length}
+          OR lower(COALESCE(u.first_name, '')) LIKE $${params.length}
+          OR lower(COALESCE(u.last_name, '')) LIKE $${params.length}
+          OR lower(COALESCE(u.public_student_id, '')) LIKE $${params.length}
+          OR lower(COALESCE(u.south_african_id, '')) LIKE $${params.length}
+          OR lower(COALESCE(active_course.name, '')) LIKE $${params.length}
+        )`);
+      }
+
+      params.push(limit);
+
+      const result = await pool.query<StudentListRow>(
+        `
+          SELECT
+            u.id AS user_id,
+            u.email,
+            u.first_name AS full_name,
+            u.last_name AS surname,
+            u.public_student_id AS student_number,
+            u.south_african_id AS id_number,
+            sp.fee_status,
+            sp.amount_due_cents,
+            sp.amount_paid_cents,
+            sp.last_payment_date,
+            active_course.id AS course_id,
+            active_course.code AS course_code,
+            active_course.name AS course_name,
+            sp.completed_at
+          FROM users u
+          LEFT JOIN student_profiles sp ON sp.user_id = u.id
+          LEFT JOIN LATERAL (
+            SELECT c.id, c.code, c.name
+            FROM student_courses sc
+            JOIN courses c ON c.id = sc.course_id
+            WHERE sc.student_user_id = u.id
+              AND sc.status = 'ACTIVE'
+            ORDER BY sc.enrolled_at DESC, lower(c.name) ASC
+            LIMIT 1
+          ) active_course ON true
+          WHERE ${where.join(" AND ")}
+          ORDER BY lower(COALESCE(u.last_name, u.first_name, u.email)) ASC, lower(u.email) ASC
+          LIMIT $${params.length}
+        `,
+        params
+      );
+
+      const value = result.rows.map((row) => ({
+          userId: row.user_id,
+          email: row.email,
+          fullName: row.full_name?.trim() ?? "",
+          surname: row.surname?.trim() ?? "",
+          studentNumber: row.student_number?.trim() ?? "",
+          idNumber: row.id_number?.trim() ?? "",
+          feeStatus:
+            ((row.fee_status?.trim().toUpperCase() ?? "") as StudentProfileDetail["feeStatus"]) || "",
+          amountDue: amountFromCents(row.amount_due_cents),
+          amountPaid: amountFromCents(row.amount_paid_cents),
+          lastPaymentDate: row.last_payment_date,
+          courseId: row.course_id,
+          courseCode: row.course_code,
+          courseName: row.course_name,
+          isComplete: Boolean(row.completed_at),
+        }));
+
+      return res.json({ value, count: value.length });
+    } catch (e) {
+      console.error("[students] GET /students error", e);
+      return err(res, 500, "INTERNAL", "Failed to load students");
+    }
+  }
+);
+
+studentRouter.get(
+  "/students/:id",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const viewer = req.user!;
+      const studentId = toTrimmedString(req.params.id);
+      if (!isUuid(studentId)) return err(res, 400, "VALIDATION", "id must be a UUID");
+
+      if (!(await ensureStudentExists(studentId))) {
+        return err(res, 404, "NOT_FOUND", "Student not found");
+      }
+
+      const allowed = await ensureViewerCanAccessStudent(viewer, studentId);
+      if (!allowed) return err(res, 403, "FORBIDDEN", "Not allowed to view this student");
+
+      const profile = await loadStudentProfile(pool, studentId);
+      if (!profile) {
+        return err(res, 404, "NOT_FOUND", "Student not found");
+      }
+
+      return res.json({ profile });
+    } catch (e) {
+      console.error("[students] GET /students/:id error", e);
+      return err(res, 500, "INTERNAL", "Failed to load student profile");
+    }
+  }
+);

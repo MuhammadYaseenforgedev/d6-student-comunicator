@@ -124,6 +124,11 @@ export const apiClient = {
       body instanceof FormData || body === undefined ? body : JSON.stringify(body);
     return request<T>(path, { ...(options ?? {}), method: "POST", body: payload });
   },
+  put<T>(path: string, body?: unknown, options?: Omit<ApiRequestOptions, "method" | "body">) {
+    const payload =
+      body instanceof FormData || body === undefined ? body : JSON.stringify(body);
+    return request<T>(path, { ...(options ?? {}), method: "PUT", body: payload });
+  },
   patch<T>(path: string, body?: unknown, options?: Omit<ApiRequestOptions, "method" | "body">) {
     const payload =
       body instanceof FormData || body === undefined ? body : JSON.stringify(body);

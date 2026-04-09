@@ -40,6 +40,7 @@ type LoginPage2Props = { onOpenLegal?: () => void };
 const PUBLIC_REGISTRATION_ROLES: UserRole[] = ["STUDENT", "PARENT"];
 
 function landingFor(user: Pick<AuthUser, "role" | "adminScope">) {
+  if (user.role === "STUDENT") return "/app/personal-details";
   if (user.role === "PARENT") return "/app/parent";
   if (isFinanceAdmin(user)) return "/app/admin/finance";
   return "/app";

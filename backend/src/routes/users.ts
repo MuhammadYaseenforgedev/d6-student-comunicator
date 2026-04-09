@@ -23,6 +23,7 @@ type AdminAccountRow = {
   last_name: string | null;
   course_name: string | null;
   public_student_id: string | null;
+  south_african_id: string | null;
   can_link_children: boolean;
   created_at: string;
 };
@@ -108,6 +109,7 @@ userRouter.get(
         OR lower(COALESCE(u.last_name, '')) LIKE $${params.length}
         OR lower(COALESCE(u.course_name, '')) LIKE $${params.length}
         OR lower(COALESCE(u.public_student_id, '')) LIKE $${params.length}
+        OR lower(COALESCE(u.south_african_id, '')) LIKE $${params.length}
       )`);
       }
 
@@ -123,6 +125,7 @@ userRouter.get(
         u.last_name,
         u.course_name,
         u.public_student_id,
+        u.south_african_id,
         u.can_link_children,
         u.created_at
       FROM users u
@@ -150,6 +153,7 @@ userRouter.get(
           lastName: row.last_name,
           courseName: row.course_name,
           studentNumber: row.public_student_id,
+          idNumber: row.south_african_id,
           canLinkChildren: row.can_link_children,
           createdAt: row.created_at,
         })),
@@ -272,6 +276,7 @@ userRouter.patch(
           last_name,
           course_name,
           public_student_id,
+          south_african_id,
           can_link_children,
           created_at
         FROM users
@@ -342,6 +347,7 @@ userRouter.patch(
           last_name,
           course_name,
           public_student_id,
+          south_african_id,
           can_link_children,
           created_at
       `,
@@ -360,6 +366,7 @@ userRouter.patch(
           lastName: row.last_name,
           courseName: row.course_name,
           studentNumber: row.public_student_id,
+          idNumber: row.south_african_id,
           canLinkChildren: row.can_link_children,
           createdAt: row.created_at,
         },
