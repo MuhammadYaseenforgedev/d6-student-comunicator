@@ -623,8 +623,8 @@ function LecturerCoursesView() {
 
                 {studentError && <div className="error-banner mt-4">{studentError}</div>}
 
-                <div className="mt-5 grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-                  <div className="space-y-3">
+                <div className="mt-5 grid grid-cols-1 gap-6 xl:h-[min(42rem,calc(100vh-16rem))] xl:grid-cols-[320px_minmax(0,1fr)]">
+                  <div className="space-y-3 xl:min-h-0 xl:overflow-y-auto xl:pr-2">
                     {studentLoading ? (
                       <div className="info-banner">Loading student profiles...</div>
                     ) : studentRows.length === 0 ? (
@@ -666,7 +666,7 @@ function LecturerCoursesView() {
                     )}
                   </div>
 
-                  <div>
+                  <div className="xl:min-h-0 xl:overflow-y-auto xl:pr-2">
                     {!selectedStudentId ? (
                       <div className="info-banner">
                         Select a learner to view their profile.
