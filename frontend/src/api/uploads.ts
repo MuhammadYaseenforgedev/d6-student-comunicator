@@ -94,6 +94,7 @@ export async function uploadFile(input: {
   file: File;
   kind: UploadKind;
   targetUserId?: string;
+  courseId?: string;
   moduleId?: string;
 }): Promise<UploadRecord> {
   const form = new FormData();
@@ -101,6 +102,9 @@ export async function uploadFile(input: {
   form.append("kind", input.kind);
   if (input.targetUserId?.trim()) {
     form.append("targetUserId", input.targetUserId.trim());
+  }
+  if (input.courseId?.trim()) {
+    form.append("courseId", input.courseId.trim());
   }
   if (input.moduleId?.trim()) {
     form.append("moduleId", input.moduleId.trim());

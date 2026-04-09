@@ -100,7 +100,7 @@ export const pgUploadRepo: UploadRepo = {
   },
 
   async listForUser(user: { id: string; role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" }): Promise<Upload[]> {
-    if (user.role === "ADMIN" || user.role === "LECTURER") {
+    if (user.role === "ADMIN") {
       const result = await pool.query<UploadRow>(
         `
         SELECT
@@ -122,6 +122,46 @@ export const pgUploadRepo: UploadRepo = {
         LEFT JOIN courses c ON c.id = fm.course_id
         ORDER BY up.created_at DESC
         `
+      );
+      return result.rows.map(mapRow);
+    }
+
+    if (user.role === "LECTURER") {
+      const result = await pool.query<UploadRow>(
+        `
+        SELECT
+          up.*,
+          uploader.email AS uploaded_by_email,
+          uploader.role AS uploaded_by_role,
+          target_user.email AS target_user_email,
+          target_user.role AS target_user_role,
+          fm.id AS module_id,
+          fm.code AS module_code,
+          fm.name AS module_name,
+          c.id AS course_id,
+          c.code AS course_code,
+          c.name AS course_name
+        FROM uploads up
+        LEFT JOIN users uploader ON uploader.id = up.uploaded_by
+        LEFT JOIN users target_user ON target_user.id = up.target_user_id
+        LEFT JOIN faculty_modules fm ON fm.id = up.module_id
+        LEFT JOIN courses c ON c.id = fm.course_id
+        WHERE (
+              up.module_id IS NOT NULL
+          AND EXISTS (
+                SELECT 1
+                FROM lecturer_module_assignments lma
+                WHERE lma.lecturer_id = $1
+                  AND lma.module_id = up.module_id
+          )
+        )
+           OR (
+                up.module_id IS NULL
+            AND up.uploaded_by = $1
+           )
+        ORDER BY up.created_at DESC
+        `,
+        [user.id]
       );
       return result.rows.map(mapRow);
     }
@@ -199,7 +239,25 @@ export const pgUploadRepo: UploadRepo = {
            )
         )
       )
-         OR (up.kind = 'STUDENT_SUBMISSION' AND (up.uploaded_by = $1 OR up.target_user_id = $1))
+         OR (
+              up.kind = 'STUDENT_SUBMISSION'
+          AND (up.uploaded_by = $1 OR up.target_user_id = $1)
+          AND (
+                up.module_id IS NULL
+             OR EXISTS (
+                  SELECT 1
+                  FROM faculty_modules fm_scope
+                  JOIN student_module_enrollments sme
+                    ON sme.module_id = fm_scope.id
+                   AND sme.student_id = $1
+                  JOIN student_courses sc
+                    ON sc.course_id = fm_scope.course_id
+                   AND sc.student_user_id = $1
+                   AND sc.status = 'ACTIVE'
+                  WHERE fm_scope.id = up.module_id
+             )
+          )
+         )
       ORDER BY up.created_at DESC
       `,
       [user.id]
