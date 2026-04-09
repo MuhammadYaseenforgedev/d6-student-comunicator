@@ -84,6 +84,17 @@ export async function updateCourse(
   }>(`/courses/${encodeURIComponent(courseId)}`, input);
 }
 
+export async function deleteCourse(courseId: string) {
+  return apiClient.delete<{
+    ok: boolean;
+    courseId: string;
+    code: string;
+    name: string;
+    removedActiveStudentCount: number;
+    removedCalendarEntryCount: number;
+  }>(`/courses/${encodeURIComponent(courseId)}`);
+}
+
 export async function assignModuleToCourse(courseId: string, moduleId: string) {
   return apiClient.post<{ ok: boolean }>(
     `/courses/${encodeURIComponent(courseId)}/modules`,

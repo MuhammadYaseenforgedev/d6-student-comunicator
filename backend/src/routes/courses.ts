@@ -50,6 +50,12 @@ type ModuleDeleteDependencyCounts = {
   announcement_count: number;
 };
 
+type CourseDeleteDependencyCounts = {
+  module_count: number;
+  active_student_count: number;
+  calendar_entry_count: number;
+};
+
 function err(res: Response, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
 }
@@ -524,6 +530,103 @@ courseRouter.patch(
       }
       console.error("[courses] PATCH /courses/:id error", e);
       return err(res, 500, "INTERNAL", "Failed to update course");
+    }
+  }
+);
+
+courseRouter.delete(
+  "/courses/:id",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    const courseId = String(req.params.id ?? "").trim();
+    if (!isUuid(courseId)) return err(res, 400, "VALIDATION", "id must be a UUID");
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const courseRes = await client.query<{ id: string; code: string; name: string }>(
+        `
+          SELECT id, code, name
+          FROM courses
+          WHERE id = $1
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [courseId]
+      );
+
+      if ((courseRes.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return err(res, 404, "NOT_FOUND", "Course not found");
+      }
+
+      const dependencyRes = await client.query<CourseDeleteDependencyCounts>(
+        `
+          SELECT
+            (SELECT COUNT(*)::int FROM faculty_modules WHERE course_id = $1) AS module_count,
+            (SELECT COUNT(*)::int FROM student_courses WHERE course_id = $1 AND status = 'ACTIVE') AS active_student_count,
+            (SELECT COUNT(*)::int FROM calendar_entries WHERE course_id = $1) AS calendar_entry_count
+        `,
+        [courseId]
+      );
+
+      const dependencyCounts = dependencyRes.rows[0];
+      const moduleCount = Number(dependencyCounts?.module_count ?? 0);
+      if (moduleCount > 0) {
+        await client.query("ROLLBACK");
+        return err(
+          res,
+          409,
+          "COURSE_IN_USE",
+          `Course cannot be deleted because it still has ${pluralize(
+            moduleCount,
+            "linked module"
+          )}. Remove or reassign those modules first.`
+        );
+      }
+
+      const affectedStudents = await client.query<{ student_user_id: string }>(
+        `
+          SELECT student_user_id
+          FROM student_courses
+          WHERE course_id = $1
+        `,
+        [courseId]
+      );
+
+      await client.query(
+        `
+          DELETE FROM courses
+          WHERE id = $1
+        `,
+        [courseId]
+      );
+
+      await syncStudentCourseNames(
+        client,
+        affectedStudents.rows.map((row) => row.student_user_id)
+      );
+
+      await client.query("COMMIT");
+      return res.json({
+        ok: true,
+        courseId,
+        code: courseRes.rows[0].code,
+        name: courseRes.rows[0].name,
+        removedActiveStudentCount: Number(dependencyCounts?.active_student_count ?? 0),
+        removedCalendarEntryCount: Number(dependencyCounts?.calendar_entry_count ?? 0),
+      });
+    } catch (e) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // no-op: rollback attempt after a failed delete flow
+      }
+      console.error("[courses] DELETE /courses/:id error", e);
+      return err(res, 500, "INTERNAL", "Failed to delete course");
+    } finally {
+      client.release();
     }
   }
 );

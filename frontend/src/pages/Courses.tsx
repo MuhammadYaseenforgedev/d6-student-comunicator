@@ -10,6 +10,7 @@ import { isAcademicOrSuperAdmin, isFinanceAdmin } from "../lib/adminAccess";
 import {
   assignModuleToCourse,
   createCourse,
+  deleteCourse,
   enrollStudentInCourse,
   listCourses,
   removeStudentFromCourse,
@@ -863,6 +864,33 @@ function AdminCoursesView() {
     }
   }
 
+  async function onDeleteCourse() {
+    if (!selectedCourse) return;
+
+    const confirmationMessage =
+      selectedCourse.summary.studentCount > 0
+        ? `Delete "${selectedCourse.code} - ${selectedCourse.name}"? This will remove ${selectedCourse.summary.studentCount} student course enrollment(s) and any course calendar entries. Linked modules must already be removed first.`
+        : `Delete "${selectedCourse.code} - ${selectedCourse.name}"? Linked modules must already be removed first.`;
+
+    if (!window.confirm(confirmationMessage)) return;
+
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+      const deleted = await deleteCourse(selectedCourse.id);
+      await loadAll();
+      setSelectedCourseModuleId("");
+      setSelectedModuleId("");
+      setSelectedStudentId("");
+      setInfo(`Course ${deleted.code} deleted.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete course");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onAssignModule() {
     if (!selectedCourseId || !selectedModuleId) {
       setError("Select a course and module first.");
@@ -1047,6 +1075,11 @@ function AdminCoursesView() {
                     Linked modules: {summarizeModules(selectedCourse?.modules ?? [], 5)}
                   </div>
 
+                  <div className="rounded-2xl border border-[rgba(255,196,87,0.20)] bg-[rgba(78,54,12,0.22)] p-3 text-sm text-[#ffe7b0]">
+                    Deleting a course removes student course enrollments and course calendar entries.
+                    Remove linked modules first before deleting the selected course.
+                  </div>
+
                   <select
                     value={editIsActive}
                     onChange={(e) => setEditIsActive(e.target.value)}
@@ -1065,6 +1098,15 @@ function AdminCoursesView() {
                     className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
                   >
                     {busy ? "Saving..." : "Save course"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void onDeleteCourse()}
+                    disabled={busy || !selectedCourse || selectedCourse.modules.length > 0}
+                    className="btn-danger px-4 py-2 text-sm disabled:opacity-60"
+                  >
+                    {busy ? "Working..." : "Delete course"}
                   </button>
                 </>
               )}

@@ -215,7 +215,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-full flex-col gap-6">
       <PageHeader
         title="Notifications"
         subtitle="Unread and read activity across messages, emergency alerts, attendance, results, finance, and parent links."
@@ -287,7 +287,7 @@ export default function NotificationsPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <section className="teal-glow-card p-5">
+      <section className="teal-glow-card flex min-h-0 flex-1 flex-col p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-white">Activity Feed</h2>
@@ -305,95 +305,97 @@ export default function NotificationsPage() {
 
         <div className="divider-soft my-5" />
 
-        <div className="space-y-3">
-          {loading ? (
-            <div className="info-banner">Loading notifications...</div>
-          ) : items.length === 0 ? (
-            <div className="info-banner">
-              No notifications for the current filter.
-            </div>
-          ) : (
-            items.map((item) => {
-              const href = notificationHref(item);
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          <div className="app-page-scroll min-h-0 max-h-[70vh] flex-1 space-y-3 overflow-y-auto pr-1 md:max-h-[75vh] lg:max-h-[calc(100vh-20rem)]">
+            {loading ? (
+              <div className="info-banner">Loading notifications...</div>
+            ) : items.length === 0 ? (
+              <div className="info-banner">
+                No notifications for the current filter.
+              </div>
+            ) : (
+              items.map((item) => {
+                const href = notificationHref(item);
 
-              return (
-                <div
-                  key={item.id}
-                  className={[
-                    "rounded-3xl border p-4 transition-all duration-200",
-                    item.isRead
-                      ? "border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)]"
-                      : "border-[rgba(140,235,255,0.24)] bg-[rgba(14,42,99,0.28)] shadow-[0_0_0_1px_rgba(140,235,255,0.05),0_0_18px_rgba(140,235,255,0.08)]",
-                  ].join(" ")}
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={[
-                            "rounded-full border px-2.5 py-1 text-xs font-semibold",
-                            badgeClass(item.category),
-                          ].join(" ")}
-                        >
-                          {item.category}
-                        </span>
+                return (
+                  <div
+                    key={item.id}
+                    className={[
+                      "rounded-3xl border p-4 transition-all duration-200",
+                      item.isRead
+                        ? "border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)]"
+                        : "border-[rgba(140,235,255,0.24)] bg-[rgba(14,42,99,0.28)] shadow-[0_0_0_1px_rgba(140,235,255,0.05),0_0_18px_rgba(140,235,255,0.08)]",
+                    ].join(" ")}
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={[
+                              "rounded-full border px-2.5 py-1 text-xs font-semibold",
+                              badgeClass(item.category),
+                            ].join(" ")}
+                          >
+                            {item.category}
+                          </span>
 
-                        {!item.isRead && <span className="status-dot" />}
+                          {!item.isRead && <span className="status-dot" />}
 
-                        <span className="text-xs text-white/55">
-                          {formatWhen(item.createdAt)}
-                        </span>
-                      </div>
-
-                      <div className="text-base font-semibold text-white">
-                        {item.title}
-                      </div>
-
-                      {item.body && (
-                        <div className="text-sm leading-6 text-white/72">
-                          {item.body}
+                          <span className="text-xs text-white/55">
+                            {formatWhen(item.createdAt)}
+                          </span>
                         </div>
-                      )}
-                    </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      {href && (
-                        <Link to={href} className="btn-secondary">
-                          Open
-                        </Link>
-                      )}
+                        <div className="text-base font-semibold text-white">
+                          {item.title}
+                        </div>
 
-                      {!item.isRead && (
-                        <button
-                          type="button"
-                          onClick={() => void onMarkRead(item.id)}
-                          disabled={busyId === item.id}
-                          className="btn-primary"
-                        >
-                          {busyId === item.id ? "Saving..." : "Mark read"}
-                        </button>
-                      )}
+                        {item.body && (
+                          <div className="text-sm leading-6 text-white/72">
+                            {item.body}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        {href && (
+                          <Link to={href} className="btn-secondary">
+                            Open
+                          </Link>
+                        )}
+
+                        {!item.isRead && (
+                          <button
+                            type="button"
+                            onClick={() => void onMarkRead(item.id)}
+                            disabled={busyId === item.id}
+                            className="btn-primary"
+                          >
+                            {busyId === item.id ? "Saving..." : "Mark read"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })
+            )}
+          </div>
+
+          {nextBefore && items.length > 0 && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                className="btn-secondary min-w-[140px]"
+              >
+                {loadingMore ? "Loading..." : "Load more"}
+              </button>
+            </div>
           )}
         </div>
       </section>
-
-      {nextBefore && items.length > 0 && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => void loadMore()}
-            disabled={loadingMore}
-            className="btn-secondary min-w-[140px]"
-          >
-            {loadingMore ? "Loading..." : "Load more"}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -497,9 +497,9 @@ export default function AppShell() {
         </div>
 
         <div className="desktop-app-frame grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="glass-panel-premium relative hidden min-h-0 overflow-hidden p-4 lg:block">
+          <aside className="glass-panel-premium relative hidden self-start overflow-hidden p-4 lg:sticky lg:top-0 lg:block">
             <div className="sidebar-gradient-border-overlay absolute inset-0" />
-            <div className="relative h-full min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+            <div className="relative">
               {sidebarContent}
             </div>
           </aside>

@@ -13,8 +13,15 @@ import { listCourses, type CourseRecord } from "../lib/courseApi";
 type ModuleOption = {
   id: string;
   label: string;
+  courseId: string;
   courseLabel: string;
   lecturers: string[];
+};
+
+type CourseOption = {
+  id: string;
+  label: string;
+  moduleCount: number;
 };
 
 function buildModuleOptions(courses: CourseRecord[], role: string): ModuleOption[] {
@@ -24,10 +31,25 @@ function buildModuleOptions(courses: CourseRecord[], role: string): ModuleOption
       .map((module) => ({
         id: module.id,
         label: `${module.code} - ${module.name}`,
+        courseId: course.id,
         courseLabel: `${course.code} - ${course.name}`,
         lecturers: module.lecturers.map((lecturer) => lecturer.email),
       }))
   );
+}
+
+function buildCourseOptions(courses: CourseRecord[], moduleOptions: ModuleOption[]): CourseOption[] {
+  const counts = new Map<string, number>();
+
+  for (const module of moduleOptions) {
+    counts.set(module.courseId, (counts.get(module.courseId) ?? 0) + 1);
+  }
+
+  return courses.map((course) => ({
+    id: course.id,
+    label: `${course.code} - ${course.name}`,
+    moduleCount: counts.get(course.id) ?? 0,
+  }));
 }
 
 export default function Modules() {
@@ -72,30 +94,75 @@ export default function Modules() {
     () => buildModuleOptions(courses, role),
     [courses, role]
   );
+  const courseOptions = useMemo(
+    () => buildCourseOptions(courses, moduleOptions),
+    [courses, moduleOptions]
+  );
 
+  const requestedCourseId = String(searchParams.get("courseId") ?? "").trim();
   const requestedModuleId = String(searchParams.get("moduleId") ?? "").trim();
+  const selectedCourseId = useMemo(() => {
+    const requestedModuleCourseId =
+      moduleOptions.find((option) => option.id === requestedModuleId)?.courseId ?? "";
+
+    if (courseOptions.some((course) => course.id === requestedCourseId)) {
+      return requestedCourseId;
+    }
+
+    if (requestedModuleCourseId && courseOptions.some((course) => course.id === requestedModuleCourseId)) {
+      return requestedModuleCourseId;
+    }
+
+    return courseOptions.find((course) => course.moduleCount > 0)?.id ?? courseOptions[0]?.id ?? "";
+  }, [courseOptions, moduleOptions, requestedCourseId, requestedModuleId]);
+
+  const filteredModuleOptions = useMemo(
+    () => moduleOptions.filter((option) => option.courseId === selectedCourseId),
+    [moduleOptions, selectedCourseId]
+  );
+
   const selectedModuleId =
-    moduleOptions.find((option) => option.id === requestedModuleId)?.id ??
-    moduleOptions[0]?.id ??
+    filteredModuleOptions.find((option) => option.id === requestedModuleId)?.id ??
+    filteredModuleOptions[0]?.id ??
     "";
 
   useEffect(() => {
-    if (moduleOptions.length === 0) {
-      if (requestedModuleId) {
-        const next = new URLSearchParams(searchParams);
-        next.delete("moduleId");
-        setSearchParams(next, { replace: true });
+    const next = new URLSearchParams(searchParams);
+    let changed = false;
+
+    if (selectedCourseId) {
+      if (requestedCourseId !== selectedCourseId) {
+        next.set("courseId", selectedCourseId);
+        changed = true;
       }
-      return;
+    } else if (requestedCourseId) {
+      next.delete("courseId");
+      changed = true;
     }
 
-    if (selectedModuleId !== requestedModuleId) {
-      const next = new URLSearchParams(searchParams);
-      next.set("moduleId", selectedModuleId);
+    if (selectedModuleId) {
+      if (requestedModuleId !== selectedModuleId) {
+        next.set("moduleId", selectedModuleId);
+        changed = true;
+      }
+    } else if (requestedModuleId) {
+      next.delete("moduleId");
+      changed = true;
+    }
+
+    if (changed) {
       setSearchParams(next, { replace: true });
     }
-  }, [moduleOptions, requestedModuleId, searchParams, selectedModuleId, setSearchParams]);
+  }, [
+    requestedCourseId,
+    requestedModuleId,
+    searchParams,
+    selectedCourseId,
+    selectedModuleId,
+    setSearchParams,
+  ]);
 
+  const selectedCourse = courses.find((course) => course.id === selectedCourseId) ?? null;
   const selectedModule = moduleOptions.find((option) => option.id === selectedModuleId) ?? null;
 
   const {
@@ -113,10 +180,10 @@ export default function Modules() {
   });
 
   const subtitle = isStudent
-    ? "Choose one of your linked modules to keep announcements focused."
+    ? "Pick a course first, then choose one of your linked modules to keep announcements focused."
     : isLecturer
-      ? "Choose a module you teach to review or post targeted module announcements."
-      : "Choose a course module to review or post targeted module announcements.";
+      ? "Pick one of your teaching courses, then choose the module you want to review or post to."
+      : "Choose a course first, then select the module you want to review or post to.";
 
   const actions =
     canManage && selectedModuleId ? (
@@ -153,68 +220,142 @@ export default function Modules() {
       <div className="mt-6 rounded-3xl border border-[#38D5FF]/40 bg-[#081A44]/72 p-5 shadow-[0_0_0_1px_rgba(56,213,255,0.18),0_0_18px_rgba(56,213,255,0.18),0_12px_30px_rgba(2,12,42,0.55)]">
         {moduleLoading ? (
           <div className="text-sm text-white/75">Loading your course modules...</div>
-        ) : moduleOptions.length === 0 ? (
+        ) : courseOptions.length === 0 ? (
           <EmptyState
-            title="No modules available"
+            title="No courses available"
             subtitle={
               isStudent
-                ? "You are not linked to any course modules yet."
+                ? "You are not linked to any courses yet."
                 : isLecturer
-                  ? "No modules are assigned to your lecturer account yet."
-                  : "No modules are linked to courses yet."
+                  ? "No courses are assigned to your lecturer account yet."
+                  : "No courses are available yet."
             }
           />
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">
-            <div>
-              <label
-                htmlFor="module-announcement-selector"
-                className="text-sm text-white/78"
-              >
-                Module
-              </label>
-              <select
-                id="module-announcement-selector"
-                value={selectedModuleId}
-                onChange={(e) => {
-                  const next = new URLSearchParams(searchParams);
-                  next.set("moduleId", e.target.value);
-                  setSearchParams(next, { replace: true });
-                }}
-                className="select-glass mt-1"
-              >
-                {moduleOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,360px)_1fr]">
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="module-course-selector"
+                  className="text-sm text-white/78"
+                >
+                  Course
+                </label>
+                <select
+                  id="module-course-selector"
+                  value={selectedCourseId}
+                  onChange={(e) => {
+                    const nextCourseId = e.target.value;
+                    const next = new URLSearchParams(searchParams);
+                    const nextModuleId =
+                      moduleOptions.find((option) => option.courseId === nextCourseId)?.id ?? "";
 
-            {selectedModule && (
+                    if (nextCourseId) {
+                      next.set("courseId", nextCourseId);
+                    } else {
+                      next.delete("courseId");
+                    }
+
+                    if (nextModuleId) {
+                      next.set("moduleId", nextModuleId);
+                    } else {
+                      next.delete("moduleId");
+                    }
+
+                    setSearchParams(next, { replace: true });
+                  }}
+                  className="select-glass mt-1"
+                >
+                  {courseOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="module-announcement-selector"
+                  className="text-sm text-white/78"
+                >
+                  Module
+                </label>
+                <select
+                  id="module-announcement-selector"
+                  value={selectedModuleId}
+                  onChange={(e) => {
+                    const next = new URLSearchParams(searchParams);
+
+                    if (selectedCourseId) {
+                      next.set("courseId", selectedCourseId);
+                    }
+                    next.set("moduleId", e.target.value);
+                    setSearchParams(next, { replace: true });
+                  }}
+                  disabled={filteredModuleOptions.length === 0}
+                  className="select-glass mt-1"
+                >
+                  {filteredModuleOptions.length === 0 ? (
+                    <option value="">No modules available for this course</option>
+                  ) : (
+                    filteredModuleOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
               <div className="rounded-2xl border border-[#38D5FF]/22 bg-[rgba(8,18,48,0.56)] p-4">
                 <div className="text-xs uppercase tracking-[0.18em] text-[#8CEBFF]">
-                  Selected module
+                  Selected course
                 </div>
-                <div className="mt-2 text-lg font-semibold text-white">
-                  {selectedModule.label}
-                </div>
-                <div className="mt-1 text-sm text-white/78">
-                  Course: {selectedModule.courseLabel}
+                <div className="mt-2 text-base font-semibold text-white">
+                  {selectedCourse ? `${selectedCourse.code} - ${selectedCourse.name}` : "No course selected"}
                 </div>
                 <div className="mt-2 text-sm text-white/72">
-                  Lecturers:{" "}
-                  {selectedModule.lecturers.length > 0
-                    ? selectedModule.lecturers.join(", ")
-                    : "Not assigned yet"}
+                  {filteredModuleOptions.length} module{filteredModuleOptions.length === 1 ? "" : "s"} available in this course.
+                </div>
+                <div className="mt-2 text-sm text-white/72">
+                  Switch courses here, then pick the exact module you want below it.
                 </div>
               </div>
-            )}
+            </div>
+
+            <div className="rounded-2xl border border-[#38D5FF]/22 bg-[rgba(8,18,48,0.56)] p-4">
+              <div className="text-xs uppercase tracking-[0.18em] text-[#8CEBFF]">
+                Module overview
+              </div>
+              {selectedModule ? (
+                <>
+                  <div className="mt-2 text-lg font-semibold text-white">
+                    {selectedModule.label}
+                  </div>
+                  <div className="mt-1 text-sm text-white/78">
+                    Course: {selectedModule.courseLabel}
+                  </div>
+                  <div className="mt-2 text-sm text-white/72">
+                    Lecturers:{" "}
+                    {selectedModule.lecturers.length > 0
+                      ? selectedModule.lecturers.join(", ")
+                      : "Not assigned yet"}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-2 text-sm leading-6 text-white/72">
+                  {selectedCourse
+                    ? "This course does not have any visible modules yet. Pick a different course or add modules first."
+                    : "Choose a course to see its modules here."}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {moduleOptions.length > 0 && (
+      {selectedModuleId && (
         <div className="mt-6 space-y-4">
           {loading ? (
             <>
@@ -263,7 +404,7 @@ export default function Modules() {
         defaultChannel="modules"
         channelOptions={["modules"]}
         lockChannel
-        moduleOptions={moduleOptions.map((option) => ({
+        moduleOptions={filteredModuleOptions.map((option) => ({
           id: option.id,
           label: `${option.courseLabel} | ${option.label}`,
         }))}

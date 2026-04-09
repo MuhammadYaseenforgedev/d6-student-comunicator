@@ -184,6 +184,15 @@ describe("Courses RBAC + visibility", () => {
     expect(String(res.body?.error?.message ?? "")).toMatch(/learner enrollment/i);
   });
 
+  test("academic admin cannot delete a course that still has linked modules", async () => {
+    const res = await request(app)
+      .delete(`/api/courses/${ctx.courseId}`)
+      .set(auth(ctx.academicAdminToken));
+
+    expect(res.status).toBe(409);
+    expect(String(res.body?.error?.message ?? "")).toMatch(/linked module/i);
+  });
+
   test("academic admin can remove an empty module from a course", async () => {
     const res = await request(app)
       .delete(`/api/courses/${ctx.courseId}/modules/${ctx.removableModuleId}`)
@@ -197,6 +206,40 @@ describe("Courses RBAC + visibility", () => {
       ctx.removableModuleId,
     ]);
     expect(lookup.rowCount ?? 0).toBe(0);
+  });
+
+  test("academic admin can delete an empty course", async () => {
+    let tempCourseId = "";
+
+    try {
+      const createRes = await request(app)
+        .post("/api/courses")
+        .set(auth(ctx.academicAdminToken))
+        .send({
+          code: `COURSE-DELETE-${Date.now()}`,
+          name: "Delete Me",
+          description: "Temporary course for delete coverage",
+        });
+
+      expect(createRes.status).toBe(201);
+      tempCourseId = String(createRes.body?.id ?? "");
+
+      const deleteRes = await request(app)
+        .delete(`/api/courses/${tempCourseId}`)
+        .set(auth(ctx.academicAdminToken));
+
+      expect(deleteRes.status).toBe(200);
+      expect(Boolean(deleteRes.body?.ok)).toBe(true);
+      expect(String(deleteRes.body?.courseId ?? "")).toBe(tempCourseId);
+
+      const lookup = await pool.query(`SELECT 1 FROM courses WHERE id = $1 LIMIT 1`, [tempCourseId]);
+      expect(lookup.rowCount ?? 0).toBe(0);
+      tempCourseId = "";
+    } finally {
+      if (tempCourseId) {
+        await pool.query(`DELETE FROM courses WHERE id = $1`, [tempCourseId]);
+      }
+    }
   });
 
   test("super admin can update and archive a course", async () => {
