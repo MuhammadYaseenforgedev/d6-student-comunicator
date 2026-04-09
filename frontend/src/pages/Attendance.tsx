@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
-import CourseModulesManager from "../components/CourseModulesManager";
 import { getUser } from "../lib/auth";
 import {
   checkInToAttendanceSession,
@@ -21,7 +20,6 @@ import {
   type AttendanceSessionRosterStudent,
   type AttendanceStatus,
 } from "../lib/attendanceApi";
-import { listCourses, type CourseRecord } from "../lib/courseApi";
 
 type MarkMap = Record<string, AttendanceStatus>;
 
@@ -121,7 +119,6 @@ function LecturerAttendanceView({
   currentUserId: string;
 }) {
   const [modules, setModules] = useState<AttendanceModule[]>([]);
-  const [courses, setCourses] = useState<CourseRecord[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [rosterStudents, setRosterStudents] = useState<
     AttendanceSessionRosterStudent[]
@@ -195,15 +192,10 @@ function LecturerAttendanceView({
     setCandidateLecturers(sortDirectoryUsers(lecturersRes));
   }
 
-  async function loadCourses() {
-    const rows = (await listCourses()).filter((course) => course.isActive);
-    setCourses(rows);
-  }
-
   useEffect(() => {
     void (async () => {
       try {
-        await Promise.all([loadModules(), loadLecturers(), loadCourses()]);
+        await Promise.all([loadModules(), loadLecturers()]);
       } catch (e) {
         setError(
           e instanceof Error ? e.message : "Failed to load attendance modules"
@@ -341,9 +333,9 @@ function LecturerAttendanceView({
           <div className="text-lg font-semibold text-white">Create Session</div>
           <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-3 text-sm text-white/75">
             Staff module selection is global. If the module you need does not
-            exist yet, create it below and pick any lecturer directly from the
-            full lecturer list. Each module must belong to a course, and each
-            course can contain multiple modules.
+            exist yet, create it from Courses, then return here and pick any
+            lecturer directly from the full lecturer list. Each module belongs to
+            a course, and each course can contain multiple modules.
           </div>
 
           <Field label="Module" htmlFor="attendance-module">
@@ -586,21 +578,6 @@ function LecturerAttendanceView({
         </div>
       </div>
 
-      <CourseModulesManager
-        courses={courses}
-        selectedModuleId={moduleId}
-        showModuleSelector={false}
-        idPrefix="attendance-modules"
-        title="Module Setup"
-        subtitle="Create modules and manage module membership without leaving attendance. Modules still remain attached to their parent course."
-        onSelectedModuleIdChange={setModuleId}
-        onChanged={async () => {
-          await loadModules();
-          if (moduleId) {
-            await loadSessions(moduleId);
-          }
-        }}
-      />
     </div>
   );
 }

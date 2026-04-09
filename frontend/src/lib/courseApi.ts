@@ -91,6 +91,15 @@ export async function assignModuleToCourse(courseId: string, moduleId: string) {
   );
 }
 
+export async function removeCourseModule(courseId: string, moduleId: string) {
+  return apiClient.delete<{
+    ok: boolean;
+    moduleId: string;
+    code: string;
+    name: string;
+  }>(`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}`);
+}
+
 export async function enrollStudentInCourse(
   courseId: string,
   studentId: string,

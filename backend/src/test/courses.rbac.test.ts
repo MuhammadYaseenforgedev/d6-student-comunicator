@@ -25,6 +25,7 @@ describe("Courses RBAC + visibility", () => {
     facultyId: "",
     courseId: "",
     moduleId: "",
+    removableModuleId: "",
   };
 
   beforeAll(async () => {
@@ -49,6 +50,7 @@ describe("Courses RBAC + visibility", () => {
     ctx.facultyId = crypto.randomUUID();
     ctx.courseId = crypto.randomUUID();
     ctx.moduleId = crypto.randomUUID();
+    ctx.removableModuleId = crypto.randomUUID();
 
     await pool.query(`INSERT INTO faculties (id, name) VALUES ($1, $2)`, [
       ctx.facultyId,
@@ -69,6 +71,20 @@ describe("Courses RBAC + visibility", () => {
         VALUES ($1, $2, $3, $4, $5)
       `,
       [ctx.moduleId, ctx.facultyId, ctx.courseId, `MOD-RBAC-${Date.now()}`, "RBAC Module"]
+    );
+
+    await pool.query(
+      `
+        INSERT INTO faculty_modules (id, faculty_id, course_id, code, name)
+        VALUES ($1, $2, $3, $4, $5)
+      `,
+      [
+        ctx.removableModuleId,
+        ctx.facultyId,
+        ctx.courseId,
+        `MOD-REMOVE-${Date.now()}`,
+        "Removable Module",
+      ]
     );
 
     await pool.query(
@@ -97,7 +113,9 @@ describe("Courses RBAC + visibility", () => {
   });
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM faculty_modules WHERE id = $1`, [ctx.moduleId]);
+    await pool.query(`DELETE FROM faculty_modules WHERE id = ANY($1::uuid[])`, [
+      [ctx.moduleId, ctx.removableModuleId],
+    ]);
     await pool.query(`DELETE FROM student_courses WHERE course_id = $1`, [ctx.courseId]);
     await pool.query(`DELETE FROM courses WHERE id = $1`, [ctx.courseId]);
     await pool.query(`DELETE FROM faculties WHERE id = $1`, [ctx.facultyId]);
@@ -146,6 +164,39 @@ describe("Courses RBAC + visibility", () => {
           return module.id === ctx.moduleId && Boolean(module.isStudentLinked);
         })
     ).toBe(true);
+  });
+
+  test("lecturer cannot remove modules from a course", async () => {
+    const res = await request(app)
+      .delete(`/api/courses/${ctx.courseId}/modules/${ctx.moduleId}`)
+      .set(auth(ctx.lecturerToken));
+
+    expect([401, 403]).toContain(res.status);
+  });
+
+  test("academic admin cannot remove a module that still has linked memberships", async () => {
+    const res = await request(app)
+      .delete(`/api/courses/${ctx.courseId}/modules/${ctx.moduleId}`)
+      .set(auth(ctx.academicAdminToken));
+
+    expect(res.status).toBe(409);
+    expect(String(res.body?.error?.message ?? "")).toMatch(/lecturer assignment/i);
+    expect(String(res.body?.error?.message ?? "")).toMatch(/learner enrollment/i);
+  });
+
+  test("academic admin can remove an empty module from a course", async () => {
+    const res = await request(app)
+      .delete(`/api/courses/${ctx.courseId}/modules/${ctx.removableModuleId}`)
+      .set(auth(ctx.academicAdminToken));
+
+    expect(res.status).toBe(200);
+    expect(Boolean(res.body?.ok)).toBe(true);
+    expect(String(res.body?.moduleId ?? "")).toBe(ctx.removableModuleId);
+
+    const lookup = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [
+      ctx.removableModuleId,
+    ]);
+    expect(lookup.rowCount ?? 0).toBe(0);
   });
 
   test("super admin can update and archive a course", async () => {

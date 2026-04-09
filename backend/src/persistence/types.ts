@@ -90,6 +90,17 @@ export type CalendarEntry = {
   createdAt: string;
 };
 
+export type EditableCalendarEntry = {
+  id: string;
+  userId: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string;
+  courseId: string | null;
+};
+
 /* =========
    Finance
    ========= */
@@ -326,7 +337,13 @@ export type ThreadRepo = {
 export type CalendarRepo = {
   listForUser(
     userId: string,
-    opts?: { limit?: number }
+    opts?: {
+      limit?: number;
+      date?: string;
+      start?: string;
+      end?: string;
+      role?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+    }
   ): Promise<CalendarEntry[]>;
   createForUser(
     userId: string,
@@ -336,8 +353,32 @@ export type CalendarRepo = {
       location?: string | null;
       startsAt: string;
       endsAt: string;
+      courseId?: string | null;
     }
   ): Promise<CalendarEntry>;
+  getEditableForUser(
+    userId: string,
+    entryId: string,
+    role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT"
+  ): Promise<EditableCalendarEntry | null>;
+  updateForUser(
+    userId: string,
+    entryId: string,
+    role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT",
+    input: {
+      title: string;
+      description?: string | null;
+      location?: string | null;
+      startsAt: string;
+      endsAt: string;
+      courseId?: string | null;
+    }
+  ): Promise<CalendarEntry | null>;
+  deleteForUser(
+    userId: string,
+    entryId: string,
+    role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT"
+  ): Promise<boolean>;
 };
 
 /* =========

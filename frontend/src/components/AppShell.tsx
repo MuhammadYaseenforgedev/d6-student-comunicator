@@ -467,8 +467,8 @@ export default function AppShell() {
   );
 
   return (
-    <div className="min-h-0">
-      <div className="w-full px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6 xl:px-8 2xl:px-10">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col w-full px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6 xl:px-8 2xl:px-10">
         <div className="mb-3 lg:hidden">
           <div className="glass-panel-premium relative overflow-hidden px-3 py-3">
             <div className="pointer-events-none absolute inset-0 opacity-100">
@@ -496,13 +496,15 @@ export default function AppShell() {
           </div>
         </div>
 
-        <div className="desktop-app-frame grid grid-cols-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="glass-panel-premium relative hidden overflow-hidden p-4 lg:block">
+        <div className="desktop-app-frame grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="glass-panel-premium relative hidden min-h-0 overflow-hidden p-4 lg:block">
             <div className="sidebar-gradient-border-overlay absolute inset-0" />
-            {sidebarContent}
+            <div className="relative h-full min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+              {sidebarContent}
+            </div>
           </aside>
 
-          <main className="glass-panel relative min-w-0 overflow-x-hidden">
+          <main className="glass-panel relative flex min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="sidebar-gradient-border-overlay absolute inset-0" />
             <div className="pointer-events-none absolute inset-0 opacity-100">
               <div className="absolute left-0 top-0 h-36 w-36 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
@@ -510,21 +512,23 @@ export default function AppShell() {
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/40 to-transparent" />
             </div>
 
-            <div className="relative min-w-0 p-3 sm:p-4 lg:p-6 xl:p-7">
+            <div className="relative flex min-h-0 flex-1 flex-col p-3 sm:p-4 lg:p-6 xl:p-7">
               <AppErrorBoundary>
-                <div className="relative min-w-0 overflow-x-hidden">
-                  <AnimatePresence mode="wait" initial={false}>
-                    <motion.div
-                      key={location.pathname}
-                      initial={{ opacity: 0, x: 30 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -30 }}
-                      transition={{ duration: 0.25, ease: "easeInOut" }}
-                      className="min-w-0"
-                    >
-                      {outlet}
-                    </motion.div>
-                  </AnimatePresence>
+                <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                  <div className="app-page-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.div
+                        key={location.pathname}
+                        initial={{ opacity: 0, x: 30 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -30 }}
+                        transition={{ duration: 0.25, ease: "easeInOut" }}
+                        className="min-w-0"
+                      >
+                        {outlet}
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
                 </div>
               </AppErrorBoundary>
             </div>

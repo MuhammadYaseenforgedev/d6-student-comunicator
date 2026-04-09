@@ -41,6 +41,15 @@ type CourseStudentRow = {
   enrolled_at: string;
 };
 
+type ModuleDeleteDependencyCounts = {
+  lecturer_assignment_count: number;
+  student_enrollment_count: number;
+  attendance_session_count: number;
+  assessment_result_count: number;
+  upload_count: number;
+  announcement_count: number;
+};
+
 function err(res: Response, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
 }
@@ -62,6 +71,50 @@ function normalizeStatus(value: unknown): "ACTIVE" | "INACTIVE" | null {
   const normalized = String(value ?? "").trim().toUpperCase();
   if (normalized === "ACTIVE" || normalized === "INACTIVE") return normalized;
   return null;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function buildModuleDeleteBlockers(counts: ModuleDeleteDependencyCounts): string[] {
+  const blockers: string[] = [];
+
+  if (Number(counts.lecturer_assignment_count ?? 0) > 0) {
+    blockers.push(
+      pluralize(Number(counts.lecturer_assignment_count ?? 0), "lecturer assignment")
+    );
+  }
+
+  if (Number(counts.student_enrollment_count ?? 0) > 0) {
+    blockers.push(
+      pluralize(Number(counts.student_enrollment_count ?? 0), "learner enrollment")
+    );
+  }
+
+  if (Number(counts.attendance_session_count ?? 0) > 0) {
+    blockers.push(
+      pluralize(Number(counts.attendance_session_count ?? 0), "attendance session")
+    );
+  }
+
+  if (Number(counts.assessment_result_count ?? 0) > 0) {
+    blockers.push(
+      pluralize(Number(counts.assessment_result_count ?? 0), "assessment result")
+    );
+  }
+
+  if (Number(counts.upload_count ?? 0) > 0) {
+    blockers.push(pluralize(Number(counts.upload_count ?? 0), "upload"));
+  }
+
+  if (Number(counts.announcement_count ?? 0) > 0) {
+    blockers.push(
+      pluralize(Number(counts.announcement_count ?? 0), "targeted announcement")
+    );
+  }
+
+  return blockers;
 }
 
 function parseLecturers(raw: unknown): Array<{ id: string; email: string }> {
@@ -538,6 +591,101 @@ courseRouter.post(
     } catch (e) {
       console.error("[courses] POST /courses/:id/modules error", e);
       return err(res, 500, "INTERNAL", "Failed to assign module to course");
+    }
+  }
+);
+
+courseRouter.delete(
+  "/courses/:id/modules/:moduleId",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    const courseId = String(req.params.id ?? "").trim();
+    const moduleId = String(req.params.moduleId ?? "").trim();
+
+    if (!isUuid(courseId)) return err(res, 400, "VALIDATION", "id must be a UUID");
+    if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const courseRes = await client.query(`SELECT 1 FROM courses WHERE id = $1 LIMIT 1`, [
+        courseId,
+      ]);
+      if ((courseRes.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return err(res, 404, "NOT_FOUND", "Course not found");
+      }
+
+      const moduleRes = await client.query<{ id: string; code: string; name: string }>(
+        `
+          SELECT id, code, name
+          FROM faculty_modules
+          WHERE id = $1
+            AND course_id = $2
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [moduleId, courseId]
+      );
+
+      if ((moduleRes.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return err(res, 404, "NOT_FOUND", "Module not found for this course");
+      }
+
+      const dependencyRes = await client.query<ModuleDeleteDependencyCounts>(
+        `
+          SELECT
+            (SELECT COUNT(*)::int FROM lecturer_module_assignments WHERE module_id = $1) AS lecturer_assignment_count,
+            (SELECT COUNT(*)::int FROM student_module_enrollments WHERE module_id = $1) AS student_enrollment_count,
+            (SELECT COUNT(*)::int FROM attendance_sessions WHERE module_id = $1) AS attendance_session_count,
+            (SELECT COUNT(*)::int FROM assessment_results WHERE module_id = $1) AS assessment_result_count,
+            (SELECT COUNT(*)::int FROM uploads WHERE module_id = $1) AS upload_count,
+            (SELECT COUNT(*)::int FROM announcements WHERE module_id = $1) AS announcement_count
+        `,
+        [moduleId]
+      );
+
+      const blockers = buildModuleDeleteBlockers(dependencyRes.rows[0]);
+      if (blockers.length > 0) {
+        await client.query("ROLLBACK");
+        return err(
+          res,
+          409,
+          "MODULE_IN_USE",
+          `Module cannot be removed because it still has ${blockers.join(
+            ", "
+          )}. Remove those linked records first.`
+        );
+      }
+
+      await client.query(
+        `
+          DELETE FROM faculty_modules
+          WHERE id = $1
+            AND course_id = $2
+        `,
+        [moduleId, courseId]
+      );
+
+      await client.query("COMMIT");
+      return res.json({
+        ok: true,
+        moduleId,
+        code: moduleRes.rows[0].code,
+        name: moduleRes.rows[0].name,
+      });
+    } catch (e) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // no-op: rollback attempt after a failed delete flow
+      }
+      console.error("[courses] DELETE /courses/:id/modules/:moduleId error", e);
+      return err(res, 500, "INTERNAL", "Failed to remove module");
+    } finally {
+      client.release();
     }
   }
 );

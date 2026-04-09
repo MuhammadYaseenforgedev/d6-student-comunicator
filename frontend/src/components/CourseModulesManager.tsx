@@ -12,7 +12,7 @@ import {
   type AttendanceModule,
   type AttendanceModuleStudent,
 } from "../lib/attendanceApi";
-import type { CourseRecord } from "../lib/courseApi";
+import { removeCourseModule, type CourseRecord } from "../lib/courseApi";
 
 type CourseModulesManagerProps = {
   courses: CourseRecord[];
@@ -23,6 +23,7 @@ type CourseModulesManagerProps = {
   title?: string;
   subtitle?: string;
   idPrefix?: string;
+  canRemoveModules?: boolean;
   onSelectedModuleIdChange?: (moduleId: string) => void;
   onChanged?: () => Promise<void> | void;
 };
@@ -101,6 +102,7 @@ export default function CourseModulesManager({
   title = "Modules",
   subtitle = "Create modules and manage lecturer plus learner membership for the selected course.",
   idPrefix = "course-modules",
+  canRemoveModules = false,
   onSelectedModuleIdChange,
   onChanged,
 }: CourseModulesManagerProps) {
@@ -119,6 +121,7 @@ export default function CourseModulesManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
 
   const selectedCourse = useMemo(
     () => courses.find((course) => course.id === selectedCourseId) ?? null,
@@ -272,6 +275,12 @@ export default function CourseModulesManager({
     );
   }, [availableLecturers]);
 
+  useEffect(() => {
+    if (!selectedModule) {
+      setRemoveDialogOpen(false);
+    }
+  }, [selectedModule]);
+
   async function notifyChanged() {
     if (onChanged) {
       await onChanged();
@@ -401,6 +410,46 @@ export default function CourseModulesManager({
       setError(
         e instanceof Error ? e.message : "Failed to remove learner from module"
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemoveModule() {
+    if (!selectedCourseId || !selectedModule) {
+      setError("Select a course module first.");
+      return;
+    }
+
+    const moduleToRemove = selectedModule;
+    const nextModuleId =
+      filteredModules.find((module) => module.id !== moduleToRemove.id)?.id ?? "";
+
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+
+      await removeCourseModule(selectedCourseId, moduleToRemove.id);
+
+      setRemoveDialogOpen(false);
+      if (showModuleSelector) {
+        setInternalModuleId(nextModuleId);
+      }
+      onSelectedModuleIdChange?.(nextModuleId);
+
+      try {
+        await refreshModuleData(nextModuleId);
+        await notifyChanged();
+      } catch {
+        setError(
+          "Module was removed, but the module list could not be refreshed automatically. Reload the page to confirm the latest state."
+        );
+      }
+
+      setInfo(`Module ${moduleToRemove.code} removed.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove module");
     } finally {
       setBusy(false);
     }
@@ -540,6 +589,34 @@ export default function CourseModulesManager({
               : "Select a module above to manage lecturer and learner membership."}
           </div>
         )}
+
+        {canRemoveModules && selectedModule ? (
+          <div className="rounded-3xl border border-[rgba(255,94,130,0.22)] bg-[rgba(74,10,31,0.42)] p-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-white">Remove selected module</div>
+                <div className="mt-1 text-sm text-white/72">
+                  Delete {selectedModule.code} - {selectedModule.name} only if it was added by
+                  mistake and no linked learners, lecturers, attendance, results, uploads, or
+                  announcements depend on it.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setInfo(null);
+                  setRemoveDialogOpen(true);
+                }}
+                disabled={busy}
+                className="btn-danger px-4 py-2 text-sm disabled:opacity-60"
+              >
+                Remove module
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4">
@@ -691,6 +768,54 @@ export default function CourseModulesManager({
           </div>
         </div>
       </div>
+
+      {removeDialogOpen && selectedModule ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#020C2A]/78 p-4 backdrop-blur-md"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !busy) {
+              setRemoveDialogOpen(false);
+            }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Remove module confirmation"
+        >
+          <div className="glass-panel-strong w-full max-w-lg p-5 text-white shadow-2xl">
+            <div className="text-xl font-semibold text-white">Remove module?</div>
+            <div className="mt-2 text-sm leading-6 text-white/72">
+              You are about to permanently remove {selectedModule.code} - {selectedModule.name}
+              {" "}from this course.
+            </div>
+            <div className="mt-4 rounded-2xl border border-[rgba(255,196,87,0.22)] bg-[rgba(97,59,9,0.35)] p-3 text-sm text-[#ffe8b0]">
+              This action cannot be undone. Only empty modules can be removed. If the module has
+              linked learners, lecturers, attendance, assessment results, uploads, or targeted
+              announcements, the backend will block deletion and tell you why.
+            </div>
+
+            {error ? <div className="mt-4"><Alert tone="error" message={error} /></div> : null}
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setRemoveDialogOpen(false)}
+                className="btn-secondary"
+                disabled={busy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void onRemoveModule()}
+                className="btn-danger min-w-[160px]"
+                disabled={busy}
+              >
+                {busy ? "Removing..." : "Remove module"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

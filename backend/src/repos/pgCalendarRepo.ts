@@ -17,6 +17,17 @@ export type CalendarEntry = {
   source?: "CALENDAR_ENTRY" | "COURSE_ENTRY" | "CHANNEL_EVENT";
 };
 
+export type EditableCalendarEntry = {
+  id: string;
+  userId: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string;
+  courseId: string | null;
+};
+
 type Row = {
   id: string;
   user_id: string;
@@ -34,19 +45,70 @@ type Row = {
   source: "CALENDAR_ENTRY" | "COURSE_ENTRY" | "CHANNEL_EVENT";
 };
 
+type EditableRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  starts_at: string;
+  ends_at: string;
+  course_id: string | null;
+};
+
 function parseLimit(raw: unknown, fallback = 50) {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return fallback;
-  return Math.min(Math.floor(n), 100);
+  return Math.min(Math.floor(n), 250);
+}
+
+function mapCalendarEntry(row: Row): CalendarEntry {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    description: row.description,
+    location: row.location,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    createdAt: row.created_at,
+    channelId: row.channel_id,
+    courseId: row.course_id,
+    courseCode: row.course_code,
+    courseName: row.course_name,
+    canDelete: Boolean(row.can_delete),
+    source: row.source,
+  };
+}
+
+function mapEditableEntry(row: EditableRow): EditableCalendarEntry {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    description: row.description,
+    location: row.location,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    courseId: row.course_id,
+  };
 }
 
 export const pgCalendarRepo = {
   async listForUser(
     userId: string,
-    opts?: { limit?: number; date?: string; role?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" }
+    opts?: {
+      limit?: number;
+      date?: string;
+      start?: string;
+      end?: string;
+      role?: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+    }
   ): Promise<CalendarEntry[]> {
     const limit = parseLimit(opts?.limit, 50);
     const date = String(opts?.date ?? "").trim() || null;
+    const rangeStart = String(opts?.start ?? "").trim() || null;
+    const rangeEnd = String(opts?.end ?? "").trim() || null;
     const role = String(opts?.role ?? "STUDENT").toUpperCase();
 
     const q = `
@@ -70,8 +132,14 @@ export const pgCalendarRepo = {
         WHERE ce.user_id::text = $1::text
           AND ce.course_id IS NULL
           AND (
-            ($3::date IS NOT NULL AND ce.starts_at::date = $3::date)
-            OR ($3::date IS NULL AND ce.ends_at >= now())
+            (
+              $5::timestamptz IS NOT NULL
+              AND $6::timestamptz IS NOT NULL
+              AND ce.starts_at < $6::timestamptz
+              AND ce.ends_at >= $5::timestamptz
+            )
+            OR ($5::timestamptz IS NULL AND $3::date IS NOT NULL AND ce.starts_at::date = $3::date)
+            OR ($5::timestamptz IS NULL AND $3::date IS NULL AND ce.ends_at >= now())
           )
 
         UNION ALL
@@ -122,8 +190,14 @@ export const pgCalendarRepo = {
             )
           )
           AND (
-            ($3::date IS NOT NULL AND ce.starts_at::date = $3::date)
-            OR ($3::date IS NULL AND ce.ends_at >= now())
+            (
+              $5::timestamptz IS NOT NULL
+              AND $6::timestamptz IS NOT NULL
+              AND ce.starts_at < $6::timestamptz
+              AND ce.ends_at >= $5::timestamptz
+            )
+            OR ($5::timestamptz IS NULL AND $3::date IS NOT NULL AND ce.starts_at::date = $3::date)
+            OR ($5::timestamptz IS NULL AND $3::date IS NULL AND ce.ends_at >= now())
           )
 
         UNION ALL
@@ -152,8 +226,14 @@ export const pgCalendarRepo = {
           OR ($4::text = 'STUDENT' AND (COALESCE(c.is_private, false) = false OR cm.user_id IS NOT NULL))
         )
           AND (
-            ($3::date IS NOT NULL AND e.starts_at::date = $3::date)
-            OR ($3::date IS NULL AND e.ends_at >= now())
+            (
+              $5::timestamptz IS NOT NULL
+              AND $6::timestamptz IS NOT NULL
+              AND e.starts_at < $6::timestamptz
+              AND e.ends_at >= $5::timestamptz
+            )
+            OR ($5::timestamptz IS NULL AND $3::date IS NOT NULL AND e.starts_at::date = $3::date)
+            OR ($5::timestamptz IS NULL AND $3::date IS NULL AND e.ends_at >= now())
           )
       )
       SELECT
@@ -175,24 +255,9 @@ export const pgCalendarRepo = {
       ORDER BY starts_at ASC
       LIMIT $2
     `;
-    const res = await pool.query<Row>(q, [userId, limit, date, role]);
+    const res = await pool.query<Row>(q, [userId, limit, date, role, rangeStart, rangeEnd]);
 
-    return res.rows.map((r) => ({
-      id: r.id,
-      userId: r.user_id,
-      title: r.title,
-      description: r.description,
-      location: r.location,
-      startsAt: r.starts_at,
-      endsAt: r.ends_at,
-      createdAt: r.created_at,
-      channelId: r.channel_id,
-      courseId: r.course_id,
-      courseCode: r.course_code,
-      courseName: r.course_name,
-      canDelete: Boolean(r.can_delete),
-      source: r.source,
-    }));
+    return res.rows.map(mapCalendarEntry);
   },
 
   async createForUser(
@@ -213,6 +278,9 @@ export const pgCalendarRepo = {
     const endsAt = String(input.endsAt ?? "").trim();
     if (!startsAt || !endsAt) {
       throw Object.assign(new Error("startsAt and endsAt are required"), { code: "VALIDATION" });
+    }
+    if (Date.parse(endsAt) <= Date.parse(startsAt)) {
+      throw Object.assign(new Error("endsAt must be after startsAt"), { code: "VALIDATION" });
     }
 
     const q = `
@@ -243,6 +311,103 @@ export const pgCalendarRepo = {
       courseId: r.course_id,
       canDelete: true,
       source: r.course_id ? "COURSE_ENTRY" : "CALENDAR_ENTRY",
+    };
+  },
+
+  async getEditableForUser(
+    userId: string,
+    entryId: string,
+    role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT"
+  ): Promise<EditableCalendarEntry | null> {
+    const id = String(entryId ?? "").trim();
+    if (!id) throw Object.assign(new Error("id is required"), { code: "VALIDATION" });
+
+    const q = `
+      SELECT id, user_id, title, description, location, starts_at, ends_at, course_id
+      FROM calendar_entries
+      WHERE id = $1
+        AND (
+          user_id = $2
+          OR ($3 = 'ADMIN' AND course_id IS NOT NULL)
+        )
+      LIMIT 1
+    `;
+    const res = await pool.query<EditableRow>(q, [id, userId, role]);
+    const row = res.rows[0];
+    return row ? mapEditableEntry(row) : null;
+  },
+
+  async updateForUser(
+    userId: string,
+    entryId: string,
+    role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT",
+    input: {
+      title: string;
+      description?: string | null;
+      location?: string | null;
+      startsAt: string;
+      endsAt: string;
+      courseId?: string | null;
+    }
+  ): Promise<CalendarEntry | null> {
+    const id = String(entryId ?? "").trim();
+    if (!id) throw Object.assign(new Error("id is required"), { code: "VALIDATION" });
+
+    const title = String(input.title ?? "").trim();
+    if (!title) throw Object.assign(new Error("title is required"), { code: "VALIDATION" });
+
+    const startsAt = String(input.startsAt ?? "").trim();
+    const endsAt = String(input.endsAt ?? "").trim();
+    if (!startsAt || !endsAt) {
+      throw Object.assign(new Error("startsAt and endsAt are required"), { code: "VALIDATION" });
+    }
+    if (Date.parse(endsAt) <= Date.parse(startsAt)) {
+      throw Object.assign(new Error("endsAt must be after startsAt"), { code: "VALIDATION" });
+    }
+
+    const q = `
+      UPDATE calendar_entries
+      SET
+        course_id = $4,
+        title = $5,
+        description = $6,
+        location = $7,
+        starts_at = $8::timestamptz,
+        ends_at = $9::timestamptz
+      WHERE id = $1
+        AND (
+          user_id = $2
+          OR ($3 = 'ADMIN' AND course_id IS NOT NULL)
+        )
+      RETURNING id, user_id, title, description, location, starts_at, ends_at, created_at, course_id
+    `;
+    const res = await pool.query<Row>(q, [
+      id,
+      userId,
+      role,
+      input.courseId ?? null,
+      title,
+      input.description ?? null,
+      input.location ?? null,
+      startsAt,
+      endsAt,
+    ]);
+
+    const row = res.rows[0];
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      title: row.title,
+      description: row.description,
+      location: row.location,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      createdAt: row.created_at,
+      courseId: row.course_id,
+      canDelete: true,
+      source: row.course_id ? "COURSE_ENTRY" : "CALENDAR_ENTRY",
     };
   },
 

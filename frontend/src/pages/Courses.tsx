@@ -1160,6 +1160,7 @@ function AdminCoursesView() {
                 idPrefix="courses-admin-modules"
                 title="Modules"
                 subtitle="Create modules for the selected course and manage lecturer plus learner membership here."
+                canRemoveModules
                 onSelectedModuleIdChange={setSelectedCourseModuleId}
                 onChanged={loadAll}
               />

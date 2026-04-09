@@ -263,6 +263,11 @@
     width: 100%;
   }
 
+  .app-page-scroll {
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable both-edges;
+  }
+
   @media (min-width: 1024px) {
     .desktop-app-frame {
       max-width: none;
@@ -750,6 +755,249 @@
       rgba(140, 235, 255, 0.18) 50%,
       transparent 100%
     );
+  }
+
+  .d6-calendar-shell {
+    position: relative;
+    border-radius: 1.5rem;
+    background:
+      radial-gradient(circle at top right, rgba(140, 91, 255, 0.1), transparent 28%),
+      radial-gradient(circle at top left, rgba(140, 235, 255, 0.08), transparent 22%),
+      linear-gradient(180deg, rgba(9, 19, 50, 0.82) 0%, rgba(4, 12, 36, 0.8) 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(140, 235, 255, 0.05),
+      0 18px 44px rgba(3, 10, 28, 0.34);
+  }
+
+  .d6-calendar-shell .fc {
+    --fc-border-color: rgba(140, 235, 255, 0.12);
+    --fc-page-bg-color: transparent;
+    --fc-neutral-bg-color: rgba(8, 18, 48, 0.56);
+    --fc-list-event-hover-bg-color: rgba(14, 42, 99, 0.42);
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .d6-calendar-shell .fc .fc-scrollgrid,
+  .d6-calendar-shell .fc .fc-theme-standard td,
+  .d6-calendar-shell .fc .fc-theme-standard th {
+    border-color: rgba(140, 235, 255, 0.12);
+  }
+
+  .d6-calendar-shell .fc .fc-scrollgrid {
+    overflow: hidden;
+    border-radius: 1.25rem;
+    background: rgba(5, 14, 38, 0.26);
+  }
+
+  .d6-calendar-shell .fc .fc-col-header-cell {
+    background:
+      linear-gradient(180deg, rgba(14, 42, 99, 0.52) 0%, rgba(8, 18, 48, 0.68) 100%);
+  }
+
+  .d6-calendar-shell .fc .fc-col-header-cell-cushion {
+    padding: 0.9rem 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.62);
+  }
+
+  .d6-calendar-shell .fc .fc-daygrid-day-number,
+  .d6-calendar-shell .fc .fc-timegrid-axis-cushion,
+  .d6-calendar-shell .fc .fc-timegrid-slot-label-cushion,
+  .d6-calendar-shell .fc .fc-list-day-text,
+  .d6-calendar-shell .fc .fc-list-day-side-text {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .d6-calendar-shell .fc .fc-daygrid-day-number {
+    padding: 0.65rem 0.75rem 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .d6-calendar-shell .fc .fc-daygrid-day-frame {
+    min-height: 9rem;
+    background:
+      linear-gradient(180deg, rgba(8, 18, 48, 0.28) 0%, rgba(8, 18, 48, 0.14) 100%);
+  }
+
+  .d6-calendar-shell .fc .fc-day-today {
+    background:
+      radial-gradient(circle at top, rgba(140, 235, 255, 0.16), transparent 46%),
+      rgba(14, 42, 99, 0.28) !important;
+  }
+
+  .d6-calendar-shell .fc .fc-timegrid-col.fc-day-today {
+    background:
+      linear-gradient(180deg, rgba(14, 42, 99, 0.18) 0%, rgba(8, 18, 48, 0.18) 100%) !important;
+  }
+
+  .d6-calendar-shell .fc .fc-timegrid-slot {
+    height: 3rem;
+    border-color: rgba(140, 235, 255, 0.08);
+  }
+
+  .d6-calendar-shell .fc .fc-timegrid-now-indicator-line {
+    border-color: rgba(255, 94, 219, 0.88);
+  }
+
+  .d6-calendar-shell .fc .fc-timegrid-now-indicator-arrow {
+    border-color: rgba(255, 94, 219, 0.88);
+  }
+
+  .d6-calendar-shell .fc .fc-list-day-cushion,
+  .d6-calendar-shell .fc .fc-list-table td {
+    background: rgba(8, 18, 48, 0.42);
+  }
+
+  .d6-calendar-shell .fc .fc-list-day-cushion {
+    padding: 0.9rem 1rem;
+  }
+
+  .d6-calendar-shell .fc .fc-list-day-text,
+  .d6-calendar-shell .fc .fc-list-day-side-text {
+    font-weight: 600;
+  }
+
+  .d6-calendar-shell .fc .fc-list-event-title a,
+  .d6-calendar-shell .fc .fc-list-event-time {
+    color: rgba(255, 255, 255, 0.84);
+  }
+
+  .d6-calendar-shell .fc .fc-list-empty {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.62);
+  }
+
+  .d6-calendar-shell .fc .fc-more-link {
+    color: rgb(var(--neon-cyan));
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .d6-calendar-shell .fc .fc-event {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .d6-calendar-shell .fc .fc-event-main {
+    padding: 0;
+  }
+
+  .d6-calendar-event-chip {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    width: 100%;
+    min-height: 100%;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid rgba(140, 235, 255, 0.14);
+    border-radius: 0.9rem;
+    background: linear-gradient(180deg, rgba(8, 18, 48, 0.86) 0%, rgba(10, 20, 56, 0.82) 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+      0 10px 18px rgba(3, 10, 28, 0.24);
+  }
+
+  .d6-calendar-event-chip--personal {
+    border-color: rgba(140, 235, 255, 0.16);
+  }
+
+  .d6-calendar-event-chip--course {
+    border-color: rgba(52, 211, 153, 0.18);
+    background: linear-gradient(180deg, rgba(9, 31, 41, 0.84) 0%, rgba(8, 18, 48, 0.82) 100%);
+  }
+
+  .d6-calendar-event-chip--channel {
+    border-color: rgba(79, 166, 255, 0.18);
+    background: linear-gradient(180deg, rgba(10, 28, 58, 0.84) 0%, rgba(8, 18, 48, 0.82) 100%);
+  }
+
+  .d6-calendar-event-chip__dot {
+    flex-shrink: 0;
+    width: 0.55rem;
+    height: 0.55rem;
+    margin-top: 0.32rem;
+    border-radius: 9999px;
+    background: rgba(140, 235, 255, 0.94);
+    box-shadow: 0 0 12px rgba(140, 235, 255, 0.28);
+  }
+
+  .d6-calendar-event-chip--course .d6-calendar-event-chip__dot {
+    background: rgba(52, 211, 153, 0.92);
+    box-shadow: 0 0 12px rgba(52, 211, 153, 0.24);
+  }
+
+  .d6-calendar-event-chip--channel .d6-calendar-event-chip__dot {
+    background: rgba(79, 166, 255, 0.94);
+    box-shadow: 0 0 12px rgba(79, 166, 255, 0.24);
+  }
+
+  .d6-calendar-event-chip__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .d6-calendar-event-chip__time {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.56);
+  }
+
+  .d6-calendar-event-chip__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  .d6-calendar-event-chip__meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.58);
+  }
+
+  .d6-calendar-shell .fc .fc-list-event .d6-calendar-event-chip {
+    margin: 0.3rem 0;
+  }
+
+  .d6-calendar-shell .fc .fc-daygrid-event-harness {
+    margin-top: 0.2rem;
+  }
+
+  @media (max-width: 767px) {
+    .d6-calendar-shell .fc .fc-daygrid-day-frame {
+      min-height: 6.5rem;
+    }
+
+    .d6-calendar-shell .fc .fc-daygrid-day-number {
+      padding: 0.55rem 0.6rem 0;
+      font-size: 0.8rem;
+    }
+
+    .d6-calendar-event-chip {
+      padding: 0.35rem 0.45rem;
+      border-radius: 0.8rem;
+    }
+
+    .d6-calendar-event-chip__title {
+      font-size: 0.72rem;
+    }
+
+    .d6-calendar-shell .fc .fc-toolbar {
+      gap: 0.5rem;
+    }
   }
 
   .info-banner {

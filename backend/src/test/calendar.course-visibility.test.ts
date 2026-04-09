@@ -18,7 +18,6 @@ describe("Course-scoped calendar visibility", () => {
   const unique = `test_calendar_course_${Date.now()}`;
   let lecturerId = "";
   let lecturerToken = "";
-  let studentInCourseId = "";
   let studentInCourseToken = "";
   let studentOutsideCourseToken = "";
   let courseAId = "";
@@ -35,7 +34,6 @@ describe("Course-scoped calendar visibility", () => {
 
     lecturerId = lecturer.id;
     lecturerToken = signJwt(lecturer);
-    studentInCourseId = studentA.id;
     studentInCourseToken = signJwt(studentA);
     studentOutsideCourseToken = signJwt(studentB);
 
