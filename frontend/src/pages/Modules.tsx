@@ -7,8 +7,9 @@ import ErrorBanner from "../components/ErrorBanner";
 import NewAnnouncementModal from "../components/NewAnnouncementModal";
 import PageHeader from "../components/PageHeader";
 import { useAnnouncements } from "../hooks/useAnnouncements";
+import { isAcademicOrSuperAdmin } from "../lib/adminAccess";
 import { getUser } from "../lib/auth";
-import { listCourses, type CourseRecord } from "../lib/courseApi";
+import { listCourses, removeCourseModule, type CourseRecord } from "../lib/courseApi";
 
 type ModuleOption = {
   id: string;
@@ -57,17 +58,33 @@ export default function Modules() {
   const role = String(user?.role ?? "").toUpperCase();
   const isStudent = role === "STUDENT";
   const isLecturer = role === "LECTURER";
+  const canDeleteModules = isAcademicOrSuperAdmin(user);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [courses, setCourses] = useState<CourseRecord[]>([]);
   const [moduleLoading, setModuleLoading] = useState(true);
   const [moduleError, setModuleError] = useState<string | null>(null);
+  const [moduleInfo, setModuleInfo] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
   const [open, setOpen] = useState(false);
+
+  async function loadCourses() {
+    setModuleLoading(true);
+    setModuleError(null);
+    try {
+      const rows = await listCourses();
+      setCourses(rows);
+    } catch (e: unknown) {
+      setModuleError(e instanceof Error ? e.message : "Failed to load course modules");
+    } finally {
+      setModuleLoading(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadCourses() {
+    void (async () => {
       setModuleLoading(true);
       setModuleError(null);
       try {
@@ -75,16 +92,12 @@ export default function Modules() {
         if (!cancelled) setCourses(rows);
       } catch (e: unknown) {
         if (!cancelled) {
-          setModuleError(
-            e instanceof Error ? e.message : "Failed to load course modules"
-          );
+          setModuleError(e instanceof Error ? e.message : "Failed to load course modules");
         }
       } finally {
         if (!cancelled) setModuleLoading(false);
       }
-    }
-
-    void loadCourses();
+    })();
     return () => {
       cancelled = true;
     };
@@ -198,6 +211,29 @@ export default function Modules() {
       </button>
     ) : null;
 
+  async function onDeleteModule() {
+    if (!canDeleteModules || !selectedCourseId || !selectedModuleId || !selectedModule) return;
+
+    const confirmed = window.confirm(
+      `Delete "${selectedModule.label}" from ${selectedModule.courseLabel}? Only empty modules can be removed. Linked learners, lecturers, attendance, results, uploads, or announcements will block deletion.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setActionBusy(true);
+      setModuleError(null);
+      setModuleInfo(null);
+      setOpen(false);
+      await removeCourseModule(selectedCourseId, selectedModuleId);
+      await loadCourses();
+      setModuleInfo(`${selectedModule.label} was deleted.`);
+    } catch (e) {
+      setModuleError(e instanceof Error ? e.message : "Failed to delete module");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -216,6 +252,11 @@ export default function Modules() {
 
       {moduleError && <ErrorBanner message={moduleError} onDismiss={() => setModuleError(null)} />}
       {error && <ErrorBanner message={error} onDismiss={clearError} />}
+      {moduleInfo ? (
+        <div className="mt-4 rounded-2xl border border-[#38D5FF]/25 bg-[rgba(8,18,48,0.62)] px-4 py-3 text-sm text-white">
+          {moduleInfo}
+        </div>
+      ) : null}
 
       <div className="mt-6 rounded-3xl border border-[#38D5FF]/40 bg-[#081A44]/72 p-5 shadow-[0_0_0_1px_rgba(56,213,255,0.18),0_0_18px_rgba(56,213,255,0.18),0_12px_30px_rgba(2,12,42,0.55)]">
         {moduleLoading ? (
@@ -342,6 +383,28 @@ export default function Modules() {
                       ? selectedModule.lecturers.join(", ")
                       : "Not assigned yet"}
                   </div>
+                  {canDeleteModules ? (
+                    <div className="mt-4 rounded-2xl border border-[rgba(255,94,130,0.22)] bg-[rgba(74,10,31,0.42)] p-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-white">Delete module</div>
+                          <div className="mt-1 text-sm text-white/72">
+                            Remove this module only if it is empty. The backend will block deletion
+                            when linked learners, lecturers, attendance, results, uploads, or
+                            announcements still exist.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void onDeleteModule()}
+                          disabled={actionBusy}
+                          className="btn-danger px-4 py-2 text-sm disabled:opacity-60"
+                        >
+                          {actionBusy ? "Deleting..." : "Delete module"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <div className="mt-2 text-sm leading-6 text-white/72">

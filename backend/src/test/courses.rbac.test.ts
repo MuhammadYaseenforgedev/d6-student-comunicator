@@ -208,6 +208,35 @@ describe("Courses RBAC + visibility", () => {
     expect(lookup.rowCount ?? 0).toBe(0);
   });
 
+  test("academic admin can delete an empty module created through the module flow", async () => {
+    const createRes = await request(app)
+      .post("/api/attendance/modules")
+      .set(auth(ctx.academicAdminToken))
+      .send({
+        courseId: ctx.courseId,
+        facultyId: ctx.facultyId,
+        code: `MOD-FLOW-${Date.now()}`,
+        name: "Flow Delete Module",
+      });
+
+    expect(createRes.status).toBe(201);
+    const createdModuleId = String(createRes.body?.id ?? "");
+    expect(createdModuleId).toBeTruthy();
+
+    const deleteRes = await request(app)
+      .delete(`/api/courses/${ctx.courseId}/modules/${createdModuleId}`)
+      .set(auth(ctx.academicAdminToken));
+
+    expect(deleteRes.status).toBe(200);
+    expect(Boolean(deleteRes.body?.ok)).toBe(true);
+    expect(String(deleteRes.body?.moduleId ?? "")).toBe(createdModuleId);
+
+    const lookup = await pool.query(`SELECT 1 FROM faculty_modules WHERE id = $1 LIMIT 1`, [
+      createdModuleId,
+    ]);
+    expect(lookup.rowCount ?? 0).toBe(0);
+  });
+
   test("academic admin can delete an empty course", async () => {
     let tempCourseId = "";
 
