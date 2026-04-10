@@ -972,7 +972,7 @@ function AdminCoursesView() {
       {loading ? (
         <EmptyState title="Loading courses" message="Fetching course management data." />
       ) : (
-        <>
+        <div className="space-y-6 lg:max-h-[calc(100vh-16rem)] lg:overflow-y-auto lg:pr-2">
           <div className="teal-glow-card p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SectionTitle
@@ -1125,7 +1125,7 @@ function AdminCoursesView() {
           </div>
 
           {selectedCourse ? (
-            <div className="teal-glow-card overflow-hidden p-5 lg:flex lg:min-h-0 lg:max-h-[calc(100vh-16rem)] lg:flex-col">
+            <div className="teal-glow-card overflow-hidden p-5">
               <div className="relative overflow-hidden rounded-[1.75rem] border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] p-5">
                 <div className="pointer-events-none absolute inset-0 opacity-100">
                   <div className="absolute -left-10 top-0 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
@@ -1196,7 +1196,7 @@ function AdminCoursesView() {
 
               <div className="divider-soft mt-5" />
 
-              <div className="mt-5 space-y-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-2">
+              <div className="mt-5 space-y-6">
                 <div
                   className={workspaceTab === "overview" ? "space-y-6" : "hidden"}
                   aria-hidden={workspaceTab !== "overview"}
@@ -1396,7 +1396,7 @@ function AdminCoursesView() {
               message="Create a course or pick an existing one to manage modules and enrollments."
             />
           )}
-        </>
+        </div>
       )}
     </div>
   );
