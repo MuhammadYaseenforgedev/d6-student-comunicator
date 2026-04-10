@@ -240,6 +240,15 @@ function PremiumCourseCard({
   );
 }
 
+const adminCourseWorkspaceTabs = [
+  { id: "overview", label: "Overview" },
+  { id: "modules", label: "Modules" },
+  { id: "marksheet", label: "Marksheet" },
+  { id: "assessments", label: "Assessments" },
+] as const;
+
+type AdminCourseWorkspaceTab = (typeof adminCourseWorkspaceTabs)[number]["id"];
+
 export default function CoursesPage() {
   const user = getUser();
 
@@ -736,6 +745,8 @@ function AdminCoursesView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [workspaceTab, setWorkspaceTab] =
+    useState<AdminCourseWorkspaceTab>("overview");
 
   const selectedCourse = useMemo(
     () => courses.find((course) => course.id === selectedCourseId) ?? null,
@@ -1114,189 +1125,271 @@ function AdminCoursesView() {
           </div>
 
           {selectedCourse ? (
-            <>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <SummaryCard label="Modules" value={selectedCourse.summary.moduleCount} />
-                <SummaryCard label="Students" value={selectedCourse.summary.studentCount} />
-                <SummaryCard label="Lecturers" value={selectedCourse.summary.lecturerCount} />
-                <div className="teal-glow-card p-4">
-                  <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
-                  <div className="mt-3">
-                    <StatusBadge status={selectedCourse.isActive ? "ACTIVE" : "INACTIVE"} />
+            <div className="teal-glow-card overflow-hidden p-5 lg:flex lg:min-h-0 lg:max-h-[calc(100vh-16rem)] lg:flex-col">
+              <div className="relative overflow-hidden rounded-[1.75rem] border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] p-5">
+                <div className="pointer-events-none absolute inset-0 opacity-100">
+                  <div className="absolute -left-10 top-0 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
+                  <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/35 to-transparent" />
+                </div>
+
+                <div className="relative flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8CEBFF]/72">
+                      Selected Course Workspace
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-white">
+                      {selectedCourse.code} - {selectedCourse.name}
+                    </div>
+                    <div className="mt-2 max-w-3xl text-sm leading-6 text-white/72">
+                      {selectedCourse.description?.trim() ||
+                        "No course description has been added yet."}
+                    </div>
+                  </div>
+
+                  <StatusBadge status={selectedCourse.isActive ? "ACTIVE" : "INACTIVE"} />
+                </div>
+
+                <div className="relative mt-4 rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-white/72">
+                  Modules linked: {summarizeModules(selectedCourse.modules, 4)}
+                </div>
+
+                <div className="relative mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <SummaryCard label="Modules" value={selectedCourse.summary.moduleCount} />
+                  <SummaryCard label="Students" value={selectedCourse.summary.studentCount} />
+                  <SummaryCard label="Lecturers" value={selectedCourse.summary.lecturerCount} />
+                  <div className="teal-glow-card p-4">
+                    <div className="text-xs uppercase tracking-[0.16em] text-white/60">
+                      Status
+                    </div>
+                    <div className="mt-3">
+                      <StatusBadge status={selectedCourse.isActive ? "ACTIVE" : "INACTIVE"} />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <div className="teal-glow-card space-y-4 p-5">
-                  <SectionTitle
-                    title="Assign Module"
-                    subtitle="Link an existing module to the selected course."
-                  />
-                  <select
-                    value={selectedModuleId}
-                    onChange={(e) => setSelectedModuleId(e.target.value)}
-                    disabled={availableModules.length === 0}
-                    className="select-glass"
-                    aria-label="Select module to link to course"
-                    title="Select module to link to course"
-                  >
-                    {availableModules.length === 0 ? (
-                      <option value="">All modules are already linked to this course</option>
-                    ) : (
-                      availableModules.map((module) => (
-                        <option key={module.id} value={module.id}>
-                          {module.code} - {module.name}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => void onAssignModule()}
-                    disabled={busy || !selectedModuleId}
-                    className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
-                  >
-                    Link module
-                  </button>
-                </div>
+              <div
+                className="mt-5 flex flex-wrap gap-2"
+                role="tablist"
+                aria-label="Selected course workspace sections"
+              >
+                {adminCourseWorkspaceTabs.map((tab) => {
+                  const active = workspaceTab === tab.id;
 
-                <div className="teal-glow-card space-y-4 p-5">
-                  <SectionTitle
-                    title="Enroll Student"
-                    subtitle="Add a student to the selected course before linking them to its modules."
-                  />
-                  <select
-                    value={selectedStudentId}
-                    onChange={(e) => setSelectedStudentId(e.target.value)}
-                    disabled={availableStudents.length === 0}
-                    className="select-glass"
-                    aria-label="Select student to enroll in course"
-                    title="Select student to enroll in course"
-                  >
-                    {availableStudents.length === 0 ? (
-                      <option value="">All available students are already enrolled</option>
-                    ) : (
-                      availableStudents.map((student) => (
-                        <option key={student.id} value={student.id}>
-                          {student.email}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => void onEnrollStudent()}
-                    disabled={busy || !selectedStudentId}
-                    className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
-                  >
-                    Enroll student
-                  </button>
-                </div>
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setWorkspaceTab(tab.id)}
+                      className={[
+                        "tab-pill",
+                        active ? "tab-pill-active" : "tab-pill-idle",
+                      ].join(" ")}
+                      aria-pressed={active}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
 
-              <CourseModulesManager
-                courses={courses}
-                selectedCourseId={selectedCourseId}
-                eligibleStudentIds={selectedCourse.students.map((student) => student.id)}
-                idPrefix="courses-admin-modules"
-                title="Modules"
-                subtitle="Create modules for the selected course and manage lecturer plus learner membership here."
-                canRemoveModules
-                onSelectedModuleIdChange={setSelectedCourseModuleId}
-                onChanged={loadAll}
-              />
+              <div className="divider-soft mt-5" />
 
-              <CourseMarksheetPanel
-                modules={selectedCourse.modules}
-                selectedModuleId={selectedCourseModuleId}
-                onSelectedModuleIdChange={setSelectedCourseModuleId}
-              />
-
-              <CourseAssessmentsPanel
-                modules={selectedCourse.modules}
-                selectedModuleId={selectedCourseModuleId}
-                onSelectedModuleIdChange={setSelectedCourseModuleId}
-                canManage
-                title="Assessments"
-                subtitle="Upload and manage assessment files for the selected course modules."
-              />
-
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <div className="teal-glow-card p-5">
-                  <SectionTitle
-                    title="Module Coverage"
-                    subtitle="Review all modules linked to this course and their lecturer coverage."
-                  />
-                  <div className="mt-3 space-y-3">
-                    {selectedCourse.modules.length === 0 ? (
-                      <EmptyState
-                        title="No modules in course"
-                        message="Assign at least one module to this course to expose lecturer coverage."
+              <div className="mt-5 space-y-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-2">
+                <div
+                  className={workspaceTab === "overview" ? "space-y-6" : "hidden"}
+                  aria-hidden={workspaceTab !== "overview"}
+                >
+                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                    <div className="teal-glow-card space-y-4 p-5">
+                      <SectionTitle
+                        title="Assign Module"
+                        subtitle="Link an existing module to the selected course."
                       />
-                    ) : (
-                      selectedCourse.modules.map((module) => (
-                        <div
-                          key={module.id}
-                          className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
-                        >
-                          <div className="font-semibold text-white">
-                            {module.code} - {module.name}
-                          </div>
-                          <div className="mt-1 text-xs text-white/60">
-                            {module.facultyName} | {module.enrolledCount} linked students
-                          </div>
-                          <div className="mt-2 text-xs text-white/72">
-                            Lecturers:{" "}
-                            {module.lecturers.length > 0
-                              ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
-                              : "Not assigned yet"}
-                          </div>
-                        </div>
-                      ))
-                    )}
+                      <select
+                        value={selectedModuleId}
+                        onChange={(e) => setSelectedModuleId(e.target.value)}
+                        disabled={availableModules.length === 0}
+                        className="select-glass"
+                        aria-label="Select module to link to course"
+                        title="Select module to link to course"
+                      >
+                        {availableModules.length === 0 ? (
+                          <option value="">All modules are already linked to this course</option>
+                        ) : (
+                          availableModules.map((module) => (
+                            <option key={module.id} value={module.id}>
+                              {module.code} - {module.name}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void onAssignModule()}
+                        disabled={busy || !selectedModuleId}
+                        className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                      >
+                        Link module
+                      </button>
+                    </div>
+
+                    <div className="teal-glow-card space-y-4 p-5">
+                      <SectionTitle
+                        title="Enroll Student"
+                        subtitle="Add a student to the selected course before linking them to its modules."
+                      />
+                      <select
+                        value={selectedStudentId}
+                        onChange={(e) => setSelectedStudentId(e.target.value)}
+                        disabled={availableStudents.length === 0}
+                        className="select-glass"
+                        aria-label="Select student to enroll in course"
+                        title="Select student to enroll in course"
+                      >
+                        {availableStudents.length === 0 ? (
+                          <option value="">All available students are already enrolled</option>
+                        ) : (
+                          availableStudents.map((student) => (
+                            <option key={student.id} value={student.id}>
+                              {student.email}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void onEnrollStudent()}
+                        disabled={busy || !selectedStudentId}
+                        className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                      >
+                        Enroll student
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                <div className="teal-glow-card p-5">
-                  <SectionTitle
-                    title="Enrolled Students"
-                    subtitle="Students in this course will receive linked module access."
-                  />
-                  <div className="mt-3 space-y-3">
-                    {selectedCourse.students.length === 0 ? (
-                      <EmptyState
-                        title="No students enrolled"
-                        message="Enroll a student in this course to unlock module access and dashboard course content."
+                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                    <div className="teal-glow-card p-5">
+                      <SectionTitle
+                        title="Module Coverage"
+                        subtitle="Review all modules linked to this course and their lecturer coverage."
                       />
-                    ) : (
-                      selectedCourse.students.map((student) => (
-                        <div
-                          key={student.id}
-                          className="flex items-center justify-between gap-3 rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
-                        >
-                          <div>
-                            <div className="font-semibold text-white">{student.email}</div>
-                            <div className="mt-1 text-xs text-white/60">
-                              {student.studentNumber?.trim() || "No student number"} | Enrolled{" "}
-                              {formatDate(student.enrolledAt)}
+                      <div className="mt-3 space-y-3">
+                        {selectedCourse.modules.length === 0 ? (
+                          <EmptyState
+                            title="No modules in course"
+                            message="Assign at least one module to this course to expose lecturer coverage."
+                          />
+                        ) : (
+                          selectedCourse.modules.map((module) => (
+                            <div
+                              key={module.id}
+                              className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
+                            >
+                              <div className="font-semibold text-white">
+                                {module.code} - {module.name}
+                              </div>
+                              <div className="mt-1 text-xs text-white/60">
+                                {module.facultyName} | {module.enrolledCount} linked students
+                              </div>
+                              <div className="mt-2 text-xs text-white/72">
+                                Lecturers:{" "}
+                                {module.lecturers.length > 0
+                                  ? module.lecturers
+                                      .map((lecturer) => lecturer.email)
+                                      .join(", ")
+                                  : "Not assigned yet"}
+                              </div>
                             </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void onRemoveStudent(student.id)}
-                            disabled={busy}
-                            className="btn-danger px-3 py-1 text-xs disabled:opacity-60"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))
-                    )}
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="teal-glow-card p-5">
+                      <SectionTitle
+                        title="Enrolled Students"
+                        subtitle="Students in this course will receive linked module access."
+                      />
+                      <div className="mt-3 space-y-3">
+                        {selectedCourse.students.length === 0 ? (
+                          <EmptyState
+                            title="No students enrolled"
+                            message="Enroll a student in this course to unlock module access and dashboard course content."
+                          />
+                        ) : (
+                          selectedCourse.students.map((student) => (
+                            <div
+                              key={student.id}
+                              className="flex items-center justify-between gap-3 rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
+                            >
+                              <div>
+                                <div className="font-semibold text-white">{student.email}</div>
+                                <div className="mt-1 text-xs text-white/60">
+                                  {student.studentNumber?.trim() || "No student number"} |
+                                  {" "}Enrolled {formatDate(student.enrolledAt)}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void onRemoveStudent(student.id)}
+                                disabled={busy}
+                                className="btn-danger px-3 py-1 text-xs disabled:opacity-60"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                <div
+                  className={workspaceTab === "modules" ? "space-y-6" : "hidden"}
+                  aria-hidden={workspaceTab !== "modules"}
+                >
+                  <CourseModulesManager
+                    courses={courses}
+                    selectedCourseId={selectedCourseId}
+                    eligibleStudentIds={selectedCourse.students.map((student) => student.id)}
+                    idPrefix="courses-admin-modules"
+                    title="Modules"
+                    subtitle="Create modules for the selected course and manage lecturer plus learner membership here."
+                    canRemoveModules
+                    onSelectedModuleIdChange={setSelectedCourseModuleId}
+                    onChanged={loadAll}
+                  />
+                </div>
+
+                <div
+                  className={workspaceTab === "marksheet" ? "space-y-6" : "hidden"}
+                  aria-hidden={workspaceTab !== "marksheet"}
+                >
+                  <CourseMarksheetPanel
+                    modules={selectedCourse.modules}
+                    selectedModuleId={selectedCourseModuleId}
+                    onSelectedModuleIdChange={setSelectedCourseModuleId}
+                  />
+                </div>
+
+                <div
+                  className={workspaceTab === "assessments" ? "space-y-6" : "hidden"}
+                  aria-hidden={workspaceTab !== "assessments"}
+                >
+                  <CourseAssessmentsPanel
+                    modules={selectedCourse.modules}
+                    selectedModuleId={selectedCourseModuleId}
+                    onSelectedModuleIdChange={setSelectedCourseModuleId}
+                    canManage
+                    title="Assessments"
+                    subtitle="Upload and manage assessment files for the selected course modules."
+                  />
+                </div>
               </div>
-            </>
+            </div>
           ) : (
             <EmptyState
               title="No course selected"
