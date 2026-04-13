@@ -264,6 +264,7 @@
   }
 
   .app-page-scroll {
+    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     scrollbar-gutter: stable both-edges;
   }
@@ -1014,5 +1015,151 @@
     background: rgba(74, 10, 31, 0.72);
     color: #ffe1e8;
     box-shadow: 0 0 16px rgba(255, 94, 219, 0.08);
+  }
+
+  @media (max-width: 1023px) {
+    .app-page-scroll,
+    .mobile-drawer-scroll,
+    .mobile-chip-row,
+    .mobile-tabs-scroll,
+    .mobile-table-shell {
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .app-page-scroll,
+    .mobile-drawer-scroll {
+      touch-action: pan-y;
+      overscroll-behavior-y: contain;
+    }
+
+    .glass-panel,
+    .glass-panel-strong,
+    .glass-panel-premium,
+    .teal-glow-card {
+      border-radius: 1.5rem;
+      box-shadow:
+        0 0 0 1px rgba(140, 235, 255, 0.07) inset,
+        0 0 18px rgba(140, 235, 255, 0.1),
+        0 14px 30px rgba(3, 10, 28, 0.34);
+    }
+
+    .page-header-title {
+      font-size: 1.6rem;
+      line-height: 1.08;
+    }
+
+    .page-header-subtitle {
+      max-width: 38rem;
+      line-height: 1.55;
+    }
+
+    .page-header-actions {
+      display: grid;
+      width: 100%;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+    }
+
+    .page-header-actions > * {
+      min-width: 0 !important;
+      width: 100%;
+    }
+
+    .btn-primary,
+    .btn-secondary,
+    .btn-danger,
+    .input-glass,
+    .select-glass,
+    .tab-pill,
+    .nav-item {
+      min-height: 3rem;
+    }
+
+    textarea.input-glass {
+      min-height: 7rem;
+    }
+
+    .nav-item {
+      border-radius: 1.15rem;
+      padding: 0.9rem 1rem;
+      font-size: 0.95rem;
+    }
+
+    .tab-pill {
+      white-space: nowrap;
+    }
+
+    .mobile-chip-row,
+    .mobile-tabs-scroll {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 0.625rem;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding-inline: 0.125rem;
+      padding-bottom: 0.25rem;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+      overscroll-behavior-x: contain;
+    }
+
+    .mobile-chip-row::-webkit-scrollbar,
+    .mobile-tabs-scroll::-webkit-scrollbar {
+      display: none;
+    }
+
+    .mobile-chip-row > *,
+    .mobile-tabs-scroll > * {
+      flex: 0 0 auto;
+      scroll-snap-align: start;
+    }
+
+    .mobile-table-shell {
+      overflow: auto;
+      border-radius: 1rem;
+      overscroll-behavior-x: contain;
+    }
+
+    .mobile-inline-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.75rem;
+    }
+
+    .mobile-inline-actions > * {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .app-footer-shell {
+      min-height: 0;
+    }
+
+    .d6-calendar-shell {
+      border-radius: 1.25rem;
+    }
+
+    .d6-calendar-shell .fc .fc-toolbar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .d6-calendar-shell .fc .fc-toolbar-chunk {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .d6-calendar-shell .fc .fc-button {
+      min-height: 2.75rem;
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .page-header-actions {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 }

@@ -224,7 +224,7 @@ export default function NotificationsPage() {
             <button
               type="button"
               onClick={() => setRefreshTick((current) => current + 1)}
-              className="btn-secondary min-w-[110px]"
+              className="btn-secondary min-w-[110px] sm:w-auto"
             >
               Refresh
             </button>
@@ -232,7 +232,7 @@ export default function NotificationsPage() {
               type="button"
               onClick={onMarkAllRead}
               disabled={busyAll || items.length === 0}
-              className="btn-primary min-w-[150px]"
+              className="btn-primary min-w-[150px] sm:w-auto"
             >
               {busyAll ? "Updating..." : "Mark all read"}
             </button>
@@ -264,7 +264,7 @@ export default function NotificationsPage() {
 
           <div className="divider-soft" />
 
-          <div className="flex flex-wrap gap-2">
+          <div className="mobile-chip-row sm:flex sm:flex-wrap sm:gap-2">
             {visibleCategoryOptions.map((option) => {
               const active = category === option.value;
               return (
@@ -306,7 +306,7 @@ export default function NotificationsPage() {
         <div className="divider-soft my-5" />
 
         <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <div className="app-page-scroll min-h-0 max-h-[70vh] flex-1 space-y-3 overflow-y-auto pr-1 md:max-h-[75vh] lg:max-h-[calc(100vh-20rem)]">
+          <div className="app-page-scroll min-h-0 flex-1 space-y-3 overflow-visible pr-0 md:max-h-[75vh] md:overflow-y-auto md:pr-1 lg:max-h-[calc(100vh-20rem)]">
             {loading ? (
               <div className="info-banner">Loading notifications...</div>
             ) : items.length === 0 ? (
@@ -359,7 +359,7 @@ export default function NotificationsPage() {
 
                       <div className="flex shrink-0 flex-wrap items-center gap-2">
                         {href && (
-                          <Link to={href} className="btn-secondary">
+                          <Link to={href} className="btn-secondary w-full sm:w-auto">
                             Open
                           </Link>
                         )}
@@ -369,7 +369,7 @@ export default function NotificationsPage() {
                             type="button"
                             onClick={() => void onMarkRead(item.id)}
                             disabled={busyId === item.id}
-                            className="btn-primary"
+                            className="btn-primary w-full sm:w-auto"
                           >
                             {busyId === item.id ? "Saving..." : "Mark read"}
                           </button>
@@ -388,7 +388,7 @@ export default function NotificationsPage() {
                 type="button"
                 onClick={() => void loadMore()}
                 disabled={loadingMore}
-                className="btn-secondary min-w-[140px]"
+                className="btn-secondary min-w-[140px] sm:w-auto"
               >
                 {loadingMore ? "Loading..." : "Load more"}
               </button>

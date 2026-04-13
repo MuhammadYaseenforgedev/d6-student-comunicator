@@ -22,7 +22,7 @@ export default function ParentPortalLayout() {
       />
 
       <div className="mt-6 teal-glow-card p-2">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+        <div className="mobile-tabs-scroll sm:grid sm:grid-cols-6 sm:gap-2">
           <Tab to="/app/parent" end label="Overview" />
           <Tab to="/app/parent/finance" label="Finance" />
           <Tab to="/app/parent/results" label="Results" />
@@ -54,7 +54,7 @@ function Tab({
       end={end}
       className={({ isActive }) =>
         [
-          "rounded-2xl border px-3 py-2 text-center text-sm font-semibold transition-all duration-200",
+          "min-w-[128px] shrink-0 rounded-2xl border px-3 py-2 text-center text-sm font-semibold transition-all duration-200 sm:min-w-0",
           isActive
             ? "border-[rgba(140,235,255,0.30)] bg-[rgba(14,42,99,0.72)] text-white shadow-[0_0_18px_rgba(140,235,255,0.16)]"
             : "border-transparent bg-transparent text-white/78 hover:border-[rgba(140,235,255,0.22)] hover:bg-[rgba(140,235,255,0.08)] hover:text-white",

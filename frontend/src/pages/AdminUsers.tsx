@@ -480,7 +480,7 @@ export default function AdminUsers() {
             <button
               type="submit"
               disabled={creating}
-              className="btn-primary min-w-[150px]"
+              className="btn-primary min-w-[150px] w-full sm:w-auto"
             >
               {creating ? "Creating..." : "Create account"}
             </button>
@@ -512,13 +512,13 @@ export default function AdminUsers() {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary min-w-[110px]"
+              className="btn-primary min-w-[110px] w-full sm:w-auto"
             >
               Search
             </button>
           </form>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="mobile-chip-row sm:flex sm:flex-wrap sm:gap-2">
             {ROLE_FILTERS.map((option) => {
               const active = option.value === roleFilter;
               return (
@@ -573,7 +573,7 @@ export default function AdminUsers() {
 
         <div className="divider-soft my-5" />
 
-        <div className="max-h-[26rem] overflow-y-auto pr-1 space-y-3">
+        <div className="space-y-3 max-h-none overflow-visible pr-0 lg:max-h-[26rem] lg:overflow-y-auto lg:pr-1">
           {loading ? (
             <div className="info-banner">Loading accounts...</div>
           ) : accounts.length === 0 ? (
@@ -645,7 +645,7 @@ export default function AdminUsers() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mobile-inline-actions">
                       {account.role === "STUDENT" && (
                         <button
                           type="button"
@@ -816,7 +816,7 @@ export default function AdminUsers() {
                         </div>
                       </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
+                      <div className="mt-4 flex flex-wrap gap-2 mobile-inline-actions">
                         <button
                           type="button"
                           onClick={() => {

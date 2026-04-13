@@ -367,7 +367,7 @@ export default function AdminFinance() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[340px_1fr]">
         <section className="teal-glow-card p-5">
           <form
-            className="flex gap-2"
+            className="flex flex-col gap-3 sm:flex-row"
             onSubmit={(e) => {
               e.preventDefault();
               setSearch(searchInput.trim());
@@ -385,7 +385,7 @@ export default function AdminFinance() {
               title="Search student or parent email"
               aria-label="Search student or parent email"
             />
-            <button type="submit" className="btn-primary min-w-[100px]">
+            <button type="submit" className="btn-primary min-w-[100px] w-full sm:w-auto">
               Search
             </button>
           </form>
@@ -606,14 +606,14 @@ export default function AdminFinance() {
                     />
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 mobile-inline-actions">
                     <button
                       type="button"
                       onClick={() => {
                         void saveSummary();
                       }}
                       disabled={busy === "summary"}
-                      className="btn-primary"
+                      className="btn-primary w-full sm:w-auto"
                     >
                       {busy === "summary" ? "Saving..." : "Save account"}
                     </button>
@@ -624,7 +624,7 @@ export default function AdminFinance() {
                         void downloadStatement();
                       }}
                       disabled={busy === "download"}
-                      className="btn-secondary"
+                      className="btn-secondary w-full sm:w-auto"
                     >
                       {busy === "download"
                         ? "Downloading..."
@@ -703,7 +703,7 @@ export default function AdminFinance() {
                       void addTransaction();
                     }}
                     disabled={busy === "transaction"}
-                    className="btn-primary"
+                    className="btn-primary w-full sm:w-auto"
                   >
                     {busy === "transaction" ? "Posting..." : "Add transaction"}
                   </button>
@@ -843,7 +843,7 @@ export default function AdminFinance() {
                       void addDocument();
                     }}
                     disabled={busy === "document"}
-                    className="btn-primary"
+                    className="btn-primary w-full sm:w-auto"
                   >
                     {busy === "document" ? "Sending..." : "Send document"}
                   </button>
@@ -930,7 +930,7 @@ export default function AdminFinance() {
                       void addNotification();
                     }}
                     disabled={busy === "notification"}
-                    className="btn-primary inline-flex w-fit"
+                    className="btn-primary inline-flex w-full sm:w-fit"
                   >
                     {busy === "notification"
                       ? "Sending..."
@@ -1036,8 +1036,8 @@ export default function AdminFinance() {
                   Transactions
                 </div>
 
-                <div className="mt-4 overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
+                <div className="mobile-table-shell mt-4 overflow-x-auto">
+                  <table className="min-w-[42rem] text-left text-sm sm:min-w-full">
                     <thead className="text-white/55">
                       <tr>
                         <th className="px-3 py-2 font-medium">Occurred</th>

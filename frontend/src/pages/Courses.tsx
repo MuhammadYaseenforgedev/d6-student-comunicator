@@ -192,7 +192,7 @@ function PremiumCourseCard({
           Modules: {summarizeModules(course.modules, 3)}
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
             <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Modules</div>
             <div className="mt-1 text-base font-semibold text-white">
@@ -349,7 +349,7 @@ function StudentCoursesView() {
                     {course.description?.trim() || "No course description has been added yet."}
                   </div>
 
-                  <div className="relative mt-4 grid grid-cols-3 gap-3">
+                  <div className="relative mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <SummaryCard label="Modules" value={modules.length} />
                     <SummaryCard label="Lecturers" value={lecturers.length} />
                     <div className="teal-glow-card p-4">
@@ -1031,7 +1031,7 @@ function AdminCoursesView() {
                 type="button"
                 onClick={() => void onCreateCourse()}
                 disabled={busy}
-                className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
               >
                 {busy ? "Saving..." : "Create course"}
               </button>
@@ -1106,7 +1106,7 @@ function AdminCoursesView() {
                     type="button"
                     onClick={() => void onSaveCourse()}
                     disabled={busy || !selectedCourse}
-                    className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                    className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
                   >
                     {busy ? "Saving..." : "Save course"}
                   </button>
@@ -1170,7 +1170,7 @@ function AdminCoursesView() {
               </div>
 
               <div
-                className="mt-5 flex flex-wrap gap-2"
+                className="mobile-chip-row mt-5 sm:flex sm:flex-wrap sm:gap-2"
                 role="tablist"
                 aria-label="Selected course workspace sections"
               >
@@ -1229,7 +1229,7 @@ function AdminCoursesView() {
                         type="button"
                         onClick={() => void onAssignModule()}
                         disabled={busy || !selectedModuleId}
-                        className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                        className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
                       >
                         Link module
                       </button>
@@ -1262,7 +1262,7 @@ function AdminCoursesView() {
                         type="button"
                         onClick={() => void onEnrollStudent()}
                         disabled={busy || !selectedStudentId}
-                        className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                        className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
                       >
                         Enroll student
                       </button>

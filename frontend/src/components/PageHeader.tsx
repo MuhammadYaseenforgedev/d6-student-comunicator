@@ -53,21 +53,29 @@ export default function PageHeader({
   tone = "default",
 }: Props) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
+    <div className="page-header-shell flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="page-header-copy min-w-0">
         <h1
           className={[
-            "text-2xl font-bold tracking-tight",
+            "page-header-title text-[1.75rem] font-bold tracking-tight sm:text-2xl",
             headingToneClass(tone),
           ].join(" ")}
         >
           {title}
         </h1>
 
-        {subtitle && <p className="mt-1 text-sm text-white/72">{subtitle}</p>}
+        {subtitle && (
+          <p className="page-header-subtitle mt-1 text-sm text-white/72">
+            {subtitle}
+          </p>
+        )}
       </div>
 
-      {actions && <div className="flex gap-2">{actions}</div>}
+      {actions && (
+        <div className="page-header-actions flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

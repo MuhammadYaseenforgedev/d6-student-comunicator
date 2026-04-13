@@ -425,7 +425,7 @@ function LecturerAttendanceView({
             type="button"
             onClick={createSession}
             disabled={busy || !moduleId}
-            className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+            className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
           >
             {busy ? "Creating..." : "Create Session"}
           </button>
@@ -456,7 +456,7 @@ function LecturerAttendanceView({
             </select>
           </Field>
 
-          <div className="max-h-[420px] overflow-auto rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)]">
+          <div className="mobile-table-shell max-h-none overflow-auto rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] lg:max-h-[420px]">
             {!sessionId ? (
               <div className="p-4 text-sm text-white/80">
                 Select a session to load its attendance roster.
@@ -466,7 +466,7 @@ function LecturerAttendanceView({
                 No enrolled students for this session.
               </div>
             ) : (
-              <table className="min-w-full text-sm">
+              <table className="min-w-[44rem] text-sm lg:min-w-full">
                 <thead className="bg-[rgba(140,235,255,0.08)] text-white/85">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Student</th>
@@ -533,7 +533,7 @@ function LecturerAttendanceView({
             type="button"
             onClick={submitMarks}
             disabled={busy || !sessionId || rosterStudents.length === 0}
-            className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+            className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
           >
             {busy ? "Submitting..." : "Submit Attendance"}
           </button>
@@ -724,7 +724,7 @@ function StudentAttendanceView() {
             type="button"
             onClick={() => void loadAttendanceView()}
             disabled={loading}
-            className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+            className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
           >
             {loading ? "Loading..." : "Refresh"}
           </button>
@@ -734,7 +734,7 @@ function StudentAttendanceView() {
             type="button"
             onClick={() => void onExport()}
             disabled={loading || !from || !to}
-            className="btn-secondary px-4 py-2 text-sm disabled:opacity-60"
+            className="btn-secondary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
           >
             {loading ? "Working..." : "Download CSV"}
           </button>
@@ -861,7 +861,7 @@ function StudentAttendanceView() {
                     disabled={
                       busySessionId === session.id || Boolean(session.checkedInAt)
                     }
-                    className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                    className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
                   >
                     {session.checkedInAt
                       ? "Checked in"
