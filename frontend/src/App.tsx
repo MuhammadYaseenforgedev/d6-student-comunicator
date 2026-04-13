@@ -87,7 +87,7 @@ export default function App() {
 
         {/* ROUTES */}
         <div className="relative z-10 flex min-h-screen flex-col">
-          <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-visible lg:overflow-hidden">
             <Routes>
               <Route path="/" element={<Navigate to="/login" replace />} />
               <Route
