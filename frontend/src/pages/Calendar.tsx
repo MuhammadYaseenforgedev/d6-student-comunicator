@@ -45,9 +45,9 @@ export default function Calendar() {
   if (role === "PARENT") return <Navigate to="/app/parent/calendar" replace />;
 
   return (
-    <div>
+    <div className="flex min-h-full flex-col">
       <PageHeader title="Calendar" subtitle={subtitle} />
-      <div className="mt-6">
+      <div className="mt-6 min-h-0 flex-1">
         <CalendarWorkspace courseOptions={canAssignCourse ? courseOptions : []} />
       </div>
     </div>

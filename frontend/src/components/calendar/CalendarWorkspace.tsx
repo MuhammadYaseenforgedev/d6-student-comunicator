@@ -308,8 +308,8 @@ export default function CalendarWorkspace({ childId, courseOptions = [] }: Props
 
   return (
     <>
-      <div className="teal-glow-card p-5">
-        <div className="flex flex-col gap-5">
+      <div className="teal-glow-card flex min-h-0 flex-col p-5">
+        <div className="flex min-h-0 flex-col gap-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="max-w-2xl space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.58)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/72">
@@ -461,8 +461,8 @@ export default function CalendarWorkspace({ childId, courseOptions = [] }: Props
 
           {error && <div className="error-banner">{error}</div>}
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="glass-panel-strong d6-calendar-shell overflow-hidden p-2 sm:p-4">
+          <div className="grid min-h-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="glass-panel-strong d6-calendar-shell min-h-[28rem] min-w-0 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:max-h-[72dvh]">
               <FullCalendar
                 ref={calendarRef}
                 plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}

@@ -68,10 +68,8 @@ export default function AppFooter({ onOpenLegal }: AppFooterProps) {
         <div className="app-footer-shell glass-panel relative min-h-[189px] overflow-hidden p-0">
           <div className="sidebar-gradient-border-overlay absolute inset-0" />
           <div className="flex h-full flex-col justify-between">
-            {/* TOP SECTION */}
             <div className="px-5 pt-5 sm:px-8 sm:pt-6">
               <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.6fr_1fr]">
-                {/* Contact */}
                 <div className="space-y-3 text-center text-sm text-white/82 lg:text-left">
                   <h3 className="text-lg font-semibold text-white">
                     Contact Details
@@ -98,19 +96,26 @@ export default function AppFooter({ onOpenLegal }: AppFooterProps) {
                   </a>
 
                   <div className="flex items-center justify-center gap-2 lg:justify-start">
-                    <Phone size={16} aria-hidden="true" className="text-[#8CEBFF]" />
+                    <Phone
+                      size={16}
+                      aria-hidden="true"
+                      className="text-[#8CEBFF]"
+                    />
                     <a href="tel:+27108803795">+27 10 880 3795</a>
                   </div>
 
                   <div className="flex items-center justify-center gap-2 lg:justify-start">
-                    <Mail size={16} aria-hidden="true" className="text-[#8CEBFF]" />
+                    <Mail
+                      size={16}
+                      aria-hidden="true"
+                      className="text-[#8CEBFF]"
+                    />
                     <a href="mailto:hello@forgeacademy.co.za">
                       hello@forgeacademy.co.za
                     </a>
                   </div>
                 </div>
 
-                {/* CENTER BRANDING */}
                 <div className="flex flex-col items-center justify-center text-center">
                   <img
                     src={forgeLogo}
@@ -123,7 +128,6 @@ export default function AppFooter({ onOpenLegal }: AppFooterProps) {
                   </div>
                 </div>
 
-                {/* SOCIALS */}
                 <div className="flex flex-col items-center lg:items-end">
                   <div className="text-sm uppercase tracking-[0.25em] text-white/75">
                     Join Us on the Journey
@@ -174,7 +178,6 @@ export default function AppFooter({ onOpenLegal }: AppFooterProps) {
               </div>
             </div>
 
-            {/* PARTNER LOGOS */}
             <div className="flex flex-col items-center px-4 pb-4 pt-2 sm:px-6">
               <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:gap-x-10">
                 {partnerLogos.map((logo) => (

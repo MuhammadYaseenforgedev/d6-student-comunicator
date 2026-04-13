@@ -1000,7 +1000,8 @@ function AdminCoursesView() {
       {loading ? (
         <EmptyState title="Loading courses" message="Fetching course management data." />
       ) : (
-        <div className="space-y-6 lg:max-h-[calc(100vh-16rem)] lg:overflow-y-auto lg:pr-2">
+        <section className="workspace-scroll-panel">
+          <div className="app-page-scroll space-y-6 max-h-none overflow-visible pr-0 lg:max-h-[calc(100vh-16rem)] lg:overflow-y-auto lg:pr-2">
           <div className="teal-glow-card p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SectionTitle
@@ -1424,7 +1425,8 @@ function AdminCoursesView() {
               message="Create a course or pick an existing one to manage modules and enrollments."
             />
           )}
-        </div>
+          </div>
+        </section>
       )}
     </div>
   );

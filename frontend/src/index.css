@@ -783,6 +783,9 @@
   .d6-calendar-shell {
     position: relative;
     border-radius: 1.5rem;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
     background:
       radial-gradient(circle at top right, rgba(140, 91, 255, 0.1), transparent 28%),
       radial-gradient(circle at top left, rgba(140, 235, 255, 0.08), transparent 22%),
