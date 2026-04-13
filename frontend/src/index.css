@@ -485,6 +485,28 @@
       0 16px 38px rgba(3, 10, 28, 0.4);
   }
 
+  .workspace-scroll-panel {
+    @apply relative flex min-h-0 flex-col overflow-hidden rounded-3xl border p-5 backdrop-blur-2xl;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(8, 18, 48, 0.76) 0%,
+        rgba(5, 14, 38, 0.74) 100%
+      );
+    border-color: rgba(140, 235, 255, 0.24);
+    box-shadow:
+      0 0 0 1px rgba(140, 235, 255, 0.08) inset,
+      0 0 24px rgba(140, 235, 255, 0.14),
+      0 16px 38px rgba(3, 10, 28, 0.4);
+  }
+
+  .workspace-meta-pill {
+    @apply rounded-2xl border px-3 py-2 text-xs;
+    border-color: rgba(140, 235, 255, 0.16);
+    background: rgba(8, 18, 48, 0.56);
+    color: rgba(255, 255, 255, 0.7);
+  }
+
   .purple-glow-card {
     @apply rounded-3xl border backdrop-blur-2xl;
     background:

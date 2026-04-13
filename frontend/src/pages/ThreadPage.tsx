@@ -177,7 +177,7 @@ export default function ThreadPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <section className="teal-glow-card overflow-hidden">
+      <section className="workspace-scroll-panel p-0">
         <div className="flex items-center justify-between gap-4 border-b border-[rgba(140,235,255,0.12)] px-5 py-4">
           <div>
             <div className="text-sm font-semibold text-white">Conversation</div>
@@ -188,14 +188,14 @@ export default function ThreadPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+          <div className="workspace-meta-pill">
             Live thread
           </div>
         </div>
 
         <div
           ref={scrollRef}
-          className="h-[60vh] space-y-4 overflow-y-auto px-4 py-4 sm:px-5"
+          className="app-page-scroll h-auto max-h-none space-y-4 overflow-visible px-4 py-4 sm:px-5 md:h-[60vh] md:overflow-y-auto"
         >
           {loading ? (
             <div className="info-banner">Loading messages...</div>

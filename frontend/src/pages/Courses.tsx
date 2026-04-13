@@ -634,62 +634,90 @@ function LecturerCoursesView() {
                 {studentError && <div className="error-banner mt-4">{studentError}</div>}
 
                 <div className="mt-5 grid grid-cols-1 gap-6 xl:h-[min(42rem,calc(100vh-16rem))] xl:grid-cols-[320px_minmax(0,1fr)]">
-                  <div className="space-y-3 xl:min-h-0 xl:overflow-y-auto xl:pr-2">
-                    {studentLoading ? (
-                      <div className="info-banner">Loading student profiles...</div>
-                    ) : studentRows.length === 0 ? (
-                      <EmptyState
-                        title="No learners matched"
-                        message="Try another email or ID number, or pick a different course."
+                  <div className="workspace-scroll-panel">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <SectionTitle
+                        title="Learner Directory"
+                        subtitle="Choose a learner from this course to inspect their profile."
                       />
-                    ) : (
-                      studentRows.map((student) => (
-                        <button
-                          key={student.userId}
-                          type="button"
-                          onClick={() => setSelectedStudentId(student.userId)}
-                          className={[
-                            "w-full rounded-3xl border p-4 text-left transition-all duration-200",
-                            student.userId === selectedStudentId
-                              ? "border-[rgba(140,235,255,0.30)] bg-[rgba(14,42,99,0.28)] shadow-[0_0_0_1px_rgba(140,235,255,0.05),0_0_18px_rgba(140,235,255,0.08)]"
-                              : "border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)] hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.24)] hover:bg-[rgba(8,18,48,0.66)]",
-                          ].join(" ")}
-                        >
-                          <div className="text-sm font-semibold text-white">
-                            {`${student.fullName} ${student.surname}`.trim() || student.email}
-                          </div>
-                          <div className="mt-1 text-xs text-white/60">{student.email}</div>
-                          <div className="mt-2 text-xs text-white/72">
-                            {student.idNumber || "No ID number"} |{" "}
-                            {student.studentNumber || "No student number"}
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-2.5 py-1 text-[11px] text-white/70">
-                              {student.courseCode?.trim() || student.courseName?.trim() || "Course not assigned"}
-                            </span>
-                            <span className="rounded-full border border-[rgba(255,196,87,0.24)] bg-[rgba(97,59,9,0.45)] px-2.5 py-1 text-[11px] text-[#ffe8b0]">
-                              {student.feeStatus || "No fee status"}
-                            </span>
-                          </div>
-                        </button>
-                      ))
-                    )}
+                      <div className="workspace-meta-pill">
+                        {studentRows.length} learner{studentRows.length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+
+                    <div className="divider-soft my-5" />
+
+                    <div className="app-page-scroll space-y-3 max-h-none overflow-visible pr-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+                      {studentLoading ? (
+                        <div className="info-banner">Loading student profiles...</div>
+                      ) : studentRows.length === 0 ? (
+                        <EmptyState
+                          title="No learners matched"
+                          message="Try another email or ID number, or pick a different course."
+                        />
+                      ) : (
+                        studentRows.map((student) => (
+                          <button
+                            key={student.userId}
+                            type="button"
+                            onClick={() => setSelectedStudentId(student.userId)}
+                            className={[
+                              "w-full rounded-3xl border p-4 text-left transition-all duration-200",
+                              student.userId === selectedStudentId
+                                ? "border-[rgba(140,235,255,0.30)] bg-[rgba(14,42,99,0.28)] shadow-[0_0_0_1px_rgba(140,235,255,0.05),0_0_18px_rgba(140,235,255,0.08)]"
+                                : "border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)] hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.24)] hover:bg-[rgba(8,18,48,0.66)]",
+                            ].join(" ")}
+                          >
+                            <div className="text-sm font-semibold text-white">
+                              {`${student.fullName} ${student.surname}`.trim() || student.email}
+                            </div>
+                            <div className="mt-1 text-xs text-white/60">{student.email}</div>
+                            <div className="mt-2 text-xs text-white/72">
+                              {student.idNumber || "No ID number"} |{" "}
+                              {student.studentNumber || "No student number"}
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-2.5 py-1 text-[11px] text-white/70">
+                                {student.courseCode?.trim() || student.courseName?.trim() || "Course not assigned"}
+                              </span>
+                              <span className="rounded-full border border-[rgba(255,196,87,0.24)] bg-[rgba(97,59,9,0.45)] px-2.5 py-1 text-[11px] text-[#ffe8b0]">
+                                {student.feeStatus || "No fee status"}
+                              </span>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
                   </div>
 
-                  <div className="xl:min-h-0 xl:overflow-y-auto xl:pr-2">
-                    {!selectedStudentId ? (
-                      <div className="info-banner">
-                        Select a learner to view their profile.
+                  <div className="workspace-scroll-panel">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <SectionTitle
+                        title="Profile Detail"
+                        subtitle="View the selected learner's personal, academic, and payment capture details."
+                      />
+                      <div className="workspace-meta-pill">
+                        {selectedStudentProfile?.email || "No learner selected"}
                       </div>
-                    ) : studentDetailLoading ? (
-                      <div className="info-banner">Loading selected learner...</div>
-                    ) : selectedStudentProfile ? (
-                      <StudentProfileDetailPanel profile={selectedStudentProfile} />
-                    ) : (
-                      <div className="info-banner">
-                        Student profile detail is unavailable for the selected learner.
-                      </div>
-                    )}
+                    </div>
+
+                    <div className="divider-soft my-5" />
+
+                    <div className="app-page-scroll max-h-none overflow-visible pr-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+                      {!selectedStudentId ? (
+                        <div className="info-banner">
+                          Select a learner to view their profile.
+                        </div>
+                      ) : studentDetailLoading ? (
+                        <div className="info-banner">Loading selected learner...</div>
+                      ) : selectedStudentProfile ? (
+                        <StudentProfileDetailPanel profile={selectedStudentProfile} />
+                      ) : (
+                        <div className="info-banner">
+                          Student profile detail is unavailable for the selected learner.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

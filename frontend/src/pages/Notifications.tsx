@@ -287,7 +287,7 @@ export default function NotificationsPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <section className="teal-glow-card flex min-h-0 flex-1 flex-col p-5">
+      <section className="workspace-scroll-panel flex min-h-0 flex-1 flex-col">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-white">Activity Feed</h2>
@@ -298,7 +298,7 @@ export default function NotificationsPage() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+          <div className="workspace-meta-pill">
             Live updates enabled
           </div>
         </div>

@@ -553,7 +553,7 @@ export default function AdminUsers() {
         </div>
       </section>
 
-      <section className="teal-glow-card p-5">
+      <section className="workspace-scroll-panel">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="text-lg font-semibold text-white">
@@ -566,14 +566,14 @@ export default function AdminUsers() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+          <div className="workspace-meta-pill">
             {accounts.length} account(s)
           </div>
         </div>
 
         <div className="divider-soft my-5" />
 
-        <div className="space-y-3 max-h-none overflow-visible pr-0 lg:max-h-[26rem] lg:overflow-y-auto lg:pr-1">
+        <div className="app-page-scroll space-y-3 max-h-none overflow-visible pr-0 lg:max-h-[26rem] lg:overflow-y-auto lg:pr-1">
           {loading ? (
             <div className="info-banner">Loading accounts...</div>
           ) : accounts.length === 0 ? (
