@@ -819,7 +819,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex w-full items-center justify-center rounded-2xl bg-[rgba(9,19,50,0.78)] px-4 py-3 text-sm font-semibold text-[#8CEBFF] shadow-[0_8px_18px_rgba(3,10,28,0.28)] [text-shadow:0_0_14px_rgba(140,235,255,0.45)] transition-all duration-200 hover:-translate-y-px hover:bg-[rgba(15,31,78,0.88)] hover:text-[#BDF5FF] hover:[text-shadow:0_0_18px_rgba(140,235,255,0.6)] hover:shadow-[0_10px_22px_rgba(3,10,28,0.34)]"
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-[rgba(140,235,255,0.28)] bg-[rgba(9,19,50,0.78)] px-4 py-3 text-sm font-semibold text-[#8CEBFF] shadow-[0_8px_18px_rgba(3,10,28,0.28)] [text-shadow:0_0_14px_rgba(140,235,255,0.45)] transition-all duration-200 hover:-translate-y-px hover:border-[rgba(140,235,255,0.42)] hover:bg-[rgba(15,31,78,0.88)] hover:text-[#BDF5FF] hover:[text-shadow:0_0_18px_rgba(140,235,255,0.6)] hover:shadow-[0_10px_22px_rgba(3,10,28,0.34)]"
                   >
                     {link.label}
                   </a>
