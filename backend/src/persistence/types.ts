@@ -220,6 +220,7 @@ export type CreateAnnouncementInput = {
   body: string;
   pinned?: boolean;
   createdBy: string;
+  expiresAt?: string;
 };
 
 export type UpdateAnnouncementInput = {
@@ -228,6 +229,7 @@ export type UpdateAnnouncementInput = {
   title?: string;
   body?: string;
   pinned?: boolean;
+  expiresAt?: string;
 };
 
 export type CreateMessageInput = {
@@ -277,7 +279,12 @@ export type ChannelRepo = {
 };
 
 export type AnnouncementRepo = {
-  listByChannel(channelId: string): Promise<Announcement[]>;
+  listByChannel(
+    channelId: string,
+    opts?: {
+      includeExpired?: boolean;
+    }
+  ): Promise<Announcement[]>;
   create(input: CreateAnnouncementInput): Promise<Announcement>;
   update(input: UpdateAnnouncementInput): Promise<Announcement | null>;
   delete(id: string, channelId: string): Promise<boolean>;

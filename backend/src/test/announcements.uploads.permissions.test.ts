@@ -279,6 +279,77 @@ describe("Announcements and uploads permissions", () => {
     expect(studentBlocked.status).toBe(403);
   });
 
+  test("Announcements: expiry is validated and expired items are hidden by default", async () => {
+    const pastCreate = await request(app)
+      .post(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.lecturerToken))
+      .send({
+        title: `expired-${Date.now()}`,
+        body: "Should be rejected",
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      });
+    expect(pastCreate.status).toBe(400);
+
+    const futureCreate = await request(app)
+      .post(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.lecturerToken))
+      .send({
+        title: `timed-${Date.now()}`,
+        body: "Visible for a while",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      });
+    expect(futureCreate.status).toBe(201);
+
+    const timedAnnouncementId = String(futureCreate.body?.id ?? "");
+    expect(timedAnnouncementId).toBeTruthy();
+    expect(typeof futureCreate.body?.expiresAt).toBe("string");
+
+    await pool.query(
+      `
+        UPDATE announcements
+        SET expires_at = now() - interval '2 minutes'
+        WHERE id = $1
+      `,
+      [timedAnnouncementId]
+    );
+
+    const lecturerActive = await request(app)
+      .get(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.lecturerToken));
+    expect(lecturerActive.status).toBe(200);
+    const lecturerActiveRows = toRows(lecturerActive.body);
+    expect(
+      lecturerActiveRows.some((row) => String(row.id) === timedAnnouncementId)
+    ).toBe(false);
+
+    const studentActive = await request(app)
+      .get(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.studentToken));
+    expect(studentActive.status).toBe(200);
+    const studentActiveRows = toRows(studentActive.body);
+    expect(
+      studentActiveRows.some((row) => String(row.id) === timedAnnouncementId)
+    ).toBe(false);
+
+    const lecturerAll = await request(app)
+      .get(`/api/channels/${ctx.channelId}/announcements?includeExpired=true`)
+      .set(auth(ctx.lecturerToken));
+    expect(lecturerAll.status).toBe(200);
+    const lecturerAllRows = toRows(lecturerAll.body);
+    expect(
+      lecturerAllRows.some((row) => String(row.id) === timedAnnouncementId)
+    ).toBe(true);
+
+    const studentAll = await request(app)
+      .get(`/api/channels/${ctx.channelId}/announcements?includeExpired=true`)
+      .set(auth(ctx.studentToken));
+    expect(studentAll.status).toBe(200);
+    const studentAllRows = toRows(studentAll.body);
+    expect(
+      studentAllRows.some((row) => String(row.id) === timedAnnouncementId)
+    ).toBe(false);
+  });
+
   test("Uploads: student can submit; parent is forbidden; list/download visibility is role-safe", async () => {
     await pool.query(
       `

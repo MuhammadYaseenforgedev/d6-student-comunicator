@@ -90,12 +90,33 @@ function channelCardClass(channel: string) {
   ].join(" ");
 }
 
+function formatDateTime(raw?: string | null) {
+  if (!raw) return "Not set";
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return raw;
+  return new Date(parsed).toLocaleString();
+}
+
+function isExpired(raw?: string | null) {
+  const parsed = Date.parse(raw ?? "");
+  return Number.isFinite(parsed) && parsed <= Date.now();
+}
+
+function statusBadgeClass(status: "active" | "expired") {
+  if (status === "expired") {
+    return `${badgeBase()} border-[#FF8C8C]/70 bg-[#FF5E7E]/14 text-[#FFD2D9]`;
+  }
+
+  return `${badgeBase()} border-[#8CEBFF]/55 bg-[#8CEBFF]/10 text-[#D9FBFF]`;
+}
+
 export default function AnnouncementCard({
   a,
   canManage = false,
   onUpdate,
   onDelete,
 }: Props) {
+  const expired = isExpired(a.expiresAt ?? undefined);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(a.title);
   const [body, setBody] = useState(a.body);
@@ -191,6 +212,12 @@ export default function AnnouncementCard({
             Pinned
           </span>
         )}
+
+        {a.expiresAt && (
+          <span className={statusBadgeClass(expired ? "expired" : "active")}>
+            {expired ? "Expired" : "Active"}
+          </span>
+        )}
       </div>
 
       {editing ? (
@@ -244,9 +271,14 @@ export default function AnnouncementCard({
         </div>
       )}
 
-      <div className="mt-5 flex items-center justify-between gap-4 text-xs text-white/72">
+      <div className="mt-5 grid gap-2 text-xs text-white/72 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div className="truncate">{a.author}</div>
-        <div className="shrink-0">{new Date(a.createdAt).toLocaleString()}</div>
+        <div className="text-left sm:text-right">Posted {formatDateTime(a.createdAt)}</div>
+        <div className="sm:col-span-2 text-white/62">
+          {a.expiresAt
+            ? `Expires ${formatDateTime(a.expiresAt)}`
+            : "Legacy announcement without an expiry date"}
+        </div>
       </div>
 
       {canManage && (

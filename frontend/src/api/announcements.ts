@@ -46,6 +46,7 @@ type BackendAnnouncement = {
   pinned?: boolean;
   createdBy?: string;
   createdAt?: string;
+  expiresAt?: string | null;
 };
 
 const CHANNEL_NAME: Record<ChannelKey, string> = {
@@ -115,6 +116,7 @@ function toUiAnnouncement(row: BackendAnnouncement, channel: ChannelKey): Announ
     pinned: Boolean(row.pinned ?? false),
     author,
     createdAt: row.createdAt ?? new Date().toISOString(),
+    expiresAt: row.expiresAt ?? null,
     moduleId: row.moduleId ?? null,
     moduleCode: row.moduleCode ?? null,
     moduleName: row.moduleName ?? null,
@@ -147,6 +149,7 @@ export async function createAnnouncement(payload: AnnouncementCreate): Promise<A
       title: payload.title,
       body: payload.body,
       pinned: payload.pinned,
+      expiresAt: payload.expiresAt,
       ...(payload.channel === "modules" && payload.moduleId
         ? { moduleId: payload.moduleId }
         : {}),

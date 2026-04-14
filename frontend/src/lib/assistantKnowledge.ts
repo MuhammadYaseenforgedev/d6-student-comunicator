@@ -85,6 +85,35 @@ type AuthProfile = {
   welcome: string;
 };
 
+const APP_NAVIGATION_TERMS = [
+  "open",
+  "go to",
+  "take me to",
+  "navigate to",
+];
+const APP_CAPABILITY_REQUEST_TERMS = [
+  "can you",
+  "could you",
+  "do you",
+  "are you able to",
+  "please",
+];
+const APP_CAPABILITY_ACTION_TERMS = [
+  "manage",
+  "approve",
+  "edit",
+  "change",
+  "delete",
+  "remove",
+  "create",
+  "assign",
+  "publish",
+  "link",
+  "unlink",
+  "process",
+];
+const MAX_ASSISTANT_QUICK_ACTIONS = 4;
+
 function includesAny(input: string, terms: string[]) {
   return terms.some((term) => input.includes(term));
 }
@@ -129,14 +158,14 @@ export function getRoleAssistantProfile(
         subtitle: "Parent portal guide",
         placeholder: "Ask about children, finance, results, or calendar...",
         welcome:
-          "I am Harbor, your parent portal guide. I can help you follow children, open results, check finance, and move around the parent tools.",
+          "I am Harbor, your parent portal guide. I can help you check your child's results, attendance, finance updates, and calendar items.",
         overview:
-          "You can use me to move between the parent overview, linked children, results, finance, calendar, attendance, messages, and uploads.",
+          "I can guide you through child results, attendance, finance, calendar, linked children, messages, and the parent tools you already have access to.",
         spotlightIds: [
-          "parent-overview",
           "parent-results",
+          "parent-attendance",
           "parent-finance",
-          "parent-children",
+          "parent-calendar",
         ],
       };
 
@@ -148,10 +177,10 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about modules, messages, uploads, attendance, or results...",
         welcome:
-          "I am Mentor, your lecturer assistant. I can point you to teaching spaces, messages, shared materials, attendance, and result management.",
+          "I am Mentor, your lecturer assistant. I can help with announcements, attendance coverage, modules, calendar items, and result workflows.",
         overview:
-          "You can ask me to open modules, messages, uploads, calendar, attendance, or manage results for your teaching workflow.",
-        spotlightIds: ["home", "modules", "manage-results", "messages"],
+          "I can guide you across teaching spaces, announcements, attendance, calendar planning, uploads, messages, and manage results when that page is available to you.",
+        spotlightIds: ["attendance", "notifications", "calendar", "modules"],
       };
 
     case "finance-admin":
@@ -162,9 +191,9 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about finance accounts, statements, notices, or messages...",
         welcome:
-          "I am Ledger, your finance admin guide. I focus on billing, account status, finance documents, and the messages area you can reach from this workspace.",
+          "I am Ledger, your finance admin guide. I can help you review finance accounts, statements, notices, and the finance pages available in this workspace.",
         overview:
-          "You can ask me to open finance or messages and I will keep the guidance limited to the finance admin workspace.",
+          "I will keep guidance limited to the finance admin workspace, with shortcuts to finance and the related communication area that already exists for your role.",
         spotlightIds: ["admin-finance", "messages"],
       };
 
@@ -176,12 +205,12 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about accounts, approvals, results, modules, or notifications...",
         welcome:
-          "I am Atlas, your academic admin guide. I can help you move between academic pages, account management, parent link approvals, and result operations.",
+          "I am Atlas, your academic admin guide. I can help you move across accounts, parent link approvals, announcements, results, and other academic workspace pages.",
         overview:
-          "You can ask me for dashboard pages, accounts, parent link approvals, results, messages, notifications, modules, calendar, and uploads.",
+          "I can guide you through accounts, parent link approvals, announcements, results, messages, calendar, uploads, and the academic pages already available to your role.",
         spotlightIds: [
-          "home",
           "admin-users",
+          "notifications",
           "admin-parent-links",
           "manage-results",
         ],
@@ -195,12 +224,12 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about accounts, tickets, approvals, results, or navigation...",
         welcome:
-          "I am Sparky, your super admin guide. I can help you move across the full admin workspace, including tickets, approvals, accounts, and academic operations.",
+          "I am Sparky, your super admin guide. I can help you move across accounts, approvals, announcements, tickets, and the wider admin workspace.",
         overview:
-          "You can ask me for admin tools, tickets, account management, result management, messages, notifications, and the main academic pages.",
+          "I can guide you through admin tools, tickets, accounts, approvals, announcements, result management, messages, and the main academic pages your role can access.",
         spotlightIds: [
-          "home",
           "admin-users",
+          "notifications",
           "admin-parent-links",
           "admin-tickets",
         ],
@@ -214,10 +243,10 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about modules, results, messages, uploads, or attendance...",
         welcome:
-          "I am Pulse, your student guide. I can help you signpost modules, results, attendance, messages, uploads, and the rest of your day-to-day app journey.",
+          "I am Pulse, your student guide. I can help you with announcements, attendance, results, and your schedule.",
         overview:
-          "You can ask me to take you to modules, results, calendar, attendance, messages, uploads, notifications, or the dashboard.",
-        spotlightIds: ["home", "modules", "student-results", "messages"],
+          "I can guide you to the most useful student pages for announcements, results, attendance, calendar, modules, messages, uploads, and notifications.",
+        spotlightIds: ["student-results", "attendance", "notifications", "calendar"],
       };
   }
 }
@@ -851,6 +880,85 @@ export function getAssistantDestinations(
   }
 }
 
+function findAssistantDestinationMatch(
+  destinations: AssistantDestination[],
+  query: string
+): AssistantDestination | undefined {
+  return destinations.find((entry) => includesAny(query, entry.keywords));
+}
+
+export function getAssistantNavigationAnswer(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  rawInput: string
+): AssistantAnswer<AssistantDestinationId> | null {
+  const query = normalize(rawInput);
+  if (!query || !includesAny(query, APP_NAVIGATION_TERMS)) {
+    return null;
+  }
+
+  const destinations = getAssistantDestinations(user);
+  const matchedDestination = findAssistantDestinationMatch(destinations, query);
+  if (!matchedDestination) {
+    return null;
+  }
+
+  return {
+    text: `I can take you to ${matchedDestination.label}. Use the button below to open it.`,
+    actionIds: [matchedDestination.id],
+  };
+}
+
+function extractCapabilityActionPhrase(query: string): string | null {
+  const prefixes = [
+    "can you ",
+    "could you ",
+    "do you ",
+    "are you able to ",
+    "please ",
+  ];
+
+  for (const prefix of prefixes) {
+    if (query.startsWith(prefix)) {
+      const phrase = query.slice(prefix.length).trim();
+      return phrase || null;
+    }
+  }
+
+  return null;
+}
+
+export function getAssistantUnsupportedActionAnswer(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  rawInput: string
+): AssistantAnswer<AssistantDestinationId> | null {
+  const query = normalize(rawInput);
+  if (!query || includesAny(query, APP_NAVIGATION_TERMS)) {
+    return null;
+  }
+
+  if (
+    !includesAny(query, APP_CAPABILITY_REQUEST_TERMS) ||
+    !includesAny(query, APP_CAPABILITY_ACTION_TERMS)
+  ) {
+    return null;
+  }
+
+  const destinations = getAssistantDestinations(user);
+  const matchedDestination = findAssistantDestinationMatch(destinations, query);
+  if (!matchedDestination) {
+    return null;
+  }
+
+  const requestedAction =
+    extractCapabilityActionPhrase(query) ??
+    `complete that task on the ${matchedDestination.label.toLowerCase()} page`;
+
+  return {
+    text: `I can help open the ${matchedDestination.label} page, but I can't directly ${requestedAction} inside the chatbot yet.`,
+    actionIds: [matchedDestination.id],
+  };
+}
+
 function followUpIds(
   currentId: AssistantDestinationId,
   profile: AssistantProfile
@@ -858,15 +966,17 @@ function followUpIds(
   switch (currentId) {
     case "home":
     case "parent-overview":
-      return profile.spotlightIds.filter((id) => id !== currentId).slice(0, 3);
+      return profile.spotlightIds
+        .filter((id) => id !== currentId)
+        .slice(0, MAX_ASSISTANT_QUICK_ACTIONS);
     case "messages":
       return profile.spotlightIds
         .filter((id) => id !== "messages")
-        .slice(0, 3);
+        .slice(0, MAX_ASSISTANT_QUICK_ACTIONS);
     default:
       return profile.spotlightIds
         .filter((id) => id !== currentId)
-        .slice(0, 3);
+        .slice(0, MAX_ASSISTANT_QUICK_ACTIONS);
   }
 }
 
@@ -891,7 +1001,7 @@ export function getCurrentAssistantContext(
       title: "Channel",
       summary:
         "You are inside a channel space. Use this area for announcements and route-specific content, then jump back to the dashboard or related work areas when you are done.",
-      actionIds: profile.spotlightIds.slice(0, 3),
+      actionIds: profile.spotlightIds.slice(0, MAX_ASSISTANT_QUICK_ACTIONS),
     };
   }
 
@@ -907,7 +1017,7 @@ export function getCurrentAssistantContext(
   return {
     title: "Navigation help",
     summary: profile.overview,
-    actionIds: profile.spotlightIds,
+    actionIds: profile.spotlightIds.slice(0, MAX_ASSISTANT_QUICK_ACTIONS),
   };
 }
 
@@ -920,12 +1030,22 @@ export function answerAppQuestion(
   const profile = getRoleAssistantProfile(user);
   const destinations = getAssistantDestinations(user);
   const context = getCurrentAssistantContext(user, pathname);
+  const navigationAnswer = getAssistantNavigationAnswer(user, rawInput);
+  const unsupportedActionAnswer = getAssistantUnsupportedActionAnswer(user, rawInput);
 
   if (!query) {
     return {
       text: profile.overview,
       actionIds: profile.spotlightIds,
     };
+  }
+
+  if (navigationAnswer) {
+    return navigationAnswer;
+  }
+
+  if (unsupportedActionAnswer) {
+    return unsupportedActionAnswer;
   }
 
   if (
@@ -966,9 +1086,7 @@ export function answerAppQuestion(
     };
   }
 
-  const matchedDestination = destinations.find((entry) =>
-    includesAny(query, entry.keywords)
-  );
+  const matchedDestination = findAssistantDestinationMatch(destinations, query);
 
   if (matchedDestination) {
     return {
@@ -979,7 +1097,7 @@ export function answerAppQuestion(
 
   return {
     text:
-      "I can guide you to the right area if you ask for a page like messages, results, finance, uploads, attendance, accounts, or children.",
+      "I can help with announcements, attendance, results, finance, and calendar questions, depending on your role. I can also help you open the right page for that task.",
     actionIds: profile.spotlightIds,
   };
 }

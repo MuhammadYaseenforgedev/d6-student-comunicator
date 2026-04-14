@@ -5,9 +5,12 @@ import AssistantWidget, {
   type AssistantReply,
 } from "./AssistantWidget";
 import { askAppAssistant } from "../lib/assistantApi";
+import { getAssistantCapabilityFallback, getAssistantLiveReply } from "../lib/assistantLiveData";
 import {
   answerAppQuestion,
   getAssistantDestinations,
+  getAssistantNavigationAnswer,
+  getAssistantUnsupportedActionAnswer,
   getCurrentAssistantContext,
   getRoleAssistantProfile,
 } from "../lib/assistantKnowledge";
@@ -80,7 +83,32 @@ export default function RoleAssistant({ user }: RoleAssistantProps) {
       contextSummary={context.summary}
       spotlightActions={spotlightActions}
       onAsk={async (input, history) => {
+        const navigationAnswer = getAssistantNavigationAnswer(user, input);
+        if (navigationAnswer?.actionIds?.length) {
+          return {
+            text: navigationAnswer.text,
+            actions: navigationAnswer.actionIds.map(actionFor),
+          };
+        }
+
+        const unsupportedActionAnswer = getAssistantUnsupportedActionAnswer(user, input);
+        if (unsupportedActionAnswer?.actionIds?.length) {
+          return {
+            text: unsupportedActionAnswer.text,
+            actions: unsupportedActionAnswer.actionIds.map(actionFor),
+          };
+        }
+
         const answer = answerAppQuestion(user, location.pathname, input);
+        const liveReply = await getAssistantLiveReply(user, input, history);
+        if (liveReply) {
+          const actions = (liveReply.actionIds ?? answer.actionIds ?? []).map(actionFor);
+          return {
+            text: liveReply.text,
+            actions,
+          };
+        }
+
         const actions = (answer.actionIds ?? []).map(actionFor);
 
         try {
@@ -101,6 +129,14 @@ export default function RoleAssistant({ user }: RoleAssistantProps) {
             actions,
           };
         } catch {
+          if (!answer.actionIds?.length) {
+            const fallback = getAssistantCapabilityFallback();
+            return {
+              text: fallback.text,
+              actions,
+            };
+          }
+
           return {
             text: answer.text,
             actions,
