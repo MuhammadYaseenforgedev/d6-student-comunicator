@@ -44,7 +44,7 @@ const LOGIN_QUICK_ACCESS_LINKS = [
     href: "https://pulse.forgetalent.co.za/",
   },
   {
-    label: "Ticket System",
+    label: "Send a Ticket",
     href: "https://pulse.forgetalent.co.za/ticket.php",
   },
 ] as const;
@@ -812,29 +812,18 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
 
             </form>
 
-            <div className="mt-5 rounded-[28px] border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.42)] px-4 py-4 shadow-[0_18px_44px_rgba(3,10,28,0.28)] backdrop-blur-xl sm:px-5">
-              <div className="flex flex-col gap-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#8CEBFF]/72">
-                  Quick Access
-                </p>
-                <p className="text-sm text-white/62">
-                  Open key Pulse tools in a new tab.
-                </p>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 {LOGIN_QUICK_ACCESS_LINKS.map((link) => (
                   <a
                     key={link.href}
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="btn-secondary inline-flex w-full items-center justify-center px-4 py-3 text-sm font-semibold"
+                    className="inline-flex w-full items-center justify-center rounded-2xl bg-[rgba(9,19,50,0.78)] px-4 py-3 text-sm font-semibold text-[#8CEBFF] shadow-[0_8px_18px_rgba(3,10,28,0.28)] [text-shadow:0_0_14px_rgba(140,235,255,0.45)] transition-all duration-200 hover:-translate-y-px hover:bg-[rgba(15,31,78,0.88)] hover:text-[#BDF5FF] hover:[text-shadow:0_0_18px_rgba(140,235,255,0.6)] hover:shadow-[0_10px_22px_rgba(3,10,28,0.34)]"
                   >
                     {link.label}
                   </a>
                 ))}
-              </div>
             </div>
           </div>
         </div>
