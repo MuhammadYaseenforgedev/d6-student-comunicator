@@ -14,7 +14,7 @@
 // - shared neon input/button styling
 
 import { useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   consumeLogoutNotice,
   setAuth,
@@ -810,14 +810,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                 </p>
               )}
 
-              <div className="flex items-center justify-center">
-                <Link
-                  to="/support"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] px-4 py-2 text-sm font-semibold text-[#8CEBFF] transition hover:border-[rgba(140,235,255,0.34)] hover:text-white"
-                >
-                  Send a ticket
-                </Link>
-              </div>
             </form>
 
             <div className="mt-5 rounded-[28px] border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.42)] px-4 py-4 shadow-[0_18px_44px_rgba(3,10,28,0.28)] backdrop-blur-xl sm:px-5">

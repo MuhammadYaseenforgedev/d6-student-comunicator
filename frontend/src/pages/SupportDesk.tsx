@@ -3,7 +3,6 @@ import { useState } from "react";
 import PageHeader from "../components/PageHeader";
 import {
   listSupportTicketsByEmail,
-  submitSupportTicket,
   type SupportTicketIssueType,
   type SupportTicketPublic,
 } from "../lib/supportApi";
@@ -32,6 +31,8 @@ const TROUBLESHOOTING_TIPS = [
   },
 ];
 
+const PULSE_TICKET_SYSTEM_URL = "https://pulse.forgetalent.co.za/ticket.php";
+
 function when(value: string): string {
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? new Date(ms).toLocaleString() : value;
@@ -47,17 +48,38 @@ function statusTone(status: string): string {
   return "border-[rgba(255,196,87,0.30)] bg-[rgba(255,196,87,0.14)] text-[#ffecc2]";
 }
 
+function pulseSyncTone(status: SupportTicketPublic["pulseSyncStatus"]): string {
+  if (status === "SYNCED") {
+    return "border-[rgba(52,211,153,0.30)] bg-[rgba(52,211,153,0.14)] text-[#d9fff1]";
+  }
+  if (status === "FAILED") {
+    return "border-[rgba(255,107,138,0.30)] bg-[rgba(255,107,138,0.14)] text-[#ffe2ea]";
+  }
+  if (status === "SKIPPED") {
+    return "border-[rgba(161,161,170,0.28)] bg-[rgba(161,161,170,0.12)] text-[#f1f5f9]";
+  }
+  return "border-[rgba(79,166,255,0.30)] bg-[rgba(79,166,255,0.14)] text-[#d9eeff]";
+}
+
+function pulseSyncLabel(status: SupportTicketPublic["pulseSyncStatus"]): string {
+  switch (status) {
+    case "SYNCED":
+      return "Pulse handoff sent";
+    case "FAILED":
+      return "Pulse handoff failed";
+    case "SKIPPED":
+      return "Pulse handoff skipped";
+    default:
+      return "Pulse handoff pending";
+  }
+}
+
 export default function SupportDesk() {
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const [deviceNumber, setDeviceNumber] = useState("");
-  const [issueType, setIssueType] = useState<SupportTicketIssueType>("ACCOUNT_ACCESS");
-  const [message, setMessage] = useState("");
   const [tickets, setTickets] = useState<SupportTicketPublic[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [hasLoadedTickets, setHasLoadedTickets] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
 
   async function loadTickets(requesterEmail = email) {
     const normalized = requesterEmail.trim().toLowerCase();
@@ -65,6 +87,7 @@ export default function SupportDesk() {
 
     try {
       setLoadingTickets(true);
+      setHasLoadedTickets(true);
       const response = await listSupportTicketsByEmail(normalized);
       setTickets(Array.isArray(response.value) ? response.value : []);
     } catch (e) {
@@ -75,38 +98,15 @@ export default function SupportDesk() {
     }
   }
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function onLookupSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!email.trim()) {
       setError("Email address is required.");
       return;
     }
-    if (!message.trim() || message.trim().length < 10) {
-      setError("Describe the issue in at least 10 characters.");
-      return;
-    }
 
-    try {
-      setBusy(true);
-      setError(null);
-      setInfo(null);
-
-      const response = await submitSupportTicket({
-        email: email.trim().toLowerCase(),
-        name: name.trim() || undefined,
-        deviceNumber: deviceNumber.trim() || undefined,
-        issueType,
-        message: message.trim(),
-      });
-
-      setMessage("");
-      setInfo(response.message ?? "Support request submitted. The team will contact you by email.");
-      await loadTickets(email);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to submit ticket");
-    } finally {
-      setBusy(false);
-    }
+    setError(null);
+    await loadTickets(email);
   }
 
   return (
@@ -121,8 +121,8 @@ export default function SupportDesk() {
         <div className="relative space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <PageHeader
-              title="IT Support & Assistance"
-              subtitle="Submit a support request and track previous issues linked to your email address."
+              title="Pulse Ticket Visibility"
+              subtitle="Create new tickets in Pulse Ticket System and use Forge to review the read-only sync records currently tracked for your email."
             />
 
             <div className="flex gap-2">
@@ -143,116 +143,85 @@ export default function SupportDesk() {
           </div>
 
           {error && <div className="error-banner">{error}</div>}
-          {info && <div className="info-banner">{info}</div>}
+
+          <div className="info-banner">
+            This is an interim read-only view powered by Forge sync metadata. Live Pulse ticket reading and live Pulse ticket status are not configured in this environment yet.
+          </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             <section className="teal-glow-card overflow-hidden p-0">
               <div className="bg-gradient-to-r from-[#4FA6FF] via-[#7C69FF] to-[#FF5EDB] px-6 py-4 text-lg font-semibold text-white">
-                Submit New Request
+                Pulse Ticket System
               </div>
 
-              <form onSubmit={onSubmit} className="space-y-4 p-6">
-                <div>
-                  <label htmlFor="support-email" className="mb-2 block text-sm font-medium text-white/80">
-                    Your Email Address
-                  </label>
-                  <input
-                    id="support-email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    type="email"
-                    placeholder="name@example.com"
-                    className="input-glass w-full"
-                  />
+              <div className="space-y-5 p-6">
+                <div className="space-y-3 text-sm text-white/74">
+                  <p>
+                    New ticket creation stays in Pulse. Forge does not currently create or manage live Pulse tickets directly from this page.
+                  </p>
+                  <p>
+                    Use the same email address in Pulse if you want Forge to match any tracked sync records to your account here.
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <a
+                  href={PULSE_TICKET_SYSTEM_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary inline-flex w-full items-center justify-center"
+                >
+                  Open Pulse Ticket System
+                </a>
+
+                <div className="divider-soft" />
+
+                <form onSubmit={onLookupSubmit} className="space-y-4">
                   <div>
-                    <label htmlFor="support-name" className="mb-2 block text-sm font-medium text-white/80">
-                      Name
+                    <label htmlFor="support-email" className="mb-2 block text-sm font-medium text-white/80">
+                      Lookup Email Address
                     </label>
                     <input
-                      id="support-name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Your name"
+                      id="support-email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      type="email"
+                      placeholder="name@example.com"
                       className="input-glass w-full"
                     />
                   </div>
 
-                  <div>
-                    <label htmlFor="support-device" className="mb-2 block text-sm font-medium text-white/80">
-                      Laptop / Device Number
-                    </label>
-                    <input
-                      id="support-device"
-                      value={deviceNumber}
-                      onChange={(e) => setDeviceNumber(e.target.value)}
-                      placeholder="Optional device number"
-                      className="input-glass w-full"
-                    />
-                  </div>
-                </div>
+                  <button type="submit" disabled={loadingTickets} className="btn-secondary w-full">
+                    {loadingTickets ? "Loading..." : "Load Read-only Sync List"}
+                  </button>
+                </form>
 
-                <div>
-                  <label htmlFor="support-issue-type" className="mb-2 block text-sm font-medium text-white/80">
-                    Type of Issue
-                  </label>
-                  <select
-                    id="support-issue-type"
-                    value={issueType}
-                    onChange={(e) => setIssueType(e.target.value as SupportTicketIssueType)}
-                    className="select-glass w-full"
-                  >
-                    {ISSUE_TYPES.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-4 py-4 text-sm text-white/68">
+                  Tickets shown on this page come from Forge's local sync tracking only. A stable Pulse ticket id and direct Pulse read API are not available in this workspace yet.
                 </div>
-
-                <div>
-                  <label htmlFor="support-message" className="mb-2 block text-sm font-medium text-white/80">
-                    Describe Your Issue
-                  </label>
-                  <textarea
-                    id="support-message"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    rows={7}
-                    placeholder="Please provide detailed information about your issue."
-                    className="input-glass w-full resize-none"
-                  />
-                </div>
-
-                <button type="submit" disabled={busy} className="btn-primary">
-                  {busy ? "Submitting..." : "Submit request"}
-                </button>
-
-                <div className="text-sm text-white/65">
-                  Our support team will review your request and contact you via email.
-                </div>
-              </form>
+              </div>
             </section>
 
             <div className="space-y-6">
               <section className="teal-glow-card overflow-hidden p-0">
                 <div className="bg-gradient-to-r from-[#4FA6FF] via-[#7C69FF] to-[#FF5EDB] px-6 py-4 text-lg font-semibold text-white">
-                  Your Previous Requests
+                  Read-only Synced Ticket List
                 </div>
 
                 <div className="space-y-3 p-6">
                   {loadingTickets ? (
-                    <div className="info-banner">Loading support history...</div>
+                    <div className="info-banner">Loading synced ticket records...</div>
+                  ) : !hasLoadedTickets ? (
+                    <div className="glass-panel p-6 text-sm text-white/70">
+                      Enter an email address and load the read-only sync list to see any Forge-tracked Pulse records.
+                    </div>
                   ) : tickets.length === 0 ? (
                     <div className="glass-panel p-6 text-sm text-white/70">
-                      You haven't submitted any assistance requests yet.
+                      No Forge-tracked Pulse sync records were found for this email yet.
                     </div>
                   ) : (
                     tickets.map((ticket) => (
                       <div key={ticket.id} className="glass-panel p-4">
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                           <div>
                             <div className="text-sm font-semibold text-white">
                               {ISSUE_TYPES.find((option) => option.value === ticket.issueType)?.label ?? ticket.issueType}
@@ -265,16 +234,49 @@ export default function SupportDesk() {
                                 Device: {ticket.deviceNumber}
                               </div>
                             )}
+                            {ticket.pulseSyncedAt && (
+                              <div className="mt-2 text-xs text-white/65">
+                                Pulse handoff recorded {when(ticket.pulseSyncedAt)}
+                              </div>
+                            )}
+                            {ticket.externalReference ? (
+                              <div className="mt-2 text-xs text-white/65">
+                                Pulse reference: {ticket.externalReference}
+                              </div>
+                            ) : (
+                              <div className="mt-2 text-xs text-white/50">
+                                Pulse reference is not available in this environment yet.
+                              </div>
+                            )}
                           </div>
-                          <div className="flex justify-start">
-                          <span
-                            className={[
-                              "inline-flex min-h-8 min-w-[110px] shrink-0 self-start items-center justify-center rounded-full border px-3 py-1 text-center text-[11px] font-semibold leading-none whitespace-nowrap sm:self-auto",
-                              statusTone(ticket.status),
-                            ].join(" ")}
-                          >
-                            {ticket.status.replace(/_/g, " ")}
-                          </span>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-2">
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                Forge status
+                              </div>
+                              <span
+                                className={[
+                                  "inline-flex min-h-8 min-w-[110px] shrink-0 self-start items-center justify-center rounded-full border px-3 py-1 text-center text-[11px] font-semibold leading-none whitespace-nowrap sm:self-auto",
+                                  statusTone(ticket.status),
+                                ].join(" ")}
+                              >
+                                {ticket.status.replace(/_/g, " ")}
+                              </span>
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                Pulse sync
+                              </div>
+                              <span
+                                className={[
+                                  "inline-flex min-h-8 min-w-[150px] shrink-0 self-start items-center justify-center rounded-full border px-3 py-1 text-center text-[11px] font-semibold leading-none whitespace-nowrap sm:self-auto",
+                                  pulseSyncTone(ticket.pulseSyncStatus),
+                                ].join(" ")}
+                              >
+                                {pulseSyncLabel(ticket.pulseSyncStatus)}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
