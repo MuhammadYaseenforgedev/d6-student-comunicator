@@ -520,10 +520,10 @@ export default function AppShell() {
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/40 to-transparent" />
             </div>
 
-            <div className="relative flex flex-1 flex-col p-3 sm:p-4 lg:min-h-0 lg:p-6 xl:p-7">
+            <div className="relative flex flex-1 flex-col p-3 sm:p-4 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden lg:p-6 xl:p-7">
               <AppErrorBoundary>
-                <div className="relative flex min-w-0 flex-1 flex-col overflow-visible lg:min-h-0 lg:overflow-hidden">
-                  <div className="app-page-scroll relative min-w-0 flex-1 overflow-visible pr-0 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden lg:pr-1">
+                <div className="relative flex min-w-0 flex-1 flex-col overflow-visible">
+                  <div className="app-page-scroll relative min-w-0 flex-1 overflow-visible pr-0">
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.div
                         key={location.pathname}
