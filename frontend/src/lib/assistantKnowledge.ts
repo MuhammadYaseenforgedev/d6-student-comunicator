@@ -54,6 +54,11 @@ export type AssistantAnswer<ActionId extends string> = {
   actionIds?: ActionId[];
 };
 
+export type AssistantWorkflowAnswer = AssistantAnswer<AssistantDestinationId> & {
+  followUpText?: string;
+  followUpActionIds?: AssistantDestinationId[];
+};
+
 export type AssistantDestination = {
   id: AssistantDestinationId;
   label: string;
@@ -112,6 +117,52 @@ const APP_CAPABILITY_ACTION_TERMS = [
   "unlink",
   "process",
 ];
+const APP_PARTIAL_TIME_TERMS = [
+  "today",
+  "yesterday",
+  "right now",
+  "this week",
+  "this month",
+];
+const APP_WORKFLOW_REQUEST_TERMS = [
+  "how do i",
+  "how can i",
+  "show me how to",
+  "where do i go",
+  "where do i go to",
+  "where do i get to",
+  "how do i get to",
+  "i want to",
+  "i need to",
+];
+const APP_WORKFLOW_FOLLOW_UP_TERMS = [
+  "and then",
+  "what next",
+  "where after that",
+  "after that",
+  "then what",
+];
+const APP_DOMAIN_STATUS_TERMS = [
+  "any",
+  "is there any",
+  "do i have",
+  "for me",
+];
+const APP_PARTIAL_DETAIL_TERMS = [
+  "latest",
+  "new",
+  "recent",
+  "pending",
+  "activity",
+  "activities",
+  "tried",
+  "attempted",
+  "attempt",
+  "status",
+  "how many",
+  "count",
+  "counts",
+];
 const MAX_ASSISTANT_QUICK_ACTIONS = 4;
 
 function includesAny(input: string, terms: string[]) {
@@ -119,7 +170,33 @@ function includesAny(input: string, terms: string[]) {
 }
 
 function normalize(input: string) {
-  return input.trim().toLowerCase();
+  return String(input ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2018\u2019']/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeToken(token: string): string {
+  const trimmed = token.trim();
+  if (!trimmed) return "";
+  if (trimmed.length > 4 && trimmed.endsWith("ies")) {
+    return `${trimmed.slice(0, -3)}y`;
+  }
+  if (trimmed.length > 4 && trimmed.endsWith("s") && !trimmed.endsWith("ss")) {
+    return trimmed.slice(0, -1);
+  }
+  return trimmed;
+}
+
+function tokenize(input: string): string[] {
+  return normalize(input)
+    .split(" ")
+    .map(normalizeToken)
+    .filter(Boolean);
 }
 
 function destination(
@@ -158,9 +235,9 @@ export function getRoleAssistantProfile(
         subtitle: "Parent portal guide",
         placeholder: "Ask about children, finance, results, or calendar...",
         welcome:
-          "I am Harbor, your parent portal guide. I can help you check your child's results, attendance, finance updates, and calendar items.",
+          "I'm Harbor. I can help with your child's results, attendance, finance, and calendar.",
         overview:
-          "I can guide you through child results, attendance, finance, calendar, linked children, messages, and the parent tools you already have access to.",
+          "Ask about results, attendance, finance, linked children, messages, or calendar. I can also open the right page for you.",
         spotlightIds: [
           "parent-results",
           "parent-attendance",
@@ -177,9 +254,9 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about modules, messages, uploads, attendance, or results...",
         welcome:
-          "I am Mentor, your lecturer assistant. I can help with announcements, attendance coverage, modules, calendar items, and result workflows.",
+          "I'm Mentor. I can help with attendance, announcements, modules, calendar, and result workflows.",
         overview:
-          "I can guide you across teaching spaces, announcements, attendance, calendar planning, uploads, messages, and manage results when that page is available to you.",
+          "Ask about attendance, announcements, modules, calendar, uploads, messages, or result workflows. I can also open the right page for you.",
         spotlightIds: ["attendance", "notifications", "calendar", "modules"],
       };
 
@@ -191,9 +268,9 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about finance accounts, statements, notices, or messages...",
         welcome:
-          "I am Ledger, your finance admin guide. I can help you review finance accounts, statements, notices, and the finance pages available in this workspace.",
+          "I'm Ledger. I can help you review finance accounts, statements, messages, and the finance workspace.",
         overview:
-          "I will keep guidance limited to the finance admin workspace, with shortcuts to finance and the related communication area that already exists for your role.",
+          "Ask about finance accounts, statements, messages, or where to go next in the finance workspace.",
         spotlightIds: ["admin-finance", "messages"],
       };
 
@@ -205,9 +282,9 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about accounts, approvals, results, modules, or notifications...",
         welcome:
-          "I am Atlas, your academic admin guide. I can help you move across accounts, parent link approvals, announcements, results, and other academic workspace pages.",
+          "I'm Atlas. I can help with accounts, parent link approvals, announcements, results, and admin navigation.",
         overview:
-          "I can guide you through accounts, parent link approvals, announcements, results, messages, calendar, uploads, and the academic pages already available to your role.",
+          "Ask about accounts, approvals, results, messages, calendar, uploads, or where to go next. I can also open the right page for you.",
         spotlightIds: [
           "admin-users",
           "notifications",
@@ -224,9 +301,9 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about accounts, tickets, approvals, results, or navigation...",
         welcome:
-          "I am Sparky, your super admin guide. I can help you move across accounts, approvals, announcements, tickets, and the wider admin workspace.",
+          "I'm Sparky. I can help with accounts, tickets, approvals, announcements, and admin navigation.",
         overview:
-          "I can guide you through admin tools, tickets, accounts, approvals, announcements, result management, messages, and the main academic pages your role can access.",
+          "Ask about accounts, tickets, approvals, results, messages, or where to go next. I can also open the right page for you.",
         spotlightIds: [
           "admin-users",
           "notifications",
@@ -243,9 +320,9 @@ export function getRoleAssistantProfile(
         placeholder:
           "Ask about modules, results, messages, uploads, or attendance...",
         welcome:
-          "I am Pulse, your student guide. I can help you with announcements, attendance, results, and your schedule.",
+          "I'm Pulse. I can help with results, attendance, announcements, and your schedule.",
         overview:
-          "I can guide you to the most useful student pages for announcements, results, attendance, calendar, modules, messages, uploads, and notifications.",
+          "Ask about results, attendance, announcements, calendar, modules, messages, or uploads. I can also open the right page for you.",
         spotlightIds: ["student-results", "attendance", "notifications", "calendar"],
       };
   }
@@ -532,7 +609,7 @@ function studentDestinations(): AssistantDestination[] {
       "uploads",
       "Uploads",
       "/app/uploads",
-      ["upload", "uploads", "file", "files", "submission", "submissions"],
+      ["upload", "uploads", "file", "files", "submission", "submissions", "assessment", "assessments", "assignment", "assignments"],
       "Uploads lets you submit student work and download lecturer materials shared with your account."
     ),
     destination(
@@ -621,7 +698,7 @@ function lecturerDestinations(): AssistantDestination[] {
       "uploads",
       "Uploads",
       "/app/uploads",
-      ["upload", "uploads", "file", "files", "submission", "submissions", "materials"],
+      ["upload", "uploads", "file", "files", "submission", "submissions", "materials", "assessment", "assessments", "assignment", "assignments"],
       "Uploads lets you share lecturer materials, review student submissions, and download the files your role can access."
     ),
     destination(
@@ -729,7 +806,7 @@ function academicAdminDestinations(includeTickets: boolean): AssistantDestinatio
       "uploads",
       "Uploads",
       "/app/uploads",
-      ["upload", "uploads", "file", "files", "submission", "submissions", "materials"],
+      ["upload", "uploads", "file", "files", "submission", "submissions", "materials", "assessment", "assessments", "assignment", "assignments"],
       "Uploads lets academic admins review materials and submissions available to their scope."
     ),
     destination(
@@ -764,7 +841,7 @@ function academicAdminDestinations(includeTickets: boolean): AssistantDestinatio
       "admin-users",
       "Accounts",
       "/app/admin/users",
-      ["account", "accounts", "users", "user", "roles"],
+      ["account", "accounts", "users", "user", "roles", "detail", "details", "profile", "profiles"],
       "Accounts is the admin page for managing user records, roles, and account setup."
     ),
     destination(
@@ -846,7 +923,7 @@ function parentDestinations(): AssistantDestination[] {
       "uploads",
       "Uploads",
       "/app/uploads",
-      ["upload", "uploads", "file", "files", "materials"],
+      ["upload", "uploads", "file", "files", "materials", "assessment", "assessments", "assignment", "assignments"],
       "Uploads lets parents view and download files their linked children are allowed to access."
     ),
     destination(
@@ -884,7 +961,378 @@ function findAssistantDestinationMatch(
   destinations: AssistantDestination[],
   query: string
 ): AssistantDestination | undefined {
-  return destinations.find((entry) => includesAny(query, entry.keywords));
+  const queryTokens = new Set(tokenize(query));
+  let bestMatch: AssistantDestination | undefined;
+  let bestScore = 0;
+
+  for (const entry of destinations) {
+    let entryScore = 0;
+
+    for (const keyword of entry.keywords) {
+      const normalizedKeyword = normalize(keyword);
+      if (!normalizedKeyword) continue;
+
+      if (` ${query} `.includes(` ${normalizedKeyword} `)) {
+        entryScore = Math.max(entryScore, normalizedKeyword.includes(" ") ? 6 : 4);
+        continue;
+      }
+
+      const keywordTokens = tokenize(keyword);
+      if (keywordTokens.length === 0) continue;
+
+      const matchedCount = keywordTokens.filter((token) => queryTokens.has(token)).length;
+      if (matchedCount === keywordTokens.length) {
+        entryScore = Math.max(entryScore, keywordTokens.length > 1 ? 5 : 3);
+      } else if (matchedCount >= 2) {
+        entryScore = Math.max(entryScore, 3);
+      }
+    }
+
+    if (entryScore > bestScore) {
+      bestScore = entryScore;
+      bestMatch = entry;
+    }
+  }
+
+  return bestScore >= 3 ? bestMatch : undefined;
+}
+
+function isStrongDomainDestination(id: AssistantDestinationId): boolean {
+  return !["home", "notifications", "parent-overview"].includes(id);
+}
+
+export function getAssistantStrongDomainMatch(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  rawInput: string
+): AssistantDestination | null {
+  const query = normalize(rawInput);
+  if (!query) return null;
+
+  const matchedDestination = findAssistantDestinationMatch(
+    getAssistantDestinations(user),
+    query
+  );
+
+  if (!matchedDestination || !isStrongDomainDestination(matchedDestination.id)) {
+    return null;
+  }
+
+  return matchedDestination;
+}
+
+function listLabels(labels: string[]): string {
+  if (labels.length <= 1) return labels[0] ?? "";
+  if (labels.length === 2) return `${labels[0]} or ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, or ${labels[labels.length - 1]}`;
+}
+
+function spotlightLabels(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  limit = 3
+): string[] {
+  const destinations = getAssistantDestinations(user);
+  const spotlightIds = getRoleAssistantProfile(user).spotlightIds.slice(0, limit);
+
+  return spotlightIds
+    .map((actionId) => destinations.find((entry) => entry.id === actionId)?.label)
+    .filter((label): label is string => Boolean(label));
+}
+
+function isGreeting(query: string): boolean {
+  return [
+    "hi",
+    "hello",
+    "hey",
+    "yo",
+    "good morning",
+    "good afternoon",
+    "good evening",
+  ].some((term) => query === term || query.startsWith(`${term} `));
+}
+
+function buildRoleFallbackText(user: Pick<AuthUser, "role" | "adminScope">): string {
+  const labels = spotlightLabels(user);
+  if (labels.length === 0) {
+    return "Tell me what you want to check, or ask me to open the page you need.";
+  }
+
+  return `Try ${listLabels(labels)}, or ask me to open the page you need.`;
+}
+
+function buildRoleGreetingText(user: Pick<AuthUser, "role" | "adminScope">): string {
+  const labels = spotlightLabels(user);
+  if (labels.length === 0) {
+    return "Ready when you are. Tell me what you want to check.";
+  }
+
+  return `Ready when you are. Try ${listLabels(labels)}.`;
+}
+
+function buildRoleHelpText(user: Pick<AuthUser, "role" | "adminScope">): string {
+  const labels = spotlightLabels(user);
+  if (labels.length === 0) {
+    return "I can guide you. Tell me what you want to check.";
+  }
+
+  return `I can guide you. Start with ${listLabels(labels)}.`;
+}
+
+function isWorkflowRequest(query: string): boolean {
+  return includesAny(query, APP_WORKFLOW_REQUEST_TERMS);
+}
+
+export function isAssistantWorkflowFollowUp(rawInput: string): boolean {
+  return includesAny(normalize(rawInput), APP_WORKFLOW_FOLLOW_UP_TERMS);
+}
+
+function suggestedWorkflowActions(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  currentId: AssistantDestinationId
+): AssistantDestinationId[] {
+  return followUpIds(currentId, getRoleAssistantProfile(user)).slice(0, 2);
+}
+
+function workflowActionLabels(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  actionIds: AssistantDestinationId[]
+): string[] {
+  const destinations = getAssistantDestinations(user);
+  return actionIds
+    .map((actionId) => destinations.find((entry) => entry.id === actionId)?.label)
+    .filter((label): label is string => Boolean(label));
+}
+
+function buildWorkflowInstruction(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  destination: AssistantDestination,
+  query: string
+): string {
+  switch (destination.id) {
+    case "uploads":
+      if (user.role === "LECTURER") {
+        return "Open Uploads to share lecturer materials or review student submissions.";
+      }
+      if (user.role === "PARENT") {
+        return "Open Uploads to view or download files available to your linked child.";
+      }
+      if (user.role === "STUDENT") {
+        return "Open Uploads to submit your assessment or other student work.";
+      }
+      return "Open Uploads to review the materials and submissions available in your scope.";
+
+    case "messages":
+      return "Open Messages to choose the conversation or thread you need.";
+
+    case "notifications":
+      return "Open Notifications to review unread and recent alerts.";
+
+    case "attendance":
+      if (user.role === "STUDENT") {
+        return "Open Attendance to review your sessions and use check-in when it is available.";
+      }
+      if (user.role === "PARENT") {
+        return "Open Attendance to review your child's attendance records.";
+      }
+      if (includesAny(query, ["mark", "submit", "update"])) {
+        return "I can't mark attendance directly in chat, but open Attendance, choose the module or session, then update the student statuses there.";
+      }
+      return "Open Attendance to choose the module or session you need, then review or manage attendance there.";
+
+    case "student-results":
+      return "Open Results to view your published academic results.";
+
+    case "parent-results":
+      return "Open Results to review your child's published academic results.";
+
+    case "manage-results":
+      if (includesAny(query, ["manage", "publish", "update", "edit"])) {
+        return "I can't manage result records directly in chat, but open Manage Results to review and update them there.";
+      }
+      return "Open Manage Results to review the result records you need.";
+
+    case "admin-parent-links":
+      return "I can't approve parent link requests in chat, but open Parent Link Approvals to review the pending requests there.";
+
+    case "admin-users":
+      return "I can't manage account records in chat, but open Accounts to review users, roles, and account details there.";
+
+    case "admin-tickets":
+      return "I can't work tickets directly in chat, but open Tickets to review the support requests there.";
+
+    case "parent-finance":
+      return "Open Finance to review your linked child's account status, statements, and finance documents.";
+
+    case "admin-finance":
+      return "Open Finance to review accounts, statements, documents, and finance notices.";
+
+    case "parent-calendar":
+    case "calendar":
+      return "Open Calendar to review the dates and events you need.";
+
+    case "parent-children":
+      return "Open Children to review linked learners or submit a new child-link request.";
+
+    case "modules":
+      return "Open Modules to review the module space you need.";
+
+    case "courses":
+      return "Open Courses to review the broader course structure.";
+
+    case "faculty":
+      return "Open Faculty to review the academic contacts you need.";
+
+    case "home":
+    case "parent-overview":
+      return `Open ${destination.label} to start from the main workspace summary for your role.`;
+
+    default:
+      return `Open ${destination.label} to continue that task there.`;
+  }
+}
+
+function buildWorkflowFollowUpText(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  destination: AssistantDestination,
+  followUpActionIds: AssistantDestinationId[]
+): string {
+  switch (destination.id) {
+    case "uploads":
+      return "Once Uploads opens, choose the file or submission area that matches what you need.";
+    case "messages":
+      return "Once Messages opens, choose the thread or conversation you want to continue with.";
+    case "notifications":
+      return "Once Notifications opens, review the unread items first.";
+    case "attendance":
+      if (user.role === "STUDENT") {
+        return "Once Attendance opens, review the latest sessions or use check-in if it is available.";
+      }
+      if (user.role === "PARENT") {
+        return "Once Attendance opens, review the child or module view you need there.";
+      }
+      return "Once Attendance opens, choose the right module or session first, then work from that list.";
+    case "student-results":
+    case "parent-results":
+      return "Once Results opens, review the published records listed there.";
+    case "manage-results":
+      return "Once Manage Results opens, select the learner or result record you need.";
+    case "admin-parent-links":
+      return "Once Parent Link Approvals opens, review the request details before deciding it there.";
+    case "admin-users":
+      return "Once Accounts opens, search for the user record or role you need.";
+    case "admin-tickets":
+      return "Once Tickets opens, open the support request you want to review.";
+    case "parent-finance":
+    case "admin-finance":
+      return "Once Finance opens, review the account summary or statement you need.";
+    case "parent-children":
+      return "Once Children opens, choose the learner you want to review or link.";
+    default: {
+      const nextLabels = workflowActionLabels(user, followUpActionIds);
+      if (nextLabels.length > 0) {
+        return `After that, ${listLabels(nextLabels)} ${nextLabels.length === 1 ? "is" : "are"} a useful next place to check.`;
+      }
+      return `Start with ${destination.label} and follow the steps on that page.`;
+    }
+  }
+}
+
+function buildWorkflowUnavailableAnswer(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  query: string
+): AssistantWorkflowAnswer | null {
+  const fallbackActionIds = getRoleAssistantProfile(user).spotlightIds.slice(0, 3);
+
+  if (includesAny(query, ["ticket", "tickets", "support request"])) {
+    return {
+      text: "Tickets are only available in the super admin workspace. I can still point you to the pages available for your role.",
+      actionIds: fallbackActionIds,
+    };
+  }
+
+  if (includesAny(query, ["approval", "approvals", "parent link", "parent links", "link request", "link requests"])) {
+    return {
+      text: "Parent Link Approvals are only available in the academic or super admin workspace. I can still point you to the pages available for your role.",
+      actionIds: fallbackActionIds,
+    };
+  }
+
+  if (includesAny(query, ["account", "accounts", "user", "users", "details", "profile"])) {
+    return {
+      text: "Accounts is only available in workspaces that include the Accounts page. I can still point you to the pages available for your role.",
+      actionIds: fallbackActionIds,
+    };
+  }
+
+  if (includesAny(query, ["finance", "fee", "fees", "payment", "payments", "balance", "billing"])) {
+    if (user.role === "STUDENT" || user.role === "LECTURER" || user.role === "ADMIN") {
+      return {
+        text: "I can help check finance in chat for your role, but there isn't a dedicated Finance page in this workspace.",
+      };
+    }
+  }
+
+  if (includesAny(query, ["result", "results", "grade", "grades", "marks"])) {
+    if (isFinanceAdmin(user)) {
+      return {
+        text: "Results workflow guidance isn't available in the finance admin workspace.",
+        actionIds: fallbackActionIds,
+      };
+    }
+  }
+
+  if (includesAny(query, ["attendance", "mark attendance"])) {
+    if (isFinanceAdmin(user)) {
+      return {
+        text: "Attendance workflow guidance isn't available in the finance admin workspace.",
+        actionIds: fallbackActionIds,
+      };
+    }
+  }
+
+  if (includesAny(query, ["notification", "notifications", "alerts"])) {
+    if (isFinanceAdmin(user)) {
+      return {
+        text: "Your finance admin workspace uses Finance and Messages instead of a separate Notifications page.",
+        actionIds: fallbackActionIds,
+      };
+    }
+  }
+
+  if (includesAny(query, ["upload", "uploads", "assessment", "assessments", "assignment", "assignments"])) {
+    if (isFinanceAdmin(user)) {
+      return {
+        text: "Uploads are not available in the finance admin workspace.",
+        actionIds: fallbackActionIds,
+      };
+    }
+  }
+
+  return null;
+}
+
+export function getAssistantWorkflowAnswer(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  rawInput: string
+): AssistantWorkflowAnswer | null {
+  const query = normalize(rawInput);
+  if (!query || !isWorkflowRequest(query)) {
+    return null;
+  }
+
+  const destinations = getAssistantDestinations(user);
+  const matchedDestination = findAssistantDestinationMatch(destinations, query);
+  if (!matchedDestination) {
+    return buildWorkflowUnavailableAnswer(user, query);
+  }
+
+  const followUpActionIds = suggestedWorkflowActions(user, matchedDestination.id);
+
+  return {
+    text: buildWorkflowInstruction(user, matchedDestination, query),
+    actionIds: [matchedDestination.id],
+    followUpText: buildWorkflowFollowUpText(user, matchedDestination, followUpActionIds),
+    followUpActionIds,
+  };
 }
 
 export function getAssistantNavigationAnswer(
@@ -903,7 +1351,7 @@ export function getAssistantNavigationAnswer(
   }
 
   return {
-    text: `I can take you to ${matchedDestination.label}. Use the button below to open it.`,
+    text: `I can open ${matchedDestination.label} for you. Use the button below when you're ready.`,
     actionIds: [matchedDestination.id],
   };
 }
@@ -950,11 +1398,52 @@ export function getAssistantUnsupportedActionAnswer(
   }
 
   const requestedAction =
-    extractCapabilityActionPhrase(query) ??
-    `complete that task on the ${matchedDestination.label.toLowerCase()} page`;
+    extractCapabilityActionPhrase(query) ?? "do that";
 
   return {
-    text: `I can help open the ${matchedDestination.label} page, but I can't directly ${requestedAction} inside the chatbot yet.`,
+    text: `I can't ${requestedAction} directly in chat, but I can open the ${matchedDestination.label} page.`,
+    actionIds: [matchedDestination.id],
+  };
+}
+
+function describePartialLimit(query: string): string {
+  if (includesAny(query, ["is there any", "do i have", "for me", "any"])) {
+    return "whether there are matching items for you";
+  }
+  if (includesAny(query, ["today"])) return "today's activity";
+  if (includesAny(query, ["this week"])) return "this week's activity";
+  if (includesAny(query, ["this month"])) return "this month's activity";
+  if (includesAny(query, ["how many", "count", "counts"])) return "that filtered count";
+  if (includesAny(query, ["latest", "new", "recent"])) return "that exact recent activity";
+  return "that exact detail";
+}
+
+export function getAssistantPartialUnderstandingAnswer(
+  user: Pick<AuthUser, "role" | "adminScope">,
+  rawInput: string
+): AssistantAnswer<AssistantDestinationId> | null {
+  const query = normalize(rawInput);
+  if (!query || includesAny(query, APP_NAVIGATION_TERMS)) {
+    return null;
+  }
+
+  if (
+    !includesAny(query, APP_DOMAIN_STATUS_TERMS) &&
+    !includesAny(query, APP_PARTIAL_TIME_TERMS) &&
+    !includesAny(query, APP_PARTIAL_DETAIL_TERMS)
+  ) {
+    return null;
+  }
+
+  const matchedDestination = getAssistantStrongDomainMatch(user, query);
+  if (!matchedDestination) {
+    return null;
+  }
+
+  const detail = describePartialLimit(query);
+
+  return {
+    text: `I can help with ${matchedDestination.label}, but I can't confirm ${detail} directly here. I can open the page for you.`,
     actionIds: [matchedDestination.id],
   };
 }
@@ -1040,6 +1529,13 @@ export function answerAppQuestion(
     };
   }
 
+  if (isGreeting(query)) {
+    return {
+      text: buildRoleGreetingText(user),
+      actionIds: profile.spotlightIds,
+    };
+  }
+
   if (navigationAnswer) {
     return navigationAnswer;
   }
@@ -1074,7 +1570,7 @@ export function answerAppQuestion(
     ])
   ) {
     return {
-      text: profile.overview,
+      text: buildRoleHelpText(user),
       actionIds: profile.spotlightIds,
     };
   }
@@ -1096,8 +1592,7 @@ export function answerAppQuestion(
   }
 
   return {
-    text:
-      "I can help with announcements, attendance, results, finance, and calendar questions, depending on your role. I can also help you open the right page for that task.",
+    text: buildRoleFallbackText(user),
     actionIds: profile.spotlightIds,
   };
 }

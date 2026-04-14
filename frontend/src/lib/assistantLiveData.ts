@@ -15,9 +15,13 @@ import {
   listAdminFinanceAccounts,
   type AdminFinanceAccount,
 } from "./adminFinanceApi";
-import { isAcademicOrSuperAdmin, isFinanceAdmin } from "./adminAccess";
+import { isAcademicOrSuperAdmin, isFinanceAdmin, isSuperAdmin } from "./adminAccess";
 import type { AssistantChatTurn } from "./assistantApi";
-import type { AssistantDestinationId } from "./assistantKnowledge";
+import {
+  getAssistantStrongDomainMatch,
+  getRoleAssistantProfile,
+  type AssistantDestinationId,
+} from "./assistantKnowledge";
 import type { AuthUser } from "./auth";
 import {
   getMyAttendance,
@@ -59,6 +63,35 @@ type ReplyInput = {
   details?: string[];
   note?: string;
   actionIds?: AssistantDestinationId[];
+};
+
+type BroadGuidanceKind = "status" | "guide" | "overall" | "next_step";
+type BroadIntentResolution =
+  | { kind: "intent"; intent: BroadGuidanceKind }
+  | { kind: "clarify"; intents: BroadGuidanceKind[] }
+  | { kind: "none" };
+
+type NormalizedIntentQuery = {
+  full: string;
+  core: string;
+  tokenSet: Set<string>;
+};
+
+type WeightedPhrase = {
+  phrase: string;
+  weight: number;
+};
+
+type WeightedTokenGroup = {
+  tokens: string[];
+  weight: number;
+  minMatches?: number;
+  requireAll?: boolean;
+};
+
+type BroadIntentRule = {
+  phrases: WeightedPhrase[];
+  groups: WeightedTokenGroup[];
 };
 
 type IntentSignal = {
@@ -169,20 +202,179 @@ const FOLLOW_UP_PHRASES = [
 ];
 const TOPIC_CONNECTORS = ["and", "also", "plus", "alongside", "together with"];
 const AMBIGUOUS_REQUEST_WORDS = ["show", "check", "see", "tell me", "what", "how", "can you", "do i", "my"];
+const LEADING_FILLER_PHRASES = [
+  "hi",
+  "hey",
+  "hello",
+  "yo",
+  "please",
+  "can you",
+  "could you",
+  "would you",
+  "i want to know",
+  "tell me",
+  "i need to know",
+  "i want to",
+];
 const MAX_DETAIL_LINES = 3;
-const CAPABILITY_FALLBACK_TEXT =
-  "I can currently help with announcements, attendance, results, finance, and calendar questions, depending on your role. You can also ask me to open a page like Results or Calendar.";
 const MIN_CONFIDENT_INTENT_SCORE = 3;
 const MIN_AMBIGUOUS_INTENT_SCORE = 2;
+const MIN_BROAD_INTENT_SCORE = 4;
+const MIN_BROAD_INTENT_DELTA = 2;
+const BROAD_INTENT_RULES: Record<BroadGuidanceKind, BroadIntentRule> = {
+  status: {
+    phrases: [
+      { phrase: "what should i check today", weight: 5 },
+      { phrase: "what do i need to know", weight: 5 },
+      { phrase: "what needs my attention", weight: 5 },
+      { phrase: "anything important", weight: 5 },
+      { phrase: "anything new", weight: 4 },
+      { phrase: "whats new", weight: 4 },
+      { phrase: "what is the latest", weight: 4 },
+      { phrase: "is there anything new for me", weight: 5 },
+      { phrase: "what should i be checking", weight: 5 },
+      { phrase: "do i have new things", weight: 5 },
+      { phrase: "whats going on", weight: 4 },
+      { phrase: "what is going on", weight: 4 },
+      { phrase: "any updates", weight: 4 },
+    ],
+    groups: [
+      { tokens: ["latest", "new", "update", "updates", "recent"], weight: 3, minMatches: 1 },
+      { tokens: ["important", "attention", "know", "check"], weight: 2, minMatches: 2 },
+      { tokens: ["check", "today", "need"], weight: 2, minMatches: 2 },
+      { tokens: ["going", "on"], weight: 2, requireAll: true },
+      { tokens: ["new", "things"], weight: 2, requireAll: true },
+      { tokens: ["anything", "important", "new"], weight: 2, minMatches: 2 },
+      { tokens: ["what", "latest"], weight: 2, requireAll: true },
+    ],
+  },
+  guide: {
+    phrases: [
+      { phrase: "i need a guide", weight: 5 },
+      { phrase: "guide me", weight: 5 },
+      { phrase: "where do i start", weight: 5 },
+      { phrase: "what should i do now", weight: 5 },
+      { phrase: "can you guide me", weight: 5 },
+      { phrase: "what do i do here", weight: 5 },
+      { phrase: "what should i do", weight: 4 },
+      { phrase: "help me", weight: 4 },
+    ],
+    groups: [
+      { tokens: ["guide", "help", "start"], weight: 2, minMatches: 2 },
+      { tokens: ["where", "start"], weight: 4, requireAll: true },
+      { tokens: ["what", "should", "do"], weight: 3, minMatches: 2 },
+      { tokens: ["do", "here"], weight: 3, requireAll: true },
+      { tokens: ["guide", "me"], weight: 3, requireAll: true },
+      { tokens: ["help", "me"], weight: 2, requireAll: true },
+    ],
+  },
+  overall: {
+    phrases: [
+      { phrase: "how am i doing overall", weight: 5 },
+      { phrase: "how are things looking", weight: 5 },
+      { phrase: "how is everything going", weight: 5 },
+      { phrase: "what is my status", weight: 4 },
+      { phrase: "am i okay", weight: 5 },
+      { phrase: "how am i doing in general", weight: 5 },
+      { phrase: "how am i doing", weight: 4 },
+    ],
+    groups: [
+      { tokens: ["how", "doing"], weight: 3, requireAll: true },
+      { tokens: ["overall", "general", "status"], weight: 2 },
+      { tokens: ["looking", "going"], weight: 2 },
+      { tokens: ["am", "i", "okay"], weight: 4, requireAll: true },
+      { tokens: ["everything", "going"], weight: 3, requireAll: true },
+    ],
+  },
+  next_step: {
+    phrases: [
+      { phrase: "what should i open next", weight: 5 },
+      { phrase: "what should i open", weight: 4 },
+      { phrase: "what page do i need", weight: 5 },
+      { phrase: "where do i go next", weight: 5 },
+      { phrase: "take me where i need to be", weight: 5 },
+      { phrase: "where should i go", weight: 5 },
+      { phrase: "take me somewhere useful", weight: 5 },
+    ],
+    groups: [
+      { tokens: ["open", "next"], weight: 3, requireAll: true },
+      { tokens: ["where", "go"], weight: 3, requireAll: true },
+      { tokens: ["page", "need"], weight: 3, requireAll: true },
+      { tokens: ["take", "where"], weight: 2, requireAll: true },
+      { tokens: ["open", "page", "next"], weight: 2, minMatches: 2 },
+      { tokens: ["what", "open"], weight: 2, requireAll: true },
+      { tokens: ["go", "next"], weight: 2, requireAll: true },
+    ],
+  },
+};
 
 function normalize(input: string): string {
   return String(input ?? "")
     .trim()
     .toLowerCase()
     .replace(/['’]/g, "")
+    .replace(/[\u2018\u2019]/g, "")
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9\s]+/g, " ")
-    .replace(/\s+/g, " ");
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeToken(token: string): string {
+  const trimmed = token.trim();
+  if (!trimmed) return "";
+  if (trimmed.length > 4 && trimmed.endsWith("ies")) {
+    return `${trimmed.slice(0, -3)}y`;
+  }
+  if (trimmed.length > 4 && trimmed.endsWith("s") && !trimmed.endsWith("ss")) {
+    return trimmed.slice(0, -1);
+  }
+  return trimmed;
+}
+
+function stripLeadingPhrases(input: string, phrases: string[]): string {
+  let current = input.trim();
+  let changed = true;
+
+  while (changed && current) {
+    changed = false;
+
+    for (const phrase of phrases) {
+      const normalizedPhrase = normalize(phrase);
+      if (!normalizedPhrase) continue;
+
+      if (current === normalizedPhrase) {
+        current = "";
+        changed = true;
+        break;
+      }
+
+      const prefix = `${normalizedPhrase} `;
+      if (current.startsWith(prefix)) {
+        current = current.slice(prefix.length).trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  return current;
+}
+
+function buildNormalizedIntentQuery(input: string): NormalizedIntentQuery {
+  const full = normalize(input);
+  const stripped = stripLeadingPhrases(full, LEADING_FILLER_PHRASES);
+  const core = stripped || full;
+  const tokens = core
+    .split(" ")
+    .map(normalizeToken)
+    .filter(Boolean);
+
+  return {
+    full,
+    core,
+    tokenSet: new Set(tokens),
+  };
 }
 
 function includesPhrase(input: string, phrase: string): boolean {
@@ -270,15 +462,15 @@ function sortAttendance(rows: ParentAttendanceRecord[]): ParentAttendanceRecord[
 }
 
 function buildReply(input: ReplyInput): AssistantLiveReply {
-  const parts = [`Summary: ${input.summary}`];
+  const parts = [input.summary.trim()];
   const details = (input.details ?? []).map((line) => line.trim()).filter(Boolean).slice(0, MAX_DETAIL_LINES);
 
   if (details.length > 0) {
-    parts.push(["Details:", ...details.map((line) => `- ${line}`)].join("\n"));
+    parts.push(details.map((line) => `- ${line}`).join("\n"));
   }
 
   if (input.note?.trim()) {
-    parts.push(`Note: ${input.note.trim()}`);
+    parts.push(input.note.trim());
   }
 
   return {
@@ -323,6 +515,34 @@ function uniqueActionIds(actionIds: AssistantDestinationId[], limit = MAX_DETAIL
   return out;
 }
 
+function roleSpotlightActionIds(user: AuthUser, limit = MAX_DETAIL_LINES): AssistantDestinationId[] {
+  return uniqueActionIds(getRoleAssistantProfile(user).spotlightIds, limit);
+}
+
+function capabilityFallbackSummary(user: AuthUser): string {
+  if (user.role === "PARENT") {
+    return "Try results, attendance, finance, or calendar.";
+  }
+
+  if (user.role === "LECTURER") {
+    return "Try attendance, notifications, calendar, or modules.";
+  }
+
+  if (isFinanceAdmin(user)) {
+    return "Try finance or messages.";
+  }
+
+  if (isSuperAdmin(user)) {
+    return "Try accounts, approvals, results, or tickets.";
+  }
+
+  if (isAcademicOrSuperAdmin(user)) {
+    return "Try accounts, approvals, results, or notifications.";
+  }
+
+  return "Try results, attendance, notifications, or calendar.";
+}
+
 function intentLabel(intent: AssistantLiveIntent): string {
   if (intent === "announcements") return "announcements";
   if (intent === "attendance") return "attendance";
@@ -337,11 +557,12 @@ function listLabels(labels: string[]): string {
   return `${labels.slice(0, -1).join(", ")}, or ${labels[labels.length - 1]}`;
 }
 
-function buildSupportedTopicsReply(): AssistantLiveReply {
+function buildSupportedTopicsReply(user: AuthUser): AssistantLiveReply {
   return buildReply({
     summary:
-      "I can currently help with announcements, attendance, results, finance, and calendar queries, depending on your role.",
-    note: "Try one topic at a time, like 'show my results' or 'any unpaid fees?'.",
+      "I can help with announcements, attendance, results, finance, and calendar. Which would you like to check first?",
+    note: "You can also use the quick actions below.",
+    actionIds: roleSpotlightActionIds(user),
   });
 }
 
@@ -351,12 +572,137 @@ function buildAmbiguousIntentReply(
 ): AssistantLiveReply {
   const labels = intents.map(intentLabel);
   return buildReply({
-    summary: `I can help with one topic at a time. Do you want ${listLabels(labels)}?`,
-    note: "Pick one topic and I will help from there.",
+    summary: `I can help with one topic at a time. Which would you like to check first: ${listLabels(labels)}?`,
+    note: "Pick one and I'll keep it focused.",
     actionIds: uniqueActionIds(
       intents.flatMap((intent) => actionIdsForIntent(user, intent))
     ),
   });
+}
+
+function broadIntentLabel(intent: BroadGuidanceKind): string {
+  if (intent === "status") return "a quick update";
+  if (intent === "guide") return "guided help";
+  if (intent === "overall") return "an overall check";
+  return "a page suggestion";
+}
+
+function buildBroadIntentClarificationReply(
+  user: AuthUser,
+  intents: BroadGuidanceKind[]
+): AssistantLiveReply {
+  const labels = intents.map(broadIntentLabel);
+  return buildReply({
+    summary: `I can help with ${listLabels(labels)}. Which would you like first?`,
+    note: "You can also use the shortcuts below.",
+    actionIds: roleSpotlightActionIds(user),
+  });
+}
+
+function matchesWeightedGroup(
+  query: NormalizedIntentQuery,
+  group: WeightedTokenGroup
+): boolean {
+  const tokens = group.tokens.map(normalizeToken).filter(Boolean);
+  if (tokens.length === 0) return false;
+
+  const matchedCount = tokens.filter((token) => query.tokenSet.has(token)).length;
+  if (group.requireAll) {
+    return matchedCount === tokens.length;
+  }
+
+  return matchedCount >= (group.minMatches ?? 1);
+}
+
+function scoreBroadIntent(
+  query: NormalizedIntentQuery,
+  intent: BroadGuidanceKind
+): number {
+  const rule = BROAD_INTENT_RULES[intent];
+  let score = 0;
+
+  for (const phrase of rule.phrases) {
+    if (includesPhrase(query.core, phrase.phrase) || includesPhrase(query.full, phrase.phrase)) {
+      score += phrase.weight;
+    }
+  }
+
+  for (const group of rule.groups) {
+    if (matchesWeightedGroup(query, group)) {
+      score += group.weight;
+    }
+  }
+
+  if (
+    intent === "status" &&
+    query.tokenSet.has("what") &&
+    (query.tokenSet.has("new") || query.tokenSet.has("latest") || query.tokenSet.has("important"))
+  ) {
+    score += 1;
+  }
+
+  if (
+    intent === "guide" &&
+    query.tokenSet.has("what") &&
+    query.tokenSet.has("do")
+  ) {
+    score += 1;
+  }
+
+  if (
+    intent === "overall" &&
+    query.tokenSet.has("how") &&
+    (query.tokenSet.has("looking") || query.tokenSet.has("going") || query.tokenSet.has("status"))
+  ) {
+    score += 1;
+  }
+
+  if (
+    intent === "next_step" &&
+    (query.tokenSet.has("open") || query.tokenSet.has("page")) &&
+    (query.tokenSet.has("next") || query.tokenSet.has("go"))
+  ) {
+    score += 1;
+  }
+
+  return score;
+}
+
+function resolveBroadGuidanceIntent(input: string): BroadIntentResolution {
+  const query = buildNormalizedIntentQuery(input);
+  if (!query.core) {
+    return { kind: "none" };
+  }
+
+  const scores = (Object.keys(BROAD_INTENT_RULES) as BroadGuidanceKind[])
+    .map((intent) => ({
+      intent,
+      score: scoreBroadIntent(query, intent),
+    }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score || a.intent.localeCompare(b.intent));
+
+  const top = scores[0];
+  if (!top || top.score < MIN_BROAD_INTENT_SCORE) {
+    return { kind: "none" };
+  }
+
+  const second = scores[1];
+  if (
+    second &&
+    second.score >= MIN_BROAD_INTENT_SCORE &&
+    Math.abs(top.score - second.score) < MIN_BROAD_INTENT_DELTA
+  ) {
+    return {
+      kind: "clarify",
+      intents: scores.slice(0, 2).map((row) => row.intent),
+    };
+  }
+
+  return {
+    kind: "intent",
+    intent: top.intent,
+  };
 }
 
 function scoreIntent(query: string, intent: AssistantLiveIntent): IntentScore {
@@ -411,7 +757,7 @@ function resolveRecentHistoryIntent(history: AssistantChatTurn[]): AssistantLive
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const turn = history[index];
     if (turn.role !== "user") continue;
-    const query = normalize(turn.text);
+    const query = buildNormalizedIntentQuery(turn.text).core;
     if (!query || isLikelyNavigationQuery(query)) continue;
     const scores = sortIntentScores(query);
     const top = scores[0];
@@ -423,11 +769,8 @@ function resolveRecentHistoryIntent(history: AssistantChatTurn[]): AssistantLive
   return null;
 }
 
-function resolveAssistantLiveIntent(
-  input: string,
-  history: AssistantChatTurn[] = []
-): AssistantLiveResolution {
-  const query = normalize(input);
+function resolveAssistantLiveIntent(input: string): AssistantLiveResolution {
+  const query = buildNormalizedIntentQuery(input).core;
   if (!query) return { kind: "none" };
   if (isLikelyNavigationQuery(query)) return { kind: "none" };
 
@@ -454,22 +797,30 @@ function resolveAssistantLiveIntent(
     };
   }
 
-  if (isLikelyFollowUpQuery(query)) {
-    const recentIntent = resolveRecentHistoryIntent(history);
-    if (recentIntent) {
-      return {
-        kind: "intent",
-        intent: recentIntent,
-      };
-    }
+  return { kind: "none" };
+}
 
+function resolveAssistantLiveFollowUp(
+  input: string,
+  history: AssistantChatTurn[] = []
+): AssistantLiveResolution {
+  const query = buildNormalizedIntentQuery(input).core;
+  if (!query || !isLikelyFollowUpQuery(query)) {
+    return { kind: "none" };
+  }
+
+  const recentIntent = resolveRecentHistoryIntent(history);
+  if (recentIntent) {
     return {
-      kind: "clarify",
-      intents: undefined,
+      kind: "intent",
+      intent: recentIntent,
     };
   }
 
-  return { kind: "none" };
+  return {
+    kind: "clarify",
+    intents: undefined,
+  };
 }
 
 function actionIdsForIntent(user: AuthUser, intent: AssistantLiveIntent): AssistantDestinationId[] {
@@ -526,7 +877,7 @@ function errorSummaryForIntent(intent: AssistantLiveIntent): string {
 function buildIntentErrorReply(user: AuthUser, intent: AssistantLiveIntent): AssistantLiveReply {
   return buildReply({
     summary: errorSummaryForIntent(intent),
-    note: "Please try again shortly.",
+    note: "Please try again in a moment.",
     actionIds: actionIdsForIntent(user, intent),
   });
 }
@@ -610,9 +961,367 @@ function upcomingRange(daysAhead: number) {
   };
 }
 
+async function loadAnnouncementFeed(user: AuthUser) {
+  const channels: ChannelKey[] = ["general", "faculty", "clubs", "emergency"];
+  const publicSettled = await Promise.allSettled(channels.map((channel) => fetchAnnouncements(channel)));
+  const publicLoadedCount = countFulfilled(publicSettled);
+  const publicItems = fulfilledValues(publicSettled).flatMap((row) => row);
+
+  let moduleResult = { items: [] as Announcement[], totalCount: 0, loadedCount: 0 };
+  let moduleLoadNote: string | undefined;
+  try {
+    moduleResult = await loadModuleAnnouncements(user);
+  } catch {
+    moduleLoadNote =
+      user.role === "PARENT" || isFinanceAdmin(user)
+        ? undefined
+        : "Some module announcement feeds could not be loaded, so this summary may be partial.";
+  }
+
+  return {
+    items: sortAnnouncements(dedupeById([...publicItems, ...moduleResult.items])),
+    totalLoaded: publicLoadedCount + moduleResult.loadedCount,
+    totalSources: publicSettled.length + moduleResult.totalCount,
+    moduleLoadNote,
+  };
+}
+
+async function loadUpcomingCalendarEntries(
+  user: AuthUser,
+  daysAhead = 7
+): Promise<CalendarEntry[]> {
+  if (isFinanceAdmin(user)) return [];
+
+  const range = upcomingRange(daysAhead);
+  if (user.role === "PARENT") {
+    const children = await loadParentChildren();
+    if (children.length === 0) return [];
+
+    const settled = await Promise.allSettled(
+      children.map((child) =>
+        listCalendar({
+          childId: childId(child),
+          start: range.start,
+          end: range.end,
+          limit: 12,
+        })
+      )
+    );
+
+    return sortCalendar(fulfilledValues(settled).flatMap((row) => row));
+  }
+
+  return sortCalendar(
+    await listCalendar({
+      start: range.start,
+      end: range.end,
+      limit: 12,
+    })
+  );
+}
+
+async function buildStudentBroadGuidanceReply(
+  user: AuthUser,
+  kind: BroadGuidanceKind,
+  query: string
+): Promise<AssistantLiveReply> {
+  if (kind === "guide") {
+    return buildReply({
+      summary: "A good place to start is Results, Attendance, Notifications, or Calendar.",
+      note: "Choose one below and I will keep the next step practical.",
+      actionIds: roleSpotlightActionIds(user),
+    });
+  }
+
+  if (kind === "next_step") {
+    return buildReply({
+      summary: "The best places to check next are Results, Attendance, Notifications, and Calendar.",
+      note: "Pick one below and I can take you there.",
+      actionIds: roleSpotlightActionIds(user),
+    });
+  }
+
+  if (kind === "overall") {
+    const [attendanceResult, resultsResult] = await Promise.allSettled([
+      getMyAttendance(),
+      getStudentResults(),
+    ]);
+
+    const details: string[] = [];
+    if (attendanceResult.status === "fulfilled" && attendanceResult.value.value.length > 0) {
+      const attendance = attendanceResult.value;
+      const moduleCount = new Set(attendance.value.map((row) => row.moduleId)).size;
+      details.push(
+        `Attendance covers ${attendance.summary.total} ${pluralize(attendance.summary.total, "session")} across ${moduleCount} ${pluralize(moduleCount, "module")}.`
+      );
+    }
+
+    if (resultsResult.status === "fulfilled" && resultsResult.value.length > 0) {
+      const rows = sortResults(resultsResult.value);
+      const average =
+        rows.reduce((sum, row) => sum + (row.score / Math.max(row.outOf || 100, 1)) * 100, 0) /
+        rows.length;
+      details.push(`Results include ${rows.length} published ${pluralize(rows.length, "result")} with an average of ${Math.round(average)}%.`);
+    }
+
+    if (details.length === 0) {
+      return buildReply({
+        summary: "There is not much academic data to review yet.",
+        note: "Results and Attendance are still the best places to check first.",
+        actionIds: uniqueActionIds(["student-results", "attendance", "calendar"]),
+      });
+    }
+
+    return buildReply({
+      summary: "Here is your current academic snapshot.",
+      details,
+      note: "If you want the full view, I can open Results or Attendance next.",
+      actionIds: uniqueActionIds(["student-results", "attendance", "calendar"]),
+    });
+  }
+
+  const includeFinance = includesAnyPhrase(query, ["account", "finance", "fees", "balance", "payments"]);
+  const [announcementResult, resultsResult, calendarResult] = await Promise.allSettled([
+    loadAnnouncementFeed(user),
+    getStudentResults(),
+    loadUpcomingCalendarEntries(user, 7),
+  ]);
+  const details: string[] = [];
+  let financeSummary: StudentFinanceSummary | null = null;
+
+  if (includeFinance) {
+    try {
+      financeSummary = await apiClient.get<StudentFinanceSummary>("/finance/summary");
+    } catch {
+      financeSummary = null;
+    }
+  }
+
+  if (announcementResult.status === "fulfilled" && announcementResult.value.items.length > 0) {
+    const count = announcementResult.value.items.length;
+    details.push(`${count} active ${pluralize(count, "announcement")} are waiting for you.`);
+  }
+
+  if (resultsResult.status === "fulfilled" && resultsResult.value.length > 0) {
+    const count = resultsResult.value.length;
+    details.push(`${count} published ${pluralize(count, "result")} are available to review.`);
+  }
+
+  if (calendarResult.status === "fulfilled" && calendarResult.value.length > 0) {
+    const count = calendarResult.value.length;
+    details.push(`${count} upcoming calendar ${pluralize(count, "event")} are scheduled in the next 7 days.`);
+  }
+
+  if (financeSummary && hasOwnFinanceActivity(financeSummary)) {
+    details.push(`Your finance status is ${financeSummary.accountStatus}.`);
+  }
+
+  if (details.length === 0) {
+    return buildReply({
+      summary: "Nothing needs immediate attention right now.",
+      note: "Results, Notifications, and Calendar are still the best next checks.",
+      actionIds: uniqueActionIds(["student-results", "notifications", "calendar"]),
+    });
+  }
+
+  return buildReply({
+    summary: "Here's the quickest snapshot for today.",
+    details,
+    note: "If you want, I can open Results, Notifications, or Calendar next.",
+    actionIds: uniqueActionIds(["student-results", "notifications", "calendar"]),
+  });
+}
+
+async function buildParentBroadGuidanceReply(
+  user: AuthUser,
+  kind: BroadGuidanceKind
+): Promise<AssistantLiveReply> {
+  const children = await loadParentChildren();
+  if (children.length === 0) {
+    return buildReply({
+      summary: "There isn't a linked child to review yet.",
+      note: "Open Children to link a learner first, then I can help with results, attendance, finance, or calendar.",
+      actionIds: ["parent-children"],
+    });
+  }
+
+  if (kind === "guide" || kind === "next_step") {
+    return buildReply({
+      summary:
+        kind === "guide"
+          ? `You have ${children.length} linked ${pluralize(children.length, "child")}. I can guide you through results, attendance, finance, or calendar next.`
+          : `You have ${children.length} linked ${pluralize(children.length, "child")}.`,
+      note:
+        kind === "guide"
+          ? "Choose what you'd like to review first."
+          : "Results, Attendance, Finance, and Calendar are the best next checks.",
+      actionIds: roleSpotlightActionIds(user),
+    });
+  }
+
+  return buildReply({
+    summary: `You have ${children.length} linked ${pluralize(children.length, "child")} to keep an eye on.`,
+    details: [
+      "Results show published academic outcomes.",
+      "Attendance helps you review present, late, and absent sessions.",
+      "Finance and Calendar are the quickest places to spot account and schedule updates.",
+    ],
+    note: "Choose the area you'd like to check first.",
+    actionIds: roleSpotlightActionIds(user),
+  });
+}
+
+async function buildLecturerBroadGuidanceReply(
+  user: AuthUser,
+  kind: BroadGuidanceKind
+): Promise<AssistantLiveReply> {
+  if (kind === "guide" || kind === "next_step") {
+    return buildReply({
+      summary:
+        kind === "guide"
+          ? "A good place to start is Attendance, Notifications, Calendar, or Modules."
+          : "The best places to check next are Attendance, Notifications, Calendar, and Modules.",
+      note:
+        kind === "guide"
+          ? "Pick one and I'll keep the next step focused."
+          : "Pick one and I can open it for you.",
+      actionIds: roleSpotlightActionIds(user),
+    });
+  }
+
+  const [announcementResult, attendanceResult, calendarResult] = await Promise.allSettled([
+    loadAnnouncementFeed(user),
+    listAttendanceModules(),
+    loadUpcomingCalendarEntries(user, 7),
+  ]);
+
+  const details: string[] = [];
+  if (announcementResult.status === "fulfilled" && announcementResult.value.items.length > 0) {
+    const count = announcementResult.value.items.length;
+    details.push(`${count} active ${pluralize(count, "announcement")} are available.`);
+  }
+  if (attendanceResult.status === "fulfilled" && attendanceResult.value.length > 0) {
+    const count = attendanceResult.value.length;
+    details.push(`Attendance is available for ${count} ${pluralize(count, "module")}.`);
+  }
+  if (calendarResult.status === "fulfilled" && calendarResult.value.length > 0) {
+    const count = calendarResult.value.length;
+    details.push(`${count} upcoming calendar ${pluralize(count, "event")} are scheduled in the next 7 days.`);
+  }
+
+  if (details.length === 0) {
+    return buildReply({
+      summary: "Nothing urgent is standing out in your teaching workspace.",
+      note: "Attendance, Notifications, and Calendar are still the best next checks.",
+      actionIds: uniqueActionIds(["attendance", "notifications", "calendar"]),
+    });
+  }
+
+  return buildReply({
+    summary: kind === "overall" ? "Here's your current teaching snapshot." : "Here's the quickest view of your teaching workspace.",
+    details,
+    note: "I can open Attendance, Notifications, Calendar, or Modules next.",
+    actionIds: uniqueActionIds(["attendance", "notifications", "calendar"]),
+  });
+}
+
+async function buildFinanceAdminBroadGuidanceReply(
+  user: AuthUser,
+  kind: BroadGuidanceKind
+): Promise<AssistantLiveReply> {
+  if (kind === "guide" || kind === "next_step") {
+    return buildReply({
+      summary:
+        kind === "guide"
+          ? "The finance workspace is the right place to start, with Messages as the communication follow-up."
+          : "Finance and Messages are the main places to check next.",
+      note: "I can open either one for you.",
+      actionIds: roleSpotlightActionIds(user),
+    });
+  }
+
+  const accounts = await listAdminFinanceAccounts({ limit: 100 });
+  const flagged = accounts.filter(
+    (account) => String(account.status).toUpperCase() !== "OK" || account.balance > 0
+  );
+
+  if (flagged.length === 0) {
+    return buildReply({
+      summary: "No finance accounts need attention right now.",
+      note: "Open Finance if you want to review the full list.",
+      actionIds: uniqueActionIds(["admin-finance", "messages"]),
+    });
+  }
+
+  return buildReply({
+    summary: `${flagged.length} finance ${pluralize(flagged.length, "account")} need attention right now.`,
+    details: flagged
+      .slice(0, MAX_DETAIL_LINES)
+      .map((account) => `${account.studentNumber?.trim() || account.email}: ${account.status} (${money(account.balance, account.currency)})`),
+    note: "Open Finance for the full account list.",
+    actionIds: uniqueActionIds(["admin-finance", "messages"]),
+  });
+}
+
+function buildAdminBroadGuidanceReply(
+  user: AuthUser,
+  kind: BroadGuidanceKind
+): AssistantLiveReply {
+  return buildReply({
+    summary:
+      kind === "guide"
+        ? "A good place to start is one of the admin workspace shortcuts below."
+        : kind === "next_step"
+        ? "The most useful admin shortcuts are below."
+        : "These are the admin areas worth checking next.",
+    note: "I'll keep suggestions limited to the pages your admin scope already allows.",
+    actionIds: roleSpotlightActionIds(user),
+  });
+}
+
+async function buildBroadGuidanceReply(
+  user: AuthUser,
+  kind: BroadGuidanceKind,
+  query: string
+): Promise<AssistantLiveReply> {
+  if (user.role === "STUDENT") {
+    return buildStudentBroadGuidanceReply(user, kind, query);
+  }
+
+  if (user.role === "PARENT") {
+    return buildParentBroadGuidanceReply(user, kind);
+  }
+
+  if (user.role === "LECTURER") {
+    return buildLecturerBroadGuidanceReply(user, kind);
+  }
+
+  if (isFinanceAdmin(user)) {
+    return buildFinanceAdminBroadGuidanceReply(user, kind);
+  }
+
+  return buildAdminBroadGuidanceReply(user, kind);
+}
+
 export function detectAssistantLiveIntent(input: string): AssistantLiveIntent | null {
   const resolution = resolveAssistantLiveIntent(input);
   return resolution.kind === "intent" ? resolution.intent : null;
+}
+
+async function buildIntentReply(
+  user: AuthUser,
+  intent: AssistantLiveIntent
+): Promise<AssistantLiveReply | null> {
+  if (intent === "announcements") return buildAnnouncementsReply(user);
+  if (intent === "attendance") {
+    if (user.role === "STUDENT") return buildStudentAttendanceReply(user);
+    if (user.role === "PARENT") return buildParentAttendanceReply(user);
+    return buildStaffAttendanceReply(user);
+  }
+  if (intent === "results") return buildResultsReply(user);
+  if (intent === "finance") return buildFinanceReply(user);
+  if (intent === "calendar") return buildCalendarReply(user);
+  return null;
 }
 
 async function loadModuleAnnouncements(user: AuthUser) {
@@ -647,36 +1356,19 @@ async function loadModuleAnnouncements(user: AuthUser) {
 }
 
 async function buildAnnouncementsReply(user: AuthUser): Promise<AssistantLiveReply> {
-  const channels: ChannelKey[] = ["general", "faculty", "clubs", "emergency"];
-  const publicSettled = await Promise.allSettled(channels.map((channel) => fetchAnnouncements(channel)));
-  const publicLoadedCount = countFulfilled(publicSettled);
-  const publicItems = fulfilledValues(publicSettled).flatMap((row) => row);
-
-  let moduleResult = { items: [] as Announcement[], totalCount: 0, loadedCount: 0 };
-  let moduleLoadNote: string | undefined;
-  try {
-    moduleResult = await loadModuleAnnouncements(user);
-  } catch {
-    moduleLoadNote =
-      user.role === "PARENT" || isFinanceAdmin(user)
-        ? undefined
-        : "Some module announcement feeds could not be loaded, so this summary may be partial.";
-  }
-  const totalLoaded = publicLoadedCount + moduleResult.loadedCount;
-  const totalSources = publicSettled.length + moduleResult.totalCount;
+  const { items, totalLoaded, totalSources, moduleLoadNote } = await loadAnnouncementFeed(user);
 
   if (totalSources > 0 && totalLoaded === 0) {
     return buildIntentErrorReply(user, "announcements");
   }
 
-  const items = sortAnnouncements(dedupeById([...publicItems, ...moduleResult.items]));
   const summary =
     user.role === "PARENT"
       ? items.length === 0
-        ? "You have no active shared announcements right now."
+        ? "There are no active shared announcements right now."
         : `You have ${items.length} active shared ${pluralize(items.length, "announcement")}.`
       : items.length === 0
-        ? "You have no active announcements right now."
+        ? "There are no active announcements right now."
         : `You have ${items.length} active ${pluralize(items.length, "announcement")}.`;
 
   if (items.length === 0) {
@@ -705,7 +1397,7 @@ async function buildStudentAttendanceReply(user: AuthUser): Promise<AssistantLiv
   const data = await getMyAttendance();
   if (data.value.length === 0) {
     return buildReply({
-      summary: "No attendance data is available yet.",
+      summary: "There's no attendance data to review yet.",
       actionIds: actionIdsForIntent(user, "attendance"),
     });
   }
@@ -735,8 +1427,8 @@ async function buildParentAttendanceReply(user: AuthUser): Promise<AssistantLive
   const children = await loadParentChildren();
   if (children.length === 0) {
     return buildReply({
-      summary: "No linked children were found for attendance yet.",
-      note: "Link a child first to view attendance through the chatbot.",
+      summary: "There isn't a linked child to review for attendance yet.",
+      note: "Open Children to link a learner first.",
       actionIds: ["parent-children"],
     });
   }
@@ -761,7 +1453,7 @@ async function buildParentAttendanceReply(user: AuthUser): Promise<AssistantLive
   const records = sortAttendance(loaded.flatMap((row) => row.records));
   if (records.length === 0) {
     return buildReply({
-      summary: "No attendance data is available yet.",
+      summary: "There's no attendance data to review yet.",
       note: partialDataNote(loaded.length, children.length, "linked child attendance records"),
       actionIds: actionIdsForIntent(user, "attendance"),
     });
@@ -790,15 +1482,15 @@ async function buildParentAttendanceReply(user: AuthUser): Promise<AssistantLive
 async function buildStaffAttendanceReply(user: AuthUser): Promise<AssistantLiveReply> {
   if (isFinanceAdmin(user)) {
     return buildReply({
-      summary: "Attendance is not currently available through the chatbot for finance admin accounts.",
-      note: "Attendance chatbot access is currently limited to students, parents, lecturers, academic admins, and super admins.",
+      summary: "Attendance isn't available through chat for finance admin accounts.",
+      note: "Attendance chat support is limited to students, parents, lecturers, academic admins, and super admins.",
     });
   }
 
   const modules = await listAttendanceModules();
   if (modules.length === 0) {
     return buildReply({
-      summary: "No attendance modules are available right now.",
+      summary: "There are no attendance modules to review right now.",
       actionIds: actionIdsForIntent(user, "attendance"),
     });
   }
@@ -815,7 +1507,7 @@ async function buildResultsReply(user: AuthUser): Promise<AssistantLiveReply> {
     const rows = sortResults(await getStudentResults());
     if (rows.length === 0) {
       return buildReply({
-        summary: "No results are available yet.",
+        summary: "There are no published results yet.",
         actionIds: actionIdsForIntent(user, "results"),
       });
     }
@@ -835,8 +1527,8 @@ async function buildResultsReply(user: AuthUser): Promise<AssistantLiveReply> {
     const children = await loadParentChildren();
     if (children.length === 0) {
       return buildReply({
-        summary: "No linked children were found for results yet.",
-        note: "Link a child first to view results through the chatbot.",
+        summary: "There isn't a linked child to review for results yet.",
+        note: "Open Children to link a learner first.",
         actionIds: ["parent-children"],
       });
     }
@@ -865,7 +1557,7 @@ async function buildResultsReply(user: AuthUser): Promise<AssistantLiveReply> {
 
     if (resultRows.length === 0) {
       return buildReply({
-        summary: "No results are available yet.",
+        summary: "There are no published results yet.",
         note: partialDataNote(loaded.length, children.length, "linked child results"),
         actionIds: actionIdsForIntent(user, "results"),
       });
@@ -891,13 +1583,13 @@ async function buildResultsReply(user: AuthUser): Promise<AssistantLiveReply> {
 
   if (isFinanceAdmin(user)) {
     return buildReply({
-      summary: "Live results are not currently available through the chatbot for finance admin accounts.",
-      note: "Live results are currently supported for students and parents only.",
+      summary: "Results aren't available through chat for finance admin accounts.",
+      note: "Results chat support is currently limited to students and parents.",
     });
   }
 
   return buildReply({
-    summary: "Live results are currently available through the chatbot for students and parents only.",
+    summary: "Results are currently available through chat for students and parents only.",
     note: "Staff results still require a selected learner or module in Manage Results.",
     actionIds: actionIdsForIntent(user, "results"),
   });
@@ -908,8 +1600,8 @@ async function buildFinanceReply(user: AuthUser): Promise<AssistantLiveReply> {
     const children = await loadParentChildren();
     if (children.length === 0) {
       return buildReply({
-        summary: "No linked children were found for finance yet.",
-        note: "Link a child first to view finance through the chatbot.",
+        summary: "There isn't a linked child to review for finance yet.",
+        note: "Open Children to link a learner first.",
         actionIds: ["parent-children"],
       });
     }
@@ -929,7 +1621,7 @@ async function buildFinanceReply(user: AuthUser): Promise<AssistantLiveReply> {
     const activeAccounts = loaded.filter((row) => hasParentFinanceActivity(row.finance));
     if (activeAccounts.length === 0) {
       return buildReply({
-        summary: "No finance items were found for your linked children.",
+        summary: "There are no finance items to review for your linked children.",
         note: partialDataNote(loaded.length, children.length, "linked child finance records"),
         actionIds: actionIdsForIntent(user, "finance"),
       });
@@ -961,7 +1653,7 @@ async function buildFinanceReply(user: AuthUser): Promise<AssistantLiveReply> {
     const accounts = await listAdminFinanceAccounts({ limit: 250 });
     if (accounts.length === 0) {
       return buildReply({
-        summary: "No finance accounts were found.",
+        summary: "There are no finance accounts to review right now.",
         actionIds: actionIdsForIntent(user, "finance"),
       });
     }
@@ -972,7 +1664,7 @@ async function buildFinanceReply(user: AuthUser): Promise<AssistantLiveReply> {
 
     if (flagged.length === 0) {
       return buildReply({
-        summary: "No outstanding finance items were found.",
+        summary: "There are no outstanding finance items right now.",
         details: [`Reviewed ${accounts.length} student ${pluralize(accounts.length, "account")}.`],
         actionIds: actionIdsForIntent(user, "finance"),
       });
@@ -994,8 +1686,8 @@ async function buildFinanceReply(user: AuthUser): Promise<AssistantLiveReply> {
 
   if (user.role === "ADMIN") {
     return buildReply({
-      summary: "Finance summaries are not currently available through the chatbot for this admin role.",
-      note: "Finance summaries are currently available for students, parents, finance admins, and lecturers viewing their own account.",
+      summary: "Finance summaries aren't available through chat for this admin role.",
+      note: "Finance chat support is available for students, parents, finance admins, and lecturers viewing their own account.",
     });
   }
 
@@ -1004,7 +1696,7 @@ async function buildFinanceReply(user: AuthUser): Promise<AssistantLiveReply> {
 
   if (!hasOwnFinanceActivity(summary)) {
     return buildReply({
-      summary: "No finance items were found for your account.",
+      summary: "There are no finance items to review for your account.",
       details: [`Current balance: ${money(balance, summary.currency)} | Status: ${summary.accountStatus}`],
       actionIds: actionIdsForIntent(user, "finance"),
     });
@@ -1021,8 +1713,8 @@ async function buildFinanceReply(user: AuthUser): Promise<AssistantLiveReply> {
 async function buildCalendarReply(user: AuthUser): Promise<AssistantLiveReply> {
   if (isFinanceAdmin(user)) {
     return buildReply({
-      summary: "Calendar is not currently available through the chatbot for finance admin accounts.",
-      note: "Calendar chatbot access is currently limited to students, parents, lecturers, academic admins, and super admins.",
+      summary: "Calendar isn't available through chat for finance admin accounts.",
+      note: "Calendar chat support is limited to students, parents, lecturers, academic admins, and super admins.",
     });
   }
 
@@ -1032,8 +1724,8 @@ async function buildCalendarReply(user: AuthUser): Promise<AssistantLiveReply> {
     const children = await loadParentChildren();
     if (children.length === 0) {
       return buildReply({
-        summary: "No linked children were found for calendar yet.",
-        note: "Link a child first to view calendar events through the chatbot.",
+        summary: "There isn't a linked child to review for calendar yet.",
+        note: "Open Children to link a learner first.",
         actionIds: ["parent-children"],
       });
     }
@@ -1058,7 +1750,7 @@ async function buildCalendarReply(user: AuthUser): Promise<AssistantLiveReply> {
     const entries = sortCalendar(loaded.flatMap((row) => row.entries));
     if (entries.length === 0) {
       return buildReply({
-        summary: "No upcoming calendar events were found.",
+        summary: "There are no upcoming calendar items right now.",
         note: partialDataNote(loaded.length, children.length, "linked child calendar feeds"),
         actionIds: actionIdsForIntent(user, "calendar"),
       });
@@ -1092,7 +1784,7 @@ async function buildCalendarReply(user: AuthUser): Promise<AssistantLiveReply> {
 
   if (entries.length === 0) {
     return buildReply({
-      summary: "No upcoming calendar events were found.",
+      summary: "There are no upcoming calendar items right now.",
       actionIds: actionIdsForIntent(user, "calendar"),
     });
   }
@@ -1109,33 +1801,56 @@ export async function getAssistantLiveReply(
   input: string,
   history: AssistantChatTurn[] = []
 ): Promise<AssistantLiveReply | null> {
-  const resolution = resolveAssistantLiveIntent(input, history);
-  if (resolution.kind === "clarify") {
-    return resolution.intents?.length
-      ? buildAmbiguousIntentReply(user, resolution.intents)
-      : buildSupportedTopicsReply();
+  const normalizedQuery = buildNormalizedIntentQuery(input);
+  const specificResolution = resolveAssistantLiveIntent(input);
+
+  if (specificResolution.kind === "clarify") {
+    return specificResolution.intents?.length
+      ? buildAmbiguousIntentReply(user, specificResolution.intents)
+      : buildSupportedTopicsReply(user);
   }
-  if (resolution.kind !== "intent") return null;
-  const { intent } = resolution;
+
+  if (specificResolution.kind === "intent") {
+    try {
+      return await buildIntentReply(user, specificResolution.intent);
+    } catch {
+      return buildIntentErrorReply(user, specificResolution.intent);
+    }
+  }
+
+  if (getAssistantStrongDomainMatch(user, input)) {
+    return null;
+  }
+
+  const broadResolution = resolveBroadGuidanceIntent(input);
+  if (broadResolution.kind === "clarify") {
+    return buildBroadIntentClarificationReply(user, broadResolution.intents);
+  }
+
+  if (broadResolution.kind === "intent") {
+    return buildBroadGuidanceReply(user, broadResolution.intent, normalizedQuery.core);
+  }
+
+  const followUpResolution = resolveAssistantLiveFollowUp(input, history);
+  if (followUpResolution.kind === "clarify") {
+    return buildSupportedTopicsReply(user);
+  }
+
+  if (followUpResolution.kind !== "intent") {
+    return null;
+  }
 
   try {
-    if (intent === "announcements") return buildAnnouncementsReply(user);
-    if (intent === "attendance") {
-      if (user.role === "STUDENT") return buildStudentAttendanceReply(user);
-      if (user.role === "PARENT") return buildParentAttendanceReply(user);
-      return buildStaffAttendanceReply(user);
-    }
-    if (intent === "results") return buildResultsReply(user);
-    if (intent === "finance") return buildFinanceReply(user);
-    if (intent === "calendar") return buildCalendarReply(user);
-    return null;
+    return await buildIntentReply(user, followUpResolution.intent);
   } catch {
-    return buildIntentErrorReply(user, intent);
+    return buildIntentErrorReply(user, followUpResolution.intent);
   }
 }
 
-export function getAssistantCapabilityFallback(): AssistantLiveReply {
-  return {
-    text: CAPABILITY_FALLBACK_TEXT,
-  };
+export function getAssistantCapabilityFallback(user: AuthUser): AssistantLiveReply {
+  return buildReply({
+    summary: capabilityFallbackSummary(user),
+    note: "You can also ask me to open the page you need.",
+    actionIds: roleSpotlightActionIds(user),
+  });
 }

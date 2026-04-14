@@ -38,6 +38,16 @@ type Mode = "login" | "register";
 type OtpPurpose = "LOGIN" | "REGISTER";
 type LoginPage2Props = { onOpenLegal?: () => void };
 const PUBLIC_REGISTRATION_ROLES: UserRole[] = ["STUDENT", "PARENT"];
+const LOGIN_QUICK_ACCESS_LINKS = [
+  {
+    label: "Clock In",
+    href: "https://pulse.forgetalent.co.za/",
+  },
+  {
+    label: "Ticket System",
+    href: "https://pulse.forgetalent.co.za/ticket.php",
+  },
+] as const;
 
 function landingFor(user: Pick<AuthUser, "role" | "adminScope">) {
   if (user.role === "STUDENT") return "/app/personal-details";
@@ -809,6 +819,31 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                 </Link>
               </div>
             </form>
+
+            <div className="mt-5 rounded-[28px] border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.42)] px-4 py-4 shadow-[0_18px_44px_rgba(3,10,28,0.28)] backdrop-blur-xl sm:px-5">
+              <div className="flex flex-col gap-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#8CEBFF]/72">
+                  Quick Access
+                </p>
+                <p className="text-sm text-white/62">
+                  Open key Pulse tools in a new tab.
+                </p>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {LOGIN_QUICK_ACCESS_LINKS.map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary inline-flex w-full items-center justify-center px-4 py-3 text-sm font-semibold"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>

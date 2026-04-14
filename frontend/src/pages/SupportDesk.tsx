@@ -91,7 +91,7 @@ export default function SupportDesk() {
       setError(null);
       setInfo(null);
 
-      await submitSupportTicket({
+      const response = await submitSupportTicket({
         email: email.trim().toLowerCase(),
         name: name.trim() || undefined,
         deviceNumber: deviceNumber.trim() || undefined,
@@ -100,7 +100,7 @@ export default function SupportDesk() {
       });
 
       setMessage("");
-      setInfo("Support request submitted. The team will contact you by email.");
+      setInfo(response.message ?? "Support request submitted. The team will contact you by email.");
       await loadTickets(email);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit ticket");

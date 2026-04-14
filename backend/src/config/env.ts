@@ -173,6 +173,11 @@ const SMTP_FROM = String(process.env.SMTP_FROM ?? "").trim() || undefined;
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY ?? "").trim() || undefined;
 const OPENAI_ASSISTANT_MODEL =
   String(process.env.OPENAI_ASSISTANT_MODEL ?? "").trim() || "gpt-5.4-mini";
+const PULSE_SYNC_ENABLED = parseBoolean(process.env.PULSE_SYNC_ENABLED, false);
+const PULSE_TICKET_FORM_URL =
+  String(process.env.PULSE_TICKET_FORM_URL ?? "").trim() ||
+  "https://pulse.forgetalent.co.za/ticket.php";
+const PULSE_SYNC_TIMEOUT_MS = parsePositiveInt(process.env.PULSE_SYNC_TIMEOUT_MS, 10000);
 
 if (!DATABASE_URL && !DB_PASSWORD) {
   required("DB_PASSWORD");
@@ -204,6 +209,11 @@ export const env = {
   // OpenAI
   OPENAI_API_KEY,
   OPENAI_ASSISTANT_MODEL,
+
+  // Pulse ticket sync
+  PULSE_SYNC_ENABLED,
+  PULSE_TICKET_FORM_URL,
+  PULSE_SYNC_TIMEOUT_MS,
 
   // Demo OTP bypass controls
   get ALLOW_DEMO_OTP_BYPASS(): boolean {

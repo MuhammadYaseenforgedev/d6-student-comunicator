@@ -1,6 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import crypto from "crypto";
 import { pool } from "../config/db";
+import { env } from "../config/env";
+import {
+  syncSupportTicketToPulse,
+  type PulseTicketSyncStatus,
+} from "../integrations/pulse/pulseTicketService";
 import { requireAccess } from "../middleware/rbac";
 
 const SUPPORT_TICKET_STATUSES = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"] as const;
@@ -23,6 +28,11 @@ type SupportTicketRow = {
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
+  external_system: string | null;
+  external_reference: string | null;
+  pulse_sync_status: PulseTicketSyncStatus;
+  pulse_synced_at: string | null;
+  pulse_sync_error: string | null;
 };
 
 function err(res: Response, status: number, code: string, message: string) {
@@ -62,6 +72,10 @@ function toPublicTicket(row: SupportTicketRow) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     resolvedAt: row.resolved_at,
+    externalSystem: row.external_system,
+    externalReference: row.external_reference,
+    pulseSyncStatus: row.pulse_sync_status,
+    pulseSyncedAt: row.pulse_synced_at,
   };
 }
 
@@ -72,7 +86,66 @@ function toAdminTicket(row: SupportTicketRow) {
     adminNote: row.admin_note,
     assignedTo: row.assigned_to,
     assignedEmail: row.assigned_email,
+    pulseSyncError: row.pulse_sync_error,
   };
+}
+
+const SUPPORT_TICKET_COLUMNS = `
+  id,
+  requester_email,
+  requester_name,
+  device_number,
+  issue_type,
+  message,
+  status,
+  admin_note,
+  assigned_to,
+  created_at,
+  updated_at,
+  resolved_at,
+  external_system,
+  external_reference,
+  pulse_sync_status,
+  pulse_synced_at,
+  pulse_sync_error
+`;
+
+async function updatePulseSyncState(
+  ticketId: string,
+  input: {
+    status: PulseTicketSyncStatus;
+    externalSystem: string | null;
+    externalReference: string | null;
+    syncedAt: string | null;
+    error: string | null;
+  }
+) {
+  const updated = await pool.query<SupportTicketRow>(
+    `
+      UPDATE support_tickets
+      SET
+        external_system = $2,
+        external_reference = $3,
+        pulse_sync_status = $4,
+        pulse_synced_at = $5::timestamptz,
+        pulse_sync_error = $6,
+        updated_at = now()
+      WHERE id = $1
+      RETURNING
+        ${SUPPORT_TICKET_COLUMNS},
+        NULL::text AS assigned_email
+    `,
+    [
+      ticketId,
+      input.externalSystem,
+      input.externalReference,
+      input.status,
+      input.syncedAt,
+      input.error,
+    ]
+  );
+
+  return updated.rows[0] ?? null;
 }
 
 export const supportRouter = Router();
@@ -103,28 +176,58 @@ supportRouter.post("/tickets", async (req: Request, res: Response) => {
           requester_name,
           device_number,
           issue_type,
-          message
-        )
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING
-          id,
-          requester_email,
-          requester_name,
-          device_number,
-          issue_type,
           message,
-          status,
-          admin_note,
-          assigned_to,
-          NULL::text AS assigned_email,
-          created_at,
-          updated_at,
-          resolved_at
-      `,
+          external_system,
+          pulse_sync_status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'pulse', 'PENDING')
+      RETURNING
+        ${SUPPORT_TICKET_COLUMNS},
+        NULL::text AS assigned_email
+    `,
       [crypto.randomUUID(), requesterEmail, requesterName, deviceNumber, issueType, message]
     );
 
-    return res.status(201).json({ ok: true, ticket: toPublicTicket(created.rows[0]) });
+    const createdTicket = created.rows[0];
+    const pulseSync = await syncSupportTicketToPulse(
+      {
+        id: createdTicket.id,
+        requesterEmail,
+        requesterName,
+        deviceNumber,
+        issueType,
+        message,
+      },
+      {
+        enabled: env.PULSE_SYNC_ENABLED,
+        formUrl: env.PULSE_TICKET_FORM_URL,
+        timeoutMs: env.PULSE_SYNC_TIMEOUT_MS,
+      }
+    );
+
+    const syncedTicket =
+      (await updatePulseSyncState(createdTicket.id, pulseSync)) ?? createdTicket;
+
+    if (pulseSync.status === "FAILED") {
+      console.error("[support] pulse sync failed", {
+        ticketId: createdTicket.id,
+        error: pulseSync.error,
+      });
+    }
+
+    const responseMessage =
+      pulseSync.status === "SYNCED"
+        ? "Support request submitted. A matching ticket was sent to Pulse."
+        : pulseSync.status === "FAILED"
+          ? "Support request submitted. The Pulse handoff needs a retry, but your Forge ticket was saved safely."
+          : "Support request submitted. The team will contact you by email.";
+
+    return res.status(201).json({
+      ok: true,
+      ticket: toPublicTicket(syncedTicket),
+      message: responseMessage,
+      pulseSyncStatus: pulseSync.status,
+    });
   } catch (e) {
     console.error("[support] POST /support/tickets error", e);
     return err(res, 500, "INTERNAL", "Failed to submit support ticket");
@@ -141,19 +244,8 @@ supportRouter.get("/tickets", async (req: Request, res: Response) => {
     const rows = await pool.query<SupportTicketRow>(
       `
         SELECT
-          id,
-          requester_email,
-          requester_name,
-          device_number,
-          issue_type,
-          message,
-          status,
-          admin_note,
-          assigned_to,
-          NULL::text AS assigned_email,
-          created_at,
-          updated_at,
-          resolved_at
+          ${SUPPORT_TICKET_COLUMNS},
+          NULL::text AS assigned_email
         FROM support_tickets
         WHERE lower(requester_email) = lower($1)
         ORDER BY created_at DESC
@@ -212,7 +304,12 @@ supportRouter.get(
             au.email AS assigned_email,
             st.created_at,
             st.updated_at,
-            st.resolved_at
+            st.resolved_at,
+            st.external_system,
+            st.external_reference,
+            st.pulse_sync_status,
+            st.pulse_synced_at,
+            st.pulse_sync_error
           FROM support_tickets st
           LEFT JOIN users au ON au.id = st.assigned_to
           ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
@@ -299,7 +396,12 @@ supportRouter.patch(
             ) AS assigned_email,
             st.created_at,
             st.updated_at,
-            st.resolved_at
+            st.resolved_at,
+            st.external_system,
+            st.external_reference,
+            st.pulse_sync_status,
+            st.pulse_synced_at,
+            st.pulse_sync_error
         `,
         params
       );
