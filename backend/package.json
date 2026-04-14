@@ -57,5 +57,8 @@
     "ts-jest": "^29.2.6",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "minimatch": "^10.2.3"
   }
 }
