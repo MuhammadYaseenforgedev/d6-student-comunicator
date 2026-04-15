@@ -128,12 +128,6 @@ describe("Student profile management and scoped lookup", () => {
         emergencyContactName: "Guardian Demo",
         emergencyContactNumber: "0820000003",
         courseId,
-        feeStatus: "PARTIAL",
-        paymentMethod: "EFT",
-        amountDue: 2500,
-        amountPaid: 1000,
-        lastPaymentDate: "2026-04-01",
-        paymentReference: "REF-1001",
       });
 
     expect(saveRes.status).toBe(200);
@@ -167,7 +161,7 @@ describe("Student profile management and scoped lookup", () => {
 
     expect(lecturerDetail.status).toBe(200);
     expect(String(lecturerDetail.body?.profile?.idNumber ?? "")).toBe(idNumber);
-    expect(String(lecturerDetail.body?.profile?.feeStatus ?? "")).toBe("PARTIAL");
+    expect(String(lecturerDetail.body?.profile?.feeStatus ?? "")).toBe("");
 
     const parent = await createUser("PARENT", `${unique}_parent@co.za`);
     const parentToken = signJwt(parent);

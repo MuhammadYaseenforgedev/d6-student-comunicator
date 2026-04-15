@@ -601,7 +601,7 @@ function LecturerCoursesView() {
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <SectionTitle
                     title="Student Profiles"
-                    subtitle="Search learners in your allowed course and inspect their personal, academic, and payment capture details."
+                    subtitle="Search learners in your allowed course and inspect their personal and academic details."
                   />
 
                   <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
@@ -680,9 +680,6 @@ function LecturerCoursesView() {
                               <span className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-2.5 py-1 text-[11px] text-white/70">
                                 {student.courseCode?.trim() || student.courseName?.trim() || "Course not assigned"}
                               </span>
-                              <span className="rounded-full border border-[rgba(255,196,87,0.24)] bg-[rgba(97,59,9,0.45)] px-2.5 py-1 text-[11px] text-[#ffe8b0]">
-                                {student.feeStatus || "No fee status"}
-                              </span>
                             </div>
                           </button>
                         ))
@@ -694,7 +691,7 @@ function LecturerCoursesView() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <SectionTitle
                         title="Profile Detail"
-                        subtitle="View the selected learner's personal, academic, and payment capture details."
+                        subtitle="View the selected learner's personal and academic details."
                       />
                       <div className="workspace-meta-pill">
                         {selectedStudentProfile?.email || "No learner selected"}

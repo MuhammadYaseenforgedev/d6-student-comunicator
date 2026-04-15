@@ -8,16 +8,6 @@ import {
   type StudentProfileDetail,
 } from "../lib/studentProfileApi";
 
-const FEE_STATUS_OPTIONS: Array<{
-  value: StudentProfileDetail["feeStatus"];
-  label: string;
-}> = [
-  { value: "", label: "Select fee status" },
-  { value: "PAID", label: "Paid" },
-  { value: "PARTIAL", label: "Partial" },
-  { value: "OUTSTANDING", label: "Outstanding" },
-];
-
 const MISSING_LABELS: Record<string, string> = {
   fullName: "full name",
   surname: "surname",
@@ -29,11 +19,6 @@ const MISSING_LABELS: Record<string, string> = {
   province: "province",
   postalCode: "postal code",
   courseId: "course",
-  feeStatus: "fee status",
-  paymentMethod: "payment method",
-  amountDue: "amount due",
-  amountPaid: "amount paid",
-  lastPaymentDate: "last payment date",
   email: "email",
 };
 
@@ -53,12 +38,6 @@ type FormState = {
   emergencyContactNumber: string;
   courseId: string;
   studentNumber: string;
-  feeStatus: StudentProfileDetail["feeStatus"];
-  paymentMethod: string;
-  amountDue: string;
-  amountPaid: string;
-  lastPaymentDate: string;
-  paymentReference: string;
 };
 
 function toFormState(profile: StudentProfileDetail): FormState {
@@ -78,12 +57,6 @@ function toFormState(profile: StudentProfileDetail): FormState {
     emergencyContactNumber: profile.emergencyContactNumber ?? "",
     courseId: profile.courseId ?? "",
     studentNumber: profile.studentNumber,
-    feeStatus: profile.feeStatus,
-    paymentMethod: profile.paymentMethod,
-    amountDue: profile.amountDue == null ? "" : profile.amountDue.toFixed(2),
-    amountPaid: profile.amountPaid == null ? "" : profile.amountPaid.toFixed(2),
-    lastPaymentDate: profile.lastPaymentDate ?? "",
-    paymentReference: profile.paymentReference ?? "",
   };
 }
 
@@ -190,12 +163,6 @@ export default function StudentPersonalDetails() {
         emergencyContactName: form.emergencyContactName || null,
         emergencyContactNumber: form.emergencyContactNumber || null,
         courseId: form.courseId || null,
-        feeStatus: form.feeStatus,
-        paymentMethod: form.paymentMethod,
-        amountDue: form.amountDue.trim() ? Number(form.amountDue) : null,
-        amountPaid: form.amountPaid.trim() ? Number(form.amountPaid) : null,
-        lastPaymentDate: form.lastPaymentDate || null,
-        paymentReference: form.paymentReference || null,
       });
 
       setProfile(result.profile);
@@ -219,7 +186,7 @@ export default function StudentPersonalDetails() {
     <div className="space-y-6">
       <PageHeader
         title="Personal Details"
-        subtitle="Keep your registration, contact, address, and payment information up to date."
+        subtitle="Keep your registration, contact, address, and course information up to date."
         actions={
           profile?.isComplete ? (
             <button
@@ -404,8 +371,8 @@ export default function StudentPersonalDetails() {
           </Section>
 
           <Section
-            title="Academic And Fees"
-            subtitle="Select your enrolled course and capture fee information in the same account flow used for the rest of the student experience."
+            title="Academic"
+            subtitle="Select your enrolled course so the app can show the right modules, announcements, and academic information."
           >
             <Field label="Course Of Study" htmlFor="student-course">
               <select
@@ -421,82 +388,6 @@ export default function StudentPersonalDetails() {
                   </option>
                 ))}
               </select>
-            </Field>
-
-            <Field label="Fee Status" htmlFor="student-fee-status">
-              <select
-                id="student-fee-status"
-                value={form.feeStatus}
-                onChange={(e) =>
-                  updateField(
-                    "feeStatus",
-                    e.target.value as StudentProfileDetail["feeStatus"]
-                  )
-                }
-                className="select-glass"
-              >
-                {FEE_STATUS_OPTIONS.map((option) => (
-                  <option key={option.value || "blank"} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Payment Method" htmlFor="student-payment-method">
-              <input
-                id="student-payment-method"
-                value={form.paymentMethod}
-                onChange={(e) => updateField("paymentMethod", e.target.value)}
-                className="input-glass"
-                placeholder="Payment method"
-              />
-            </Field>
-
-            <Field label="Amount Due" htmlFor="student-amount-due">
-              <input
-                id="student-amount-due"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.amountDue}
-                onChange={(e) => updateField("amountDue", e.target.value)}
-                className="input-glass"
-                placeholder="0.00"
-              />
-            </Field>
-
-            <Field label="Amount Paid" htmlFor="student-amount-paid">
-              <input
-                id="student-amount-paid"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.amountPaid}
-                onChange={(e) => updateField("amountPaid", e.target.value)}
-                className="input-glass"
-                placeholder="0.00"
-              />
-            </Field>
-
-            <Field label="Last Payment Date" htmlFor="student-last-payment-date">
-              <input
-                id="student-last-payment-date"
-                type="date"
-                value={form.lastPaymentDate}
-                onChange={(e) => updateField("lastPaymentDate", e.target.value)}
-                className="input-glass"
-              />
-            </Field>
-
-            <Field label="Payment Reference" htmlFor="student-payment-reference">
-              <input
-                id="student-payment-reference"
-                value={form.paymentReference}
-                onChange={(e) => updateField("paymentReference", e.target.value)}
-                className="input-glass"
-                placeholder="Optional payment reference"
-              />
             </Field>
           </Section>
 

@@ -44,10 +44,6 @@ type StudentListRow = {
   surname: string | null;
   student_number: string | null;
   id_number: string | null;
-  fee_status: string | null;
-  amount_due_cents: number | null;
-  amount_paid_cents: number | null;
-  last_payment_date: string | null;
   course_id: string | null;
   course_code: string | null;
   course_name: string | null;
@@ -132,13 +128,6 @@ function parseDateOnly(value: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
 
-function parseMoneyInput(value: unknown): number | null {
-  if (value === undefined || value === null || value === "") return null;
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Math.round(parsed * 100);
-}
-
 function parseLimit(raw: unknown, fallback = 50, max = 100) {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return fallback;
@@ -170,11 +159,6 @@ function buildMissingFields(profile: {
   province: string;
   postalCode: string;
   courseId: string | null;
-  feeStatus: string;
-  paymentMethod: string;
-  amountDue: number | null;
-  amountPaid: number | null;
-  lastPaymentDate: string | null;
 }): string[] {
   const missing: string[] = [];
 
@@ -189,18 +173,6 @@ function buildMissingFields(profile: {
   if (!profile.province.trim()) missing.push("province");
   if (!profile.postalCode.trim()) missing.push("postalCode");
   if (!profile.courseId) missing.push("courseId");
-  if (!profile.feeStatus.trim()) missing.push("feeStatus");
-  if (!profile.paymentMethod.trim()) missing.push("paymentMethod");
-  if (profile.amountDue == null) missing.push("amountDue");
-  if (profile.amountPaid == null) missing.push("amountPaid");
-
-  const needsPaymentDate =
-    profile.amountPaid != null && profile.amountPaid > 0
-      ? true
-      : profile.feeStatus === "PAID" || profile.feeStatus === "PARTIAL";
-  if (needsPaymentDate && !profile.lastPaymentDate) {
-    missing.push("lastPaymentDate");
-  }
 
   return missing;
 }
@@ -245,6 +217,19 @@ function mapStudentProfile(row: StudentProfileRow | null): StudentProfileDetail 
     ...profile,
     isComplete: missingFields.length === 0,
     missingFields,
+  };
+}
+
+function redactStudentFinance(profile: StudentProfileDetail | null): StudentProfileDetail | null {
+  if (!profile) return null;
+  return {
+    ...profile,
+    feeStatus: "",
+    paymentMethod: "",
+    amountDue: null,
+    amountPaid: null,
+    lastPaymentDate: null,
+    paymentReference: null,
   };
 }
 
@@ -368,7 +353,7 @@ studentRouter.get(
       }
 
       return res.json({
-        profile,
+        profile: redactStudentFinance(profile),
         availableCourses,
       });
     } catch (e) {
@@ -433,28 +418,16 @@ studentRouter.put(
         courseId: hasOwn(req.body, "courseId")
           ? toNullableTrimmedString(req.body?.courseId)
           : current.courseId,
-        feeStatus: hasOwn(req.body, "feeStatus")
-          ? normalizeFeeStatus(req.body?.feeStatus) ?? ""
-          : current.feeStatus,
-        paymentMethod: hasOwn(req.body, "paymentMethod")
-          ? toTrimmedString(req.body?.paymentMethod)
-          : current.paymentMethod,
-        amountDueCents: hasOwn(req.body, "amountDue")
-          ? parseMoneyInput(req.body?.amountDue)
-          : current.amountDue == null
-            ? null
-            : Math.round(current.amountDue * 100),
-        amountPaidCents: hasOwn(req.body, "amountPaid")
-          ? parseMoneyInput(req.body?.amountPaid)
-          : current.amountPaid == null
-            ? null
-            : Math.round(current.amountPaid * 100),
-        lastPaymentDate: hasOwn(req.body, "lastPaymentDate")
-          ? parseDateOnly(req.body?.lastPaymentDate)
-          : current.lastPaymentDate,
-        paymentReference: hasOwn(req.body, "paymentReference")
-          ? toNullableTrimmedString(req.body?.paymentReference)
-          : current.paymentReference,
+        feeStatus: current.feeStatus,
+        paymentMethod: current.paymentMethod,
+        amountDueCents: current.amountDue == null
+          ? null
+          : Math.round(current.amountDue * 100),
+        amountPaidCents: current.amountPaid == null
+          ? null
+          : Math.round(current.amountPaid * 100),
+        lastPaymentDate: current.lastPaymentDate,
+        paymentReference: current.paymentReference,
       };
 
       if (hasOwn(req.body, "studentNumber") && nextProfile.studentNumber.length > 64) {
@@ -467,18 +440,6 @@ studentRouter.put(
 
       if (hasOwn(req.body, "dateOfBirth") && req.body?.dateOfBirth && !nextProfile.dateOfBirth) {
         return err(res, 400, "VALIDATION", "dateOfBirth must be YYYY-MM-DD");
-      }
-
-      if (hasOwn(req.body, "lastPaymentDate") && req.body?.lastPaymentDate && !nextProfile.lastPaymentDate) {
-        return err(res, 400, "VALIDATION", "lastPaymentDate must be YYYY-MM-DD");
-      }
-
-      if (hasOwn(req.body, "amountDue") && req.body?.amountDue !== null && req.body?.amountDue !== "" && nextProfile.amountDueCents == null) {
-        return err(res, 400, "VALIDATION", "amountDue must be a non-negative number");
-      }
-
-      if (hasOwn(req.body, "amountPaid") && req.body?.amountPaid !== null && req.body?.amountPaid !== "" && nextProfile.amountPaidCents == null) {
-        return err(res, 400, "VALIDATION", "amountPaid must be a non-negative number");
       }
 
       if (nextProfile.courseId && !isUuid(nextProfile.courseId)) {
@@ -513,11 +474,6 @@ studentRouter.put(
         province: nextProfile.province,
         postalCode: nextProfile.postalCode,
         courseId: nextProfile.courseId,
-        feeStatus: nextProfile.feeStatus,
-        paymentMethod: nextProfile.paymentMethod,
-        amountDue: amountFromCents(nextProfile.amountDueCents),
-        amountPaid: amountFromCents(nextProfile.amountPaidCents),
-        lastPaymentDate: nextProfile.lastPaymentDate,
       });
 
       await client.query("BEGIN");
@@ -651,7 +607,7 @@ studentRouter.put(
 
       return res.json({
         ok: true,
-        profile,
+        profile: redactStudentFinance(profile),
         availableCourses,
       });
     } catch (e: any) {
@@ -745,10 +701,6 @@ studentRouter.get(
             u.last_name AS surname,
             u.public_student_id AS student_number,
             u.south_african_id AS id_number,
-            sp.fee_status,
-            sp.amount_due_cents,
-            sp.amount_paid_cents,
-            sp.last_payment_date,
             active_course.id AS course_id,
             active_course.code AS course_code,
             active_course.name AS course_name,
@@ -778,11 +730,6 @@ studentRouter.get(
           surname: row.surname?.trim() ?? "",
           studentNumber: row.student_number?.trim() ?? "",
           idNumber: row.id_number?.trim() ?? "",
-          feeStatus:
-            ((row.fee_status?.trim().toUpperCase() ?? "") as StudentProfileDetail["feeStatus"]) || "",
-          amountDue: amountFromCents(row.amount_due_cents),
-          amountPaid: amountFromCents(row.amount_paid_cents),
-          lastPaymentDate: row.last_payment_date,
           courseId: row.course_id,
           courseCode: row.course_code,
           courseName: row.course_name,
@@ -818,7 +765,7 @@ studentRouter.get(
         return err(res, 404, "NOT_FOUND", "Student not found");
       }
 
-      return res.json({ profile });
+      return res.json({ profile: redactStudentFinance(profile) });
     } catch (e) {
       console.error("[students] GET /students/:id error", e);
       return err(res, 500, "INTERNAL", "Failed to load student profile");

@@ -7,11 +7,6 @@ function formatDate(value: string | null): string {
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : value;
 }
 
-function formatMoney(value: number | null): string {
-  if (value == null) return "Not provided";
-  return `ZAR ${value.toFixed(2)}`;
-}
-
 function valueOrFallback(value: string | null | undefined): string {
   const normalized = String(value ?? "").trim();
   return normalized || "Not provided";
@@ -65,9 +60,6 @@ export default function StudentProfileDetailPanel({
         <span className="rounded-full border border-[rgba(52,211,153,0.26)] bg-[rgba(52,211,153,0.14)] px-3 py-1 text-xs font-semibold text-[#d9fff1]">
           {profile.isComplete ? "Profile complete" : "Profile incomplete"}
         </span>
-        <span className="rounded-full border border-[rgba(255,196,87,0.24)] bg-[rgba(97,59,9,0.45)] px-3 py-1 text-xs font-semibold text-[#ffe8b0]">
-          Fee status: {profile.feeStatus || "Not provided"}
-        </span>
       </div>
 
       <Section title="Personal">
@@ -102,18 +94,9 @@ export default function StudentProfileDetailPanel({
         <Field label="Postal Code" value={valueOrFallback(profile.postalCode)} />
       </Section>
 
-      <Section title="Academic And Fees">
+      <Section title="Academic">
         <Field label="Course" value={valueOrFallback(profile.courseName)} />
         <Field label="Course Code" value={valueOrFallback(profile.courseCode)} />
-        <Field label="Fee Status" value={valueOrFallback(profile.feeStatus)} />
-        <Field label="Payment Method" value={valueOrFallback(profile.paymentMethod)} />
-        <Field label="Amount Due" value={formatMoney(profile.amountDue)} />
-        <Field label="Amount Paid" value={formatMoney(profile.amountPaid)} />
-        <Field label="Last Payment Date" value={formatDate(profile.lastPaymentDate)} />
-        <Field
-          label="Payment Reference"
-          value={valueOrFallback(profile.paymentReference)}
-        />
       </Section>
     </div>
   );

@@ -706,7 +706,7 @@ export default function AdminUsers() {
                               Student Profile
                             </div>
                             <div className="mt-1 text-sm text-white/68">
-                              Personal details, course information, and payment capture linked to this account.
+                              Personal details and course information linked to this account.
                             </div>
                           </div>
 

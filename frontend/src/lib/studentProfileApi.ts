@@ -44,10 +44,6 @@ export type StudentProfileListItem = {
   surname: string;
   studentNumber: string;
   idNumber: string;
-  feeStatus: "PAID" | "PARTIAL" | "OUTSTANDING" | "";
-  amountDue: number | null;
-  amountPaid: number | null;
-  lastPaymentDate: string | null;
   courseId: string | null;
   courseCode: string | null;
   courseName: string | null;
@@ -76,12 +72,6 @@ export async function saveMyStudentProfile(input: {
   emergencyContactName?: string | null;
   emergencyContactNumber?: string | null;
   courseId?: string | null;
-  feeStatus: "PAID" | "PARTIAL" | "OUTSTANDING" | "";
-  paymentMethod: string;
-  amountDue?: number | null;
-  amountPaid?: number | null;
-  lastPaymentDate?: string | null;
-  paymentReference?: string | null;
 }) {
   return apiClient.put<{
     ok: boolean;
