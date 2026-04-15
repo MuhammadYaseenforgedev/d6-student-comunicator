@@ -41,7 +41,6 @@ export type AssistantDestinationId =
   | "admin-finance"
   | "admin-users"
   | "admin-parent-links"
-  | "admin-tickets"
   | "parent-overview"
   | "parent-finance"
   | "parent-results"
@@ -299,16 +298,16 @@ export function getRoleAssistantProfile(
         name: "Sparky",
         subtitle: "Super admin guide",
         placeholder:
-          "Ask about accounts, tickets, approvals, results, or navigation...",
+          "Ask about accounts, approvals, results, or navigation...",
         welcome:
-          "I'm Sparky. I can help with accounts, tickets, approvals, announcements, and admin navigation.",
+          "I'm Sparky. I can help with accounts, approvals, announcements, and admin navigation.",
         overview:
-          "Ask about accounts, tickets, approvals, results, messages, or where to go next. I can also open the right page for you.",
+          "Ask about accounts, approvals, results, messages, or where to go next. I can also open the right page for you.",
         spotlightIds: [
           "admin-users",
           "notifications",
           "admin-parent-links",
-          "admin-tickets",
+          "manage-results",
         ],
       };
 
@@ -751,8 +750,8 @@ function financeAdminDestinations(): AssistantDestination[] {
   ];
 }
 
-function academicAdminDestinations(includeTickets: boolean): AssistantDestination[] {
-  const base: AssistantDestination[] = [
+function academicAdminDestinations(): AssistantDestination[] {
+  return [
     destination(
       "home",
       "Dashboard",
@@ -852,20 +851,6 @@ function academicAdminDestinations(includeTickets: boolean): AssistantDestinatio
       "Parent Link Approvals is where admins review and decide child-link requests from parents."
     ),
   ];
-
-  if (includeTickets) {
-    base.push(
-      destination(
-        "admin-tickets",
-        "Tickets",
-        "/app/admin/tickets",
-        ["ticket", "tickets", "support"],
-        "Tickets is the super admin workspace for incoming support requests."
-      )
-    );
-  }
-
-  return base;
 }
 
 function parentDestinations(): AssistantDestination[] {
@@ -949,9 +934,8 @@ export function getAssistantDestinations(
     case "finance-admin":
       return financeAdminDestinations();
     case "academic-admin":
-      return academicAdminDestinations(false);
     case "super-admin":
-      return academicAdminDestinations(true);
+      return academicAdminDestinations();
     default:
       return studentDestinations();
   }
@@ -1156,9 +1140,6 @@ function buildWorkflowInstruction(
     case "admin-users":
       return "I can't manage account records in chat, but open Accounts to review users, roles, and account details there.";
 
-    case "admin-tickets":
-      return "I can't work tickets directly in chat, but open Tickets to review the support requests there.";
-
     case "parent-finance":
       return "Open Finance to review your linked child's account status, statements, and finance documents.";
 
@@ -1219,8 +1200,6 @@ function buildWorkflowFollowUpText(
       return "Once Parent Link Approvals opens, review the request details before deciding it there.";
     case "admin-users":
       return "Once Accounts opens, search for the user record or role you need.";
-    case "admin-tickets":
-      return "Once Tickets opens, open the support request you want to review.";
     case "parent-finance":
     case "admin-finance":
       return "Once Finance opens, review the account summary or statement you need.";
@@ -1244,7 +1223,7 @@ function buildWorkflowUnavailableAnswer(
 
   if (includesAny(query, ["ticket", "tickets", "support request"])) {
     return {
-      text: "Tickets are only available in the super admin workspace. I can still point you to the pages available for your role.",
+      text: "There isn't an admin Tickets page in this workspace anymore. I can still point you to the pages available for your role.",
       actionIds: fallbackActionIds,
     };
   }

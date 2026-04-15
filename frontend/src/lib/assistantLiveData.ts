@@ -533,7 +533,7 @@ function capabilityFallbackSummary(user: AuthUser): string {
   }
 
   if (isSuperAdmin(user)) {
-    return "Try accounts, approvals, results, or tickets.";
+    return "Try accounts, approvals, results, or notifications.";
   }
 
   if (isAcademicOrSuperAdmin(user)) {

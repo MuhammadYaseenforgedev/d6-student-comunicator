@@ -549,7 +549,7 @@ export default function AdminUsers() {
         <div className="info-banner border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] text-white/80 shadow-none">
           Finance Admin can access Finance and Messages. Academic Admin can
           access the academic/admin tools except Finance. Super Admin can
-          access the academic/admin tools except Finance, plus Tickets.
+          access the academic/admin tools except Finance.
         </div>
       </section>
 

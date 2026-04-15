@@ -21,7 +21,6 @@ import {
   adminScopeLabel,
   isAcademicOrSuperAdmin,
   isFinanceAdmin,
-  isSuperAdmin,
 } from "../lib/adminAccess";
 import AppErrorBoundary from "./AppErrorBoundary";
 import { fetchMeProfile, type MeProfile } from "../lib/authService";
@@ -117,7 +116,6 @@ export default function AppShell() {
   const isStudent = user?.role === "STUDENT";
   const financeAdmin = isFinanceAdmin(user);
   const academicOrSuperAdmin = isAcademicOrSuperAdmin(user);
-  const superAdmin = isSuperAdmin(user);
 
   const calendarTo =
     user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
@@ -421,13 +419,6 @@ export default function AppShell() {
                 />
               )}
 
-              {superAdmin && (
-                <Item
-                  to="/app/admin/tickets"
-                  label="Tickets"
-                  onNavigate={closeMobileMenu}
-                />
-              )}
             </>
           ) : null}
         </div>

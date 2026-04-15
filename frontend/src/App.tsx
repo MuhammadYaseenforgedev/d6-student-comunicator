@@ -35,7 +35,6 @@ import AdminFinance from "./pages/AdminFinance";
 import AdminUsers from "./pages/AdminUsers";
 import Attendance from "./pages/Attendance";
 import Notifications from "./pages/Notifications";
-import AdminTickets from "./pages/AdminTickets";
 import SupportDesk from "./pages/SupportDesk";
 
 import ParentPortalLayout from "./pages/parent/ParentPortalLayout";
@@ -204,14 +203,6 @@ export default function App() {
                         element={<AdminParentLinks />}
                       />
                       <Route path="admin/users" element={<AdminUsers />} />
-                    </Route>
-
-                    <Route
-                      element={
-                        <RequireRole roles={["ADMIN"]} adminScopes={["SUPER"]} />
-                      }
-                    >
-                      <Route path="admin/tickets" element={<AdminTickets />} />
                     </Route>
 
                     <Route element={<RequireRole roles={["PARENT"]} />}>
