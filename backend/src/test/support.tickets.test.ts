@@ -1,5 +1,6 @@
 import request from "supertest";
 import { app } from "../app";
+import { pool } from "../config/db";
 import { env } from "../config/env";
 import { cleanupTestUsers, createUser, signJwt } from "./helpers";
 
@@ -44,6 +45,70 @@ describe("support tickets", () => {
     expect(listRes.status).toBe(200);
     expect(Array.isArray(listRes.body?.value)).toBe(true);
     expect(listRes.body.value.some((ticket: { requesterEmail?: string }) => ticket.requesterEmail === "test_support_public@co.za")).toBe(true);
+  });
+
+  test("legacy-style support ticket rows remain listable and readable", async () => {
+    const superAdmin = await createUser("ADMIN", undefined, "Passw0rd!", "SUPER");
+    const superToken = signJwt(superAdmin);
+
+    const inserted = await pool.query<{ id: string }>(
+      `
+        INSERT INTO support_tickets (
+          requester_email,
+          requester_name,
+          device_number,
+          issue_type,
+          message
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+      `,
+      [
+        "test_support_legacy@co.za",
+        "Legacy Requester",
+        "LEG-1001",
+        "SOFTWARE",
+        "Legacy ticket row inserted without the newer support ticket fields.",
+      ]
+    );
+    const legacyTicketId = String(inserted.rows[0]?.id ?? "");
+
+    const publicListRes = await request(app)
+      .get("/api/support/tickets")
+      .query({ email: "test_support_legacy@co.za" });
+
+    expect(publicListRes.status).toBe(200);
+    expect(
+      publicListRes.body.value.some(
+        (ticket: { requesterEmail?: string; category?: string; status?: string }) =>
+          ticket.requesterEmail === "test_support_legacy@co.za" &&
+          ticket.category === "GENERAL" &&
+          ticket.status === "OPEN"
+      )
+    ).toBe(true);
+
+    const adminListRes = await request(app)
+      .get("/api/support/admin/tickets")
+      .set(auth(superToken))
+      .query({ category: "GENERAL" });
+
+    expect(adminListRes.status).toBe(200);
+    expect(
+      adminListRes.body.value.some(
+        (ticket: { requesterEmail?: string; category?: string }) =>
+          ticket.requesterEmail === "test_support_legacy@co.za" &&
+          ticket.category === "GENERAL"
+      )
+    ).toBe(true);
+
+    const patchRes = await request(app)
+      .patch(`/api/support/admin/tickets/${legacyTicketId}`)
+      .set(auth(superToken))
+      .send({ status: "IN_PROGRESS" });
+
+    expect(patchRes.status).toBe(200);
+    expect(String(patchRes.body?.ticket?.category ?? "")).toBe("GENERAL");
+    expect(String(patchRes.body?.ticket?.status ?? "")).toBe("IN_PROGRESS");
   });
 
   test("super admin can update ticket status and note", async () => {

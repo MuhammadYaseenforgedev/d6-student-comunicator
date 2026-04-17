@@ -22,10 +22,10 @@ type SupportTicketRow = {
   requester_name: string | null;
   device_number: string | null;
   subject: string | null;
-  issue_type: SupportTicketType;
-  category: SupportTicketCategory;
+  issue_type: string | null;
+  category: string | null;
   message: string;
-  status: SupportTicketStatus;
+  status: string | null;
   admin_note: string | null;
   assigned_to: string | null;
   assigned_email: string | null;
@@ -75,13 +75,26 @@ function normalizeTicketCategory(value: unknown): SupportTicketCategory | null {
     : null;
 }
 
+function normalizeTicketTypeOrDefault(value: unknown): SupportTicketType {
+  return normalizeTicketType(value) ?? "OTHER";
+}
+
+function normalizeTicketStatusOrDefault(value: unknown): SupportTicketStatus {
+  return normalizeTicketStatus(value) ?? "OPEN";
+}
+
+function normalizeTicketCategoryOrDefault(value: unknown): SupportTicketCategory {
+  return normalizeTicketCategory(value) ?? "GENERAL";
+}
+
 function canAdminAccessTicketCategory(
   user: { role: string; adminScope?: string | null } | undefined,
-  category: SupportTicketCategory
+  category: unknown
 ): boolean {
+  const normalizedCategory = normalizeTicketCategoryOrDefault(category);
   if (!user || user.role !== "ADMIN") return false;
   if (user.adminScope === "SUPER" || user.adminScope == null) return true;
-  return user.adminScope === "ACADEMIC" && category === "INCORRECT_DETAILS";
+  return user.adminScope === "ACADEMIC" && normalizedCategory === "INCORRECT_DETAILS";
 }
 
 function toPublicTicket(row: SupportTicketRow) {
@@ -91,9 +104,9 @@ function toPublicTicket(row: SupportTicketRow) {
     requesterName: row.requester_name,
     deviceNumber: row.device_number,
     subject: row.subject,
-    issueType: row.issue_type,
-    category: row.category,
-    status: row.status,
+    issueType: normalizeTicketTypeOrDefault(row.issue_type),
+    category: normalizeTicketCategoryOrDefault(row.category),
+    status: normalizeTicketStatusOrDefault(row.status),
     creatorUserId: row.creator_user_id,
     targetUserId: row.target_user_id,
     studentProfileUserId: row.student_profile_user_id,
@@ -126,9 +139,16 @@ const SUPPORT_TICKET_COLUMNS = `
   device_number,
   subject,
   issue_type,
-  category,
+  CASE
+    WHEN upper(btrim(COALESCE(category, ''))) = 'INCORRECT_DETAILS' THEN 'INCORRECT_DETAILS'
+    ELSE 'GENERAL'
+  END AS category,
   message,
-  status,
+  CASE
+    WHEN upper(btrim(COALESCE(status, ''))) IN ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'REJECTED', 'CLOSED')
+      THEN upper(btrim(COALESCE(status, '')))
+    ELSE 'OPEN'
+  END AS status,
   admin_note,
   assigned_to,
   creator_user_id,
@@ -142,6 +162,21 @@ const SUPPORT_TICKET_COLUMNS = `
   pulse_sync_status,
   pulse_synced_at,
   pulse_sync_error
+`;
+
+const NORMALIZED_ADMIN_TICKET_CATEGORY_SQL = `
+  CASE
+    WHEN upper(btrim(COALESCE(st.category, ''))) = 'INCORRECT_DETAILS' THEN 'INCORRECT_DETAILS'
+    ELSE 'GENERAL'
+  END
+`;
+
+const NORMALIZED_ADMIN_TICKET_STATUS_SQL = `
+  CASE
+    WHEN upper(btrim(COALESCE(st.status, ''))) IN ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'REJECTED', 'CLOSED')
+      THEN upper(btrim(COALESCE(st.status, '')))
+    ELSE 'OPEN'
+  END
 `;
 
 async function updatePulseSyncState(
@@ -400,17 +435,17 @@ supportRouter.get(
           return err(res, 403, "FORBIDDEN", "Not allowed to view this ticket category");
         }
         params.push(category);
-        where.push(`st.category = $${params.length}`);
+        where.push(`${NORMALIZED_ADMIN_TICKET_CATEGORY_SQL} = $${params.length}`);
       } else if (viewer.adminScope === "ACADEMIC") {
         params.push("INCORRECT_DETAILS");
-        where.push(`st.category = $${params.length}`);
+        where.push(`${NORMALIZED_ADMIN_TICKET_CATEGORY_SQL} = $${params.length}`);
       }
 
       if (statusFilter !== "ALL") {
         const status = normalizeTicketStatus(statusFilter);
         if (!status) return err(res, 400, "VALIDATION", "status filter is invalid");
         params.push(status);
-        where.push(`st.status = $${params.length}`);
+        where.push(`${NORMALIZED_ADMIN_TICKET_STATUS_SQL} = $${params.length}`);
       }
 
       if (q) {
@@ -420,7 +455,7 @@ supportRouter.get(
           OR lower(COALESCE(st.requester_name, '')) LIKE $${params.length}
           OR lower(COALESCE(st.device_number, '')) LIKE $${params.length}
           OR lower(COALESCE(st.subject, '')) LIKE $${params.length}
-          OR lower(COALESCE(st.category, '')) LIKE $${params.length}
+          OR lower(${NORMALIZED_ADMIN_TICKET_CATEGORY_SQL}) LIKE $${params.length}
           OR lower(st.issue_type) LIKE $${params.length}
           OR lower(st.message) LIKE $${params.length}
         )`);
@@ -435,9 +470,9 @@ supportRouter.get(
             st.device_number,
             st.subject,
             st.issue_type,
-            st.category,
+            ${NORMALIZED_ADMIN_TICKET_CATEGORY_SQL} AS category,
             st.message,
-            st.status,
+            ${NORMALIZED_ADMIN_TICKET_STATUS_SQL} AS status,
             st.admin_note,
             st.assigned_to,
             au.email AS assigned_email,
@@ -456,7 +491,7 @@ supportRouter.get(
           LEFT JOIN users au ON au.id = st.assigned_to
           ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
           ORDER BY
-            CASE st.status
+            CASE ${NORMALIZED_ADMIN_TICKET_STATUS_SQL}
               WHEN 'OPEN' THEN 1
               WHEN 'IN_PROGRESS' THEN 2
               WHEN 'RESOLVED' THEN 3
@@ -486,9 +521,13 @@ supportRouter.patch(
       const ticketId = String(req.params.id ?? "").trim();
       if (!isUuid(ticketId)) return err(res, 400, "VALIDATION", "ticket id must be a UUID");
 
-      const existing = await pool.query<{ category: SupportTicketCategory }>(
+      const existing = await pool.query<{ category: string | null }>(
         `
-          SELECT category
+          SELECT
+            CASE
+              WHEN upper(btrim(COALESCE(category, ''))) = 'INCORRECT_DETAILS' THEN 'INCORRECT_DETAILS'
+              ELSE 'GENERAL'
+            END AS category
           FROM support_tickets
           WHERE id = $1
           LIMIT 1
