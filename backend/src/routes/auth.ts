@@ -136,16 +136,26 @@ function otpConfig() {
   };
 }
 
-function buildOtpSuccessResponse(expiresAt: string, devCode?: string) {
-  return devCode
+function buildOtpSuccessResponse(
+  expiresAt: string,
+  options?: { devCode?: string; emailDeliveryEnabled?: boolean }
+) {
+  const emailDeliveryEnabled =
+    typeof options?.emailDeliveryEnabled === "boolean"
+      ? options.emailDeliveryEnabled
+      : isSmtpConfigured();
+
+  return options?.devCode
     ? {
         ok: true as const,
         expiresAt,
-        devOtp: devCode,
+        devOtp: options.devCode,
+        emailDeliveryEnabled,
       }
     : {
         ok: true as const,
         expiresAt,
+        emailDeliveryEnabled,
       };
 }
 
@@ -329,38 +339,41 @@ async function createOtp(
   const skipEmailDelivery = Boolean(options?.skipEmailDelivery);
 
   if (skipEmailDelivery) {
-    // Demo bypass intentionally suppresses email delivery and never logs OTP values.
-  } else if (isProduction()) {
+    // Demo bypass and unknown-login parity intentionally suppress delivery.
+  } else {
     const smtpConfigured = isSmtpConfigured();
 
-    try {
-      if (!smtpConfigured) {
+    if (!smtpConfigured) {
+      if (isProduction()) {
         throw new OtpDeliveryError(503, "OTP email service is not configured");
       }
-      await sendOtpEmailViaSmtp({ to: email, code, expiresAt });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const stack = err instanceof Error ? err.stack : undefined;
-      console.error("[otp][request-otp] SMTP send failed", {
-        email,
-        purpose,
-        message,
-        stack,
-      });
-      let error = err;
-      if (!(error instanceof OtpDeliveryError)) {
-        error = new OtpDeliveryError(503, "Failed to send OTP email");
+    } else {
+      try {
+        await sendOtpEmailViaSmtp({ to: email, code, expiresAt });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        console.error("[otp][request-otp] SMTP send failed", {
+          email,
+          purpose,
+          message,
+          stack,
+        });
+        let error = err;
+        if (!(error instanceof OtpDeliveryError)) {
+          error = new OtpDeliveryError(503, "Failed to send OTP email");
+        }
+        await pool.query(
+          `
+            DELETE FROM email_otps
+            WHERE lower(email) = lower($1)
+              AND purpose = $2
+              AND code_hash = $3
+          `,
+          [email, purpose, codeHash]
+        );
+        throw error;
       }
-      await pool.query(
-        `
-          DELETE FROM email_otps
-          WHERE lower(email) = lower($1)
-            AND purpose = $2
-            AND code_hash = $3
-        `,
-        [email, purpose, codeHash]
-      );
-      throw error;
     }
   }
 
@@ -446,6 +459,7 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
 authRouter.post("/request-otp", async (req, res) => {
   const email = normEmail(req.body?.email);
   const purpose = parsePurpose(req.body?.purpose);
+  const emailDeliveryEnabled = isSmtpConfigured();
 
   if (!email || !purpose) {
     return res.status(400).json({
@@ -489,10 +503,22 @@ authRouter.post("/request-otp", async (req, res) => {
       forceDevCode: includeDevOtp,
     });
 
-    return res.json(buildOtpSuccessResponse(out.expiresAt, includeDevOtp ? out.devCode : undefined));
+    return res.json(
+      buildOtpSuccessResponse(out.expiresAt, {
+        devCode: includeDevOtp ? out.devCode : undefined,
+        emailDeliveryEnabled,
+      })
+    );
   } catch (e: any) {
     if (purpose === "LOGIN" && e instanceof OtpDeliveryError) {
-      return res.json(buildOtpSuccessResponse(fallbackOtpExpiresAt()));
+      return res.json(
+        buildOtpSuccessResponse(fallbackOtpExpiresAt(), {
+          emailDeliveryEnabled:
+            e.message === "OTP email service is not configured"
+              ? false
+              : emailDeliveryEnabled,
+        })
+      );
     }
     if (e instanceof OtpDeliveryError) {
       return res.status(e.status).json({

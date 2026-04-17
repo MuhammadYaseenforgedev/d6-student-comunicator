@@ -55,6 +55,8 @@ describe("Auth request-otp response parity", () => {
     expect(unknownRes.status).toBe(200);
     expect(knownRes.body).toEqual(expect.objectContaining({ ok: true, expiresAt: expect.any(String) }));
     expect(unknownRes.body).toEqual(expect.objectContaining({ ok: true, expiresAt: expect.any(String) }));
+    expect(knownRes.body.emailDeliveryEnabled).toBe(false);
+    expect(unknownRes.body.emailDeliveryEnabled).toBe(false);
     expect(knownRes.body.devOtp).toBeUndefined();
     expect(unknownRes.body.devOtp).toBeUndefined();
     expect(Object.keys(knownRes.body).sort()).toEqual(Object.keys(unknownRes.body).sort());
@@ -83,6 +85,8 @@ describe("Auth request-otp response parity", () => {
     expect(unknownRes.status).toBe(200);
     expect(knownRes.body).toEqual(expect.objectContaining({ ok: true, expiresAt: expect.any(String) }));
     expect(unknownRes.body).toEqual(expect.objectContaining({ ok: true, expiresAt: expect.any(String) }));
+    expect(knownRes.body.emailDeliveryEnabled).toBe(false);
+    expect(unknownRes.body.emailDeliveryEnabled).toBe(false);
     expect(knownRes.body.devOtp).toBeUndefined();
     expect(unknownRes.body.devOtp).toBeUndefined();
     expect(Object.keys(knownRes.body).sort()).toEqual(Object.keys(unknownRes.body).sort());

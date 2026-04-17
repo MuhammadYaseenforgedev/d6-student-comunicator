@@ -19,6 +19,7 @@ describe("Student profile management and scoped lookup", () => {
   let studentToken = "";
   let courseId = "";
   let moduleId = "";
+  let autoLinkedModuleId = "";
   let facultyId = "";
 
   beforeAll(async () => {
@@ -62,6 +63,16 @@ describe("Student profile management and scoped lookup", () => {
     );
     moduleId = moduleRes.rows[0].id;
 
+    const autoLinkedModuleRes = await pool.query<{ id: string }>(
+      `
+        INSERT INTO faculty_modules (faculty_id, course_id, code, name)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+      `,
+      [facultyId, courseId, `${unique.toUpperCase()}_AUTO`, `${unique} Auto-linked Module`]
+    );
+    autoLinkedModuleId = autoLinkedModuleRes.rows[0].id;
+
     await pool.query(
       `
         INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
@@ -92,10 +103,11 @@ describe("Student profile management and scoped lookup", () => {
   });
 
   afterAll(async () => {
-    if (moduleId) {
-      await pool.query(`DELETE FROM student_module_enrollments WHERE module_id = $1`, [moduleId]);
-      await pool.query(`DELETE FROM lecturer_module_assignments WHERE module_id = $1`, [moduleId]);
-      await pool.query(`DELETE FROM faculty_modules WHERE id = $1`, [moduleId]);
+    const moduleIds = [moduleId, autoLinkedModuleId].filter(Boolean);
+    if (moduleIds.length > 0) {
+      await pool.query(`DELETE FROM student_module_enrollments WHERE module_id = ANY($1::uuid[])`, [moduleIds]);
+      await pool.query(`DELETE FROM lecturer_module_assignments WHERE module_id = ANY($1::uuid[])`, [moduleIds]);
+      await pool.query(`DELETE FROM faculty_modules WHERE id = ANY($1::uuid[])`, [moduleIds]);
     }
     if (facultyId) {
       await pool.query(`DELETE FROM faculties WHERE id = $1`, [facultyId]);
@@ -133,6 +145,17 @@ describe("Student profile management and scoped lookup", () => {
     expect(saveRes.status).toBe(200);
     expect(Boolean(saveRes.body?.profile?.isComplete)).toBe(true);
     expect(String(saveRes.body?.profile?.courseId ?? "")).toBe(courseId);
+
+    const linkedModules = await pool.query<{ c: string }>(
+      `
+        SELECT COUNT(*)::text AS c
+        FROM student_module_enrollments
+        WHERE student_id = $1
+          AND module_id = ANY($2::uuid[])
+      `,
+      [studentId, [moduleId, autoLinkedModuleId]]
+    );
+    expect(Number(linkedModules.rows[0]?.c ?? "0")).toBe(2);
 
     const adminList = await request(app)
       .get("/api/students")

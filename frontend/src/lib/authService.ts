@@ -19,6 +19,7 @@ export type OtpResponse = {
   devOtp?: string;
   devCode?: string;
   debugOtp?: string;
+  emailDeliveryEnabled?: boolean;
 };
 
 export type MeProfile = {

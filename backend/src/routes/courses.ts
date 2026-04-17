@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { pool } from "../config/db";
 import { requireAccess } from "../middleware/rbac";
 import {
+  assignCourseToStudent,
   syncCourseStudentNames,
   syncStudentCourseName,
   syncStudentCourseNames,
@@ -797,6 +798,7 @@ courseRouter.post(
   "/courses/:id/enrollments",
   requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
+    const client = await pool.connect();
     try {
       const courseId = String(req.params.id ?? "").trim();
       const studentId = String(req.body?.studentId ?? "").trim();
@@ -805,10 +807,10 @@ courseRouter.post(
       if (!isUuid(courseId)) return err(res, 400, "VALIDATION", "id must be a UUID");
       if (!isUuid(studentId)) return err(res, 400, "VALIDATION", "studentId must be a UUID");
 
-      const courseRes = await pool.query(`SELECT 1 FROM courses WHERE id = $1 LIMIT 1`, [courseId]);
+      const courseRes = await client.query(`SELECT 1 FROM courses WHERE id = $1 LIMIT 1`, [courseId]);
       if ((courseRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Course not found");
 
-      const studentRes = await pool.query(
+      const studentRes = await client.query(
         `
           SELECT 1
           FROM users
@@ -820,27 +822,27 @@ courseRouter.post(
       );
       if ((studentRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Student not found");
 
-      await pool.query(
-        `
-          INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
-          VALUES ($1, $2, $3, now())
-          ON CONFLICT (student_user_id, course_id)
-          DO UPDATE SET
-            status = EXCLUDED.status,
-            enrolled_at = CASE
-              WHEN student_courses.status = EXCLUDED.status THEN student_courses.enrolled_at
-              ELSE now()
-            END
-        `,
-        [studentId, courseId, status]
-      );
+      await client.query("BEGIN");
 
-      await syncStudentCourseName(pool, studentId);
+      await assignCourseToStudent(client, {
+        studentId,
+        courseId,
+        status,
+      });
+      await syncStudentCourseName(client, studentId);
+      await client.query("COMMIT");
 
       return res.json({ ok: true });
     } catch (e) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // no-op: rollback after a failed enrollment transaction
+      }
       console.error("[courses] POST /courses/:id/enrollments error", e);
       return err(res, 500, "INTERNAL", "Failed to enroll student in course");
+    } finally {
+      client.release();
     }
   }
 );

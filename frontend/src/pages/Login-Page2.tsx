@@ -213,6 +213,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
 
     const data = await requestOtpApi({ email: eNorm, purpose });
     const devOtp = String(data?.devOtp ?? data?.devCode ?? "").trim();
+    const emailDeliveryEnabled = data?.emailDeliveryEnabled;
     const purposeLabel = purpose === "REGISTER" ? "Registration" : "Sign-in";
 
     setLastOtpRequest({ email: eNorm, purpose });
@@ -222,8 +223,16 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
       setInfo(
         `${purposeLabel} OTP generated and auto-filled. Expires: ${data.expiresAt ?? "soon"}`
       );
+    } else if (emailDeliveryEnabled === false) {
+      setInfo(
+        `${purposeLabel} OTP created, but email delivery is not configured on this server.`
+      );
     } else {
-      setInfo(`${purposeLabel} OTP request sent. Please check email.`);
+      setInfo(
+        purpose === "LOGIN"
+          ? `${purposeLabel} OTP requested. If an account exists for this email, check your inbox and spam folder.`
+          : `${purposeLabel} OTP request sent. Please check email.`
+      );
     }
   }
 

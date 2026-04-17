@@ -72,6 +72,59 @@ describe("support tickets", () => {
     expect(String(updateRes.body?.ticket?.adminNote ?? "")).toBe("Assigned to the infrastructure queue.");
   });
 
+  test("student can create an incorrect-details ticket and academic admin can filter it", async () => {
+    const academicAdmin = await createUser("ADMIN", undefined, "Passw0rd!", "ACADEMIC");
+    const student = await createUser("STUDENT");
+    const academicToken = signJwt(academicAdmin);
+    const studentToken = signJwt(student);
+
+    const createRes = await request(app)
+      .post("/api/support/tickets/incorrect-details")
+      .set(auth(studentToken))
+      .send({
+        subject: "Surname is incorrect",
+        description: "My surname is misspelled in the imported learner details and needs correction.",
+      });
+
+    expect(createRes.status).toBe(201);
+    expect(String(createRes.body?.ticket?.category ?? "")).toBe("INCORRECT_DETAILS");
+    expect(String(createRes.body?.ticket?.targetUserId ?? "")).toBe(student.id);
+
+    const listRes = await request(app)
+      .get("/api/support/admin/tickets")
+      .set(auth(academicToken))
+      .query({ category: "INCORRECT_DETAILS" });
+
+    expect(listRes.status).toBe(200);
+    expect(Array.isArray(listRes.body?.value)).toBe(true);
+    expect(
+      listRes.body.value.some(
+        (ticket: { category?: string; targetUserId?: string; subject?: string }) =>
+          ticket.category === "INCORRECT_DETAILS" &&
+          ticket.targetUserId === student.id &&
+          ticket.subject === "Surname is incorrect"
+      )
+    ).toBe(true);
+  });
+
+  test("student cannot create an incorrect-details ticket for another learner", async () => {
+    const student = await createUser("STUDENT");
+    const otherStudent = await createUser("STUDENT");
+    const studentToken = signJwt(student);
+
+    const createRes = await request(app)
+      .post("/api/support/tickets/incorrect-details")
+      .set(auth(studentToken))
+      .send({
+        subject: "Wrong ID number",
+        description: "The ID number on my learner profile does not match the official record.",
+        targetUserId: otherStudent.id,
+      });
+
+    expect(createRes.status).toBe(403);
+    expect(String(createRes.body?.error?.message ?? "")).toMatch(/only create incorrect-details tickets for themselves/i);
+  });
+
   test("configured Pulse sync posts the ticket through the Pulse form", async () => {
     env.PULSE_SYNC_ENABLED = true;
     env.PULSE_TICKET_FORM_URL = "https://pulse.example/ticket.php";

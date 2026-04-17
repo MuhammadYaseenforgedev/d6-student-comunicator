@@ -2,6 +2,7 @@ import { Router, type Response } from "express";
 import type { PoolClient } from "pg";
 import { pool } from "../config/db";
 import {
+  assignCourseToStudent,
   isLecturerAllowedForStudent,
   isLecturerAssignedToCourse,
   syncStudentCourseName,
@@ -572,26 +573,21 @@ studentRouter.put(
       );
 
       if (hasOwn(req.body, "courseId")) {
-        await client.query(
-          `
-            UPDATE student_courses
-            SET status = 'INACTIVE'
-            WHERE student_user_id = $1
-          `,
-          [userId]
-        );
-
         if (nextProfile.courseId) {
+          await assignCourseToStudent(client, {
+            studentId: userId,
+            courseId: nextProfile.courseId,
+            status: "ACTIVE",
+            deactivateOtherCourses: true,
+          });
+        } else {
           await client.query(
             `
-              INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
-              VALUES ($1, $2, 'ACTIVE', now())
-              ON CONFLICT (student_user_id, course_id)
-              DO UPDATE SET
-                status = 'ACTIVE',
-                enrolled_at = now()
+              UPDATE student_courses
+              SET status = 'INACTIVE'
+              WHERE student_user_id = $1
             `,
-            [userId, nextProfile.courseId]
+            [userId]
           );
         }
       }
