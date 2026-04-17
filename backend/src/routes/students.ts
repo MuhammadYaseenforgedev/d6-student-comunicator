@@ -7,6 +7,10 @@ import {
   isLecturerAssignedToCourse,
   syncStudentCourseName,
 } from "../lib/courseAccess";
+import {
+  ingestApprovedLearner,
+  LearnerImportError,
+} from "../lib/learnerImports";
 import { requireAccess, requireRole } from "../middleware/rbac";
 
 type StudentProfileRow = {
@@ -622,6 +626,75 @@ studentRouter.put(
 
       console.error("[students] PUT /student/profile error", e);
       return err(res, 500, "INTERNAL", "Failed to save student profile");
+    } finally {
+      client.release();
+    }
+  }
+);
+
+studentRouter.post(
+  "/admin/imports/approved-learner",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    const client = await pool.connect();
+    let transactionOpen = false;
+
+    try {
+      const payload = {
+        firstName: req.body?.first_name ?? req.body?.firstName,
+        lastName: req.body?.last_name ?? req.body?.lastName,
+        email: req.body?.email,
+        phone: req.body?.phone ?? req.body?.mobile_number ?? req.body?.mobileNumber,
+        nationalId:
+          req.body?.national_id ??
+          req.body?.id_number ??
+          req.body?.nationalId ??
+          req.body?.idNumber,
+        courseId: req.body?.course_id ?? req.body?.courseId,
+        courseCode: req.body?.course_code ?? req.body?.courseCode,
+        externalSourceId: req.body?.external_source_id ?? req.body?.externalSourceId,
+        metadata: req.body?.metadata ?? null,
+      };
+
+      await client.query("BEGIN");
+      transactionOpen = true;
+
+      const summary = await ingestApprovedLearner(client, payload);
+
+      await client.query("COMMIT");
+      transactionOpen = false;
+
+      return res.status(summary.action === "created" ? 201 : 200).json({
+        ok: true,
+        summary,
+      });
+    } catch (e: any) {
+      if (transactionOpen) {
+        await client.query("ROLLBACK");
+      }
+
+      if (e instanceof LearnerImportError) {
+        return err(res, e.status, e.code, e.message);
+      }
+
+      if (String(e?.code ?? "") === "23505") {
+        const constraint = String(e?.constraint ?? "");
+        if (constraint.includes("users_email_key")) {
+          return err(res, 409, "CONFLICT", "Learner email already belongs to another account");
+        }
+        if (constraint.includes("south_african_id")) {
+          return err(res, 409, "CONFLICT", "Learner national ID already belongs to another account");
+        }
+        if (constraint.includes("external_source")) {
+          return err(res, 409, "CONFLICT", "externalSourceId already belongs to another learner");
+        }
+        if (constraint.includes("public_student_id")) {
+          return err(res, 409, "CONFLICT", "A student number collision occurred. Retry the import.");
+        }
+      }
+
+      console.error("[students] POST /admin/imports/approved-learner error", e);
+      return err(res, 500, "INTERNAL", "Failed to import approved learner");
     } finally {
       client.release();
     }
