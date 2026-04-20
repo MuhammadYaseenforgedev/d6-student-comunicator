@@ -2,6 +2,7 @@ import crypto from "crypto";
 import request from "supertest";
 import { createApp } from "../app";
 import { pool } from "../config/db";
+import { listDueAttendanceNotificationEvents } from "../lib/attendanceNotificationEvents";
 import { cleanupTestUsers, createUser, signJwt } from "./helpers";
 
 const app = createApp();
@@ -183,6 +184,7 @@ describe("scheduled course-event attendance foundation", () => {
     expect(String(created.body?.session?.courseScheduleTemplateId ?? "")).toBe(ctx.templateId);
     expect(String(created.body?.session?.sessionSource ?? "")).toBe("CALENDAR_EVENT");
     expect(Number(created.body?.seededCount ?? 0)).toBe(3);
+    expect(Number(created.body?.reminderEventCount ?? 0)).toBe(3);
     ctx.sessionId = String(created.body?.session?.id ?? "");
     expect(ctx.sessionId).toBeTruthy();
 
@@ -197,6 +199,65 @@ describe("scheduled course-event attendance foundation", () => {
     );
 
     expect(records.rows.map((row) => row.status)).toEqual(["PENDING", "PENDING", "PENDING"]);
+
+    const reminderEvents = await pool.query<{
+      user_id: string;
+      notification_type: string;
+      related_attendance_session_id: string;
+      related_calendar_entry_id: string | null;
+      scheduled_ok: boolean;
+      status: string;
+      reason: string | null;
+    }>(
+      `
+        SELECT
+          user_id,
+          notification_type,
+          related_attendance_session_id,
+          related_calendar_entry_id,
+          scheduled_for = '2099-06-01T07:45:00.000Z'::timestamptz AS scheduled_ok,
+          status,
+          payload->>'reason' AS reason
+        FROM attendance_notification_events
+        WHERE related_attendance_session_id = $1
+          AND notification_type = 'PRE_SESSION_REMINDER'
+        ORDER BY user_id ASC
+      `,
+      [ctx.sessionId]
+    );
+
+    expect(reminderEvents.rowCount).toBe(3);
+    expect(reminderEvents.rows.map((row) => row.user_id).sort()).toEqual(
+      [...ctx.studentIds].sort()
+    );
+    expect(reminderEvents.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          notification_type: "PRE_SESSION_REMINDER",
+          related_attendance_session_id: ctx.sessionId,
+          related_calendar_entry_id: expect.any(String),
+          scheduled_ok: true,
+          status: "PENDING",
+          reason: "PRE_SESSION_REMINDER",
+        }),
+      ])
+    );
+
+    const dueReminders = await listDueAttendanceNotificationEvents(pool, {
+      now: "2099-06-01T07:46:00.000Z",
+      notificationType: "PRE_SESSION_REMINDER",
+      relatedAttendanceSessionId: ctx.sessionId,
+      limit: 10,
+    });
+    expect(dueReminders).toHaveLength(3);
+    expect(dueReminders[0]).toEqual(
+      expect.objectContaining({
+        notification_type: "PRE_SESSION_REMINDER",
+        related_attendance_session_id: ctx.sessionId,
+        status: "PENDING",
+        channel_hint: "IN_APP",
+      })
+    );
   });
 
   test("duplicate session creation for the same schedule source is safely idempotent", async () => {
@@ -211,6 +272,7 @@ describe("scheduled course-event attendance foundation", () => {
     expect(repeated.status).toBe(200);
     expect(String(repeated.body?.session?.id ?? "")).toBe(ctx.sessionId);
     expect(Boolean(repeated.body?.session?.created)).toBe(false);
+    expect(Number(repeated.body?.reminderEventCount ?? 0)).toBe(0);
 
     const count = await pool.query<{ c: string }>(
       `
@@ -221,6 +283,17 @@ describe("scheduled course-event attendance foundation", () => {
       [ctx.templateId]
     );
     expect(Number(count.rows[0]?.c ?? "0")).toBe(1);
+
+    const reminderCount = await pool.query<{ c: string }>(
+      `
+        SELECT COUNT(*)::text AS c
+        FROM attendance_notification_events
+        WHERE related_attendance_session_id = $1
+          AND notification_type = 'PRE_SESSION_REMINDER'
+      `,
+      [ctx.sessionId]
+    );
+    expect(Number(reminderCount.rows[0]?.c ?? "0")).toBe(3);
   });
 
   test("timing-aware marks infer present and late statuses", async () => {
@@ -257,6 +330,7 @@ describe("scheduled course-event attendance foundation", () => {
 
     expect(finalized.status).toBe(200);
     expect(Number(finalized.body?.absentCount ?? 0)).toBe(1);
+    expect(Number(finalized.body?.absenceNotificationEventCount ?? 0)).toBe(1);
     expect(finalized.body?.value).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ studentId: ctx.studentIds[2], status: "ABSENT" }),
@@ -281,6 +355,56 @@ describe("scheduled course-event attendance foundation", () => {
       .set(auth(ctx.studentToken))
       .send({});
     expect(studentCheckin.status).toBe(400);
+
+    const absenceEvents = await pool.query<{
+      user_id: string;
+      notification_type: string;
+      related_attendance_session_id: string;
+      status: string;
+      reason: string | null;
+    }>(
+      `
+        SELECT
+          user_id,
+          notification_type,
+          related_attendance_session_id,
+          status,
+          payload->>'reason' AS reason
+        FROM attendance_notification_events
+        WHERE related_attendance_session_id = $1
+          AND notification_type = 'SESSION_FINALIZED_ABSENT'
+      `,
+      [ctx.sessionId]
+    );
+    expect(absenceEvents.rowCount).toBe(1);
+    expect(absenceEvents.rows[0]).toEqual(
+      expect.objectContaining({
+        user_id: ctx.studentIds[2],
+        notification_type: "SESSION_FINALIZED_ABSENT",
+        related_attendance_session_id: ctx.sessionId,
+        status: "PENDING",
+        reason: "SESSION_FINALIZED_ABSENT",
+      })
+    );
+
+    const repeatedFinalize = await request(app)
+      .post(`/api/attendance/sessions/${ctx.sessionId}/finalize`)
+      .set(auth(ctx.lecturerToken))
+      .send({});
+    expect(repeatedFinalize.status).toBe(200);
+    expect(Number(repeatedFinalize.body?.absentCount ?? 0)).toBe(0);
+    expect(Number(repeatedFinalize.body?.absenceNotificationEventCount ?? 0)).toBe(0);
+
+    const absenceEventCount = await pool.query<{ c: string }>(
+      `
+        SELECT COUNT(*)::text AS c
+        FROM attendance_notification_events
+        WHERE related_attendance_session_id = $1
+          AND notification_type = 'SESSION_FINALIZED_ABSENT'
+      `,
+      [ctx.sessionId]
+    );
+    expect(Number(absenceEventCount.rows[0]?.c ?? "0")).toBe(1);
   });
 
   test("staff attendance visibility supports summaries, record filtering, and session CSV export", async () => {

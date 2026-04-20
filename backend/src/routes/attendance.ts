@@ -2,6 +2,10 @@ import { Router } from "express";
 import type { PoolClient } from "pg";
 import { pool } from "../config/db";
 import { requireAccess, requireRole } from "../middleware/rbac";
+import {
+  createAbsenceFollowUpEventsForSession,
+  createPreSessionReminderEventsForSession,
+} from "../lib/attendanceNotificationEvents";
 import { createAttendanceNotifications } from "../lib/notifications";
 import {
   isLecturerAssignedToCourse,
@@ -1391,10 +1395,14 @@ attendanceRouter.post(
           sessionId: existingRow.id,
           moduleId: existingRow.module_id,
         });
+        const reminderEventCount = await createPreSessionReminderEventsForSession(pool, {
+          sessionId: existingRow.id,
+        });
         return res.json({
           ok: true,
           session: mapAttendanceSession(existingRow, false),
           seededCount,
+          reminderEventCount,
         });
       }
     }
@@ -1476,6 +1484,9 @@ attendanceRouter.post(
             moduleId: row.module_id,
           })
         : 0;
+      const reminderEventCount = calendarSource
+        ? await createPreSessionReminderEventsForSession(client, { sessionId: row.id })
+        : 0;
 
       await client.query("COMMIT");
       return res.status(201).json({
@@ -1483,6 +1494,7 @@ attendanceRouter.post(
         ...mapAttendanceSession(row, true),
         session: mapAttendanceSession(row, true),
         seededCount,
+        reminderEventCount,
       });
     } catch (e) {
       await client.query("ROLLBACK");
@@ -2232,6 +2244,11 @@ attendanceRouter.post(
           [sessionId, user.id]
         );
 
+        const absenceNotificationEventCount = await createAbsenceFollowUpEventsForSession(client, {
+          sessionId,
+          studentIds: absent.rows.map((row) => row.student_id),
+        });
+
         await client.query(
           `
             UPDATE attendance_sessions
@@ -2252,6 +2269,7 @@ attendanceRouter.post(
           finalized: true,
           session: updatedSession ? mapAttendanceSession(updatedSession, false) : null,
           absentCount: absent.rowCount ?? 0,
+          absenceNotificationEventCount,
           value: absent.rows.map((row) => ({
             sessionId: row.session_id,
             studentId: row.student_id,
