@@ -282,4 +282,88 @@ describe("scheduled course-event attendance foundation", () => {
       .send({});
     expect(studentCheckin.status).toBe(400);
   });
+
+  test("staff attendance visibility supports summaries, record filtering, and session CSV export", async () => {
+    const listed = await request(app)
+      .get(
+        `/api/attendance/sessions?moduleId=${ctx.moduleId}&sessionStatus=FINALIZED&limit=10`
+      )
+      .set(auth(ctx.lecturerToken));
+
+    expect(listed.status).toBe(200);
+    const listedSession = listed.body?.value?.find((row: any) => row.id === ctx.sessionId);
+    expect(listedSession).toEqual(
+      expect.objectContaining({
+        id: ctx.sessionId,
+        moduleId: ctx.moduleId,
+        courseId: ctx.courseId,
+        calendarEntryId: ctx.firstCalendarEntryId,
+        finalizedAt: expect.any(String),
+      })
+    );
+    expect(listedSession?.summary).toEqual(
+      expect.objectContaining({
+        total: 3,
+        present: 1,
+        late: 1,
+        absent: 1,
+        pending: 0,
+      })
+    );
+
+    const detail = await request(app)
+      .get(`/api/attendance/sessions/${ctx.sessionId}`)
+      .set(auth(ctx.lecturerToken));
+
+    expect(detail.status).toBe(200);
+    expect(detail.body?.session?.summary).toEqual(
+      expect.objectContaining({
+        total: 3,
+        present: 1,
+        late: 1,
+        absent: 1,
+        pending: 0,
+      })
+    );
+
+    const lateRecords = await request(app)
+      .get(`/api/attendance/sessions/${ctx.sessionId}/records?status=LATE&q=student_2`)
+      .set(auth(ctx.lecturerToken));
+
+    expect(lateRecords.status).toBe(200);
+    expect(lateRecords.body?.count).toBe(1);
+    expect(lateRecords.body?.value?.[0]).toEqual(
+      expect.objectContaining({
+        learnerUserId: ctx.studentIds[1],
+        status: "LATE",
+        learner: expect.objectContaining({
+          email: `${unique}_student_2@co.za`,
+        }),
+      })
+    );
+
+    const exported = await request(app)
+      .get(`/api/attendance/sessions/${ctx.sessionId}/export.csv`)
+      .set(auth(ctx.lecturerToken));
+
+    expect(exported.status).toBe(200);
+    expect(exported.headers["content-type"]).toContain("text/csv");
+    expect(exported.text).toContain(
+      "session_id,course,module,learner_name,learner_email,public_student_id,status,marked_at,status_reason,session_start,session_end"
+    );
+    expect(exported.text).toContain(`${unique}_student_1@co.za`);
+    expect(exported.text).toContain("PRESENT");
+    expect(exported.text).toContain("LATE");
+    expect(exported.text).toContain("ABSENT");
+
+    const studentDetail = await request(app)
+      .get(`/api/attendance/sessions/${ctx.sessionId}`)
+      .set(auth(ctx.studentToken));
+    expect(studentDetail.status).toBe(403);
+
+    const studentExport = await request(app)
+      .get(`/api/attendance/sessions/${ctx.sessionId}/export.csv`)
+      .set(auth(ctx.studentToken));
+    expect(studentExport.status).toBe(403);
+  });
 });
