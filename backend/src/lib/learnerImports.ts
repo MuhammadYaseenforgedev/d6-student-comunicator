@@ -5,8 +5,10 @@ import {
   ensureGeneratedStudentNumber,
   type Queryable,
 } from "./studentNumbers";
+import type { LearnerOnboardingStatus } from "./learnerActivation";
 
-const TRUSTED_LEARNER_SOURCE = "FORGE_TALENT";
+export const DEFAULT_LEARNER_IMPORT_SOURCE = "FORGE_TALENT";
+export const DEFAULT_CSV_LEARNER_IMPORT_SOURCE = "FORGE_TALENT_CSV";
 
 type ExistingLearnerRow = {
   id: string;
@@ -39,6 +41,7 @@ export type ApprovedLearnerInput = {
   nationalId?: string | null;
   courseId?: string | null;
   courseCode?: string | null;
+  externalSource?: string | null;
   externalSourceId: string;
   metadata?: Record<string, unknown> | null;
 };
@@ -51,7 +54,11 @@ export type ApprovedLearnerImportResult = {
   studentNumber: string;
   courseLinked: boolean;
   courseId: string | null;
+  warnings: string[];
   sourceMetadataStored: boolean;
+  activationRequired: boolean;
+  onboardingStatus: LearnerOnboardingStatus | null;
+  activatedAt: string | null;
   source: {
     verifiedFromTalent: boolean;
     externalSource: string;
@@ -92,6 +99,11 @@ function normalizeOptionalText(value: unknown): string | null {
 function normalizeNationalId(value: unknown): string | null {
   const normalized = String(value ?? "").replace(/\D+/g, "");
   return normalized ? normalized : null;
+}
+
+function normalizeExternalSource(value: unknown): string {
+  const normalized = String(value ?? DEFAULT_LEARNER_IMPORT_SOURCE).trim().toUpperCase();
+  return normalized || DEFAULT_LEARNER_IMPORT_SOURCE;
 }
 
 function isValidSouthAfricanId(value: string | null): boolean {
@@ -149,7 +161,7 @@ function isTrustedImportedLearner(row: ExistingLearnerRow | null): boolean {
   return Boolean(
     row &&
       (row.verified_from_talent ||
-        (String(row.external_source ?? "").trim().toUpperCase() === TRUSTED_LEARNER_SOURCE &&
+        (String(row.external_source ?? "").trim() &&
           String(row.external_source_id ?? "").trim()))
   );
 }
@@ -212,6 +224,7 @@ async function resolveCourse(
 
 async function loadLearnerBySourceId(
   db: Queryable,
+  externalSource: string,
   externalSourceId: string
 ): Promise<ExistingLearnerRow | null> {
   const result = await db.query<ExistingLearnerRow>(
@@ -245,7 +258,7 @@ async function loadLearnerBySourceId(
         AND sp.external_source_id = $2
       LIMIT 1
     `,
-    [TRUSTED_LEARNER_SOURCE, externalSourceId]
+    [externalSource, externalSourceId]
   );
 
   return result.rows[0] ?? null;
@@ -333,16 +346,25 @@ async function loadLearnerByNationalId(
 
 async function resolveExistingLearner(
   db: Queryable,
-  input: { email: string; nationalId: string | null; externalSourceId: string }
+  input: {
+    email: string;
+    nationalId: string | null;
+    externalSource: string;
+    externalSourceId: string;
+  }
 ): Promise<{
   row: ExistingLearnerRow | null;
   matchedBy: "created" | "externalSourceId" | "email" | "nationalId";
 }> {
-  const [sourceMatch, emailMatch, nationalIdMatch] = await Promise.all([
-    loadLearnerBySourceId(db, input.externalSourceId),
-    loadLearnerByEmail(db, input.email),
-    input.nationalId ? loadLearnerByNationalId(db, input.nationalId) : Promise.resolve(null),
-  ]);
+  const sourceMatch = await loadLearnerBySourceId(
+    db,
+    input.externalSource,
+    input.externalSourceId
+  );
+  const emailMatch = await loadLearnerByEmail(db, input.email);
+  const nationalIdMatch = input.nationalId
+    ? await loadLearnerByNationalId(db, input.nationalId)
+    : null;
 
   const candidates = [
     { matchedBy: "externalSourceId" as const, row: sourceMatch },
@@ -436,7 +458,9 @@ export async function ingestApprovedLearner(
     courseCode: normalizeOptionalText(input.courseCode),
   });
   const externalSourceId = normalizeRequiredText(input.externalSourceId);
+  const externalSource = normalizeExternalSource(input.externalSource);
   const metadata = input.metadata == null ? null : parseMetadata(input.metadata);
+  const warnings: string[] = [];
 
   if (!firstName) {
     throw new LearnerImportError(400, "VALIDATION", "firstName is required");
@@ -450,6 +474,9 @@ export async function ingestApprovedLearner(
   if (!externalSourceId) {
     throw new LearnerImportError(400, "VALIDATION", "externalSourceId is required");
   }
+  if (!/^[A-Z0-9_-]{2,64}$/.test(externalSource)) {
+    throw new LearnerImportError(400, "VALIDATION", "externalSource must contain only letters, numbers, underscores, or hyphens");
+  }
   if (input.metadata != null && metadata == null) {
     throw new LearnerImportError(400, "VALIDATION", "metadata must be a JSON object");
   }
@@ -460,10 +487,14 @@ export async function ingestApprovedLearner(
   const { row: existingLearner, matchedBy } = await resolveExistingLearner(db, {
     email,
     nationalId,
+    externalSource,
     externalSourceId,
   });
 
   const trustedExistingLearner = isTrustedImportedLearner(existingLearner);
+  if (existingLearner && !trustedExistingLearner) {
+    warnings.push("Matched existing manual learner; non-empty manual learner fields were preserved.");
+  }
 
   const userId =
     existingLearner?.id ??
@@ -519,6 +550,10 @@ export async function ingestApprovedLearner(
       deactivateOtherCourses: true,
     });
     await syncStudentCourseName(db, userId);
+  } else if (course && existingLearner?.active_course_id && !trustedExistingLearner) {
+    warnings.push(
+      "Course linking skipped because this manual learner already has a different active course."
+    );
   }
 
   const lockedFields = mergeLockedFields(
@@ -530,8 +565,15 @@ export async function ingestApprovedLearner(
     })
   );
   const nextSourceMetadata = mergeSourceMetadata(existingLearner?.source_metadata, metadata);
+  const activationRequiredForNewImport = !existingLearner;
+  const onboardingStatusForNewImport: LearnerOnboardingStatus | null =
+    activationRequiredForNewImport ? "PENDING_ACTIVATION" : null;
 
-  await db.query(
+  const profileResult = await db.query<{
+    activation_required: boolean;
+    onboarding_status: LearnerOnboardingStatus | null;
+    activated_at: string | null;
+  }>(
     `
       INSERT INTO student_profiles (
         user_id,
@@ -541,9 +583,11 @@ export async function ingestApprovedLearner(
         external_source_id,
         locked_fields,
         source_metadata,
+        activation_required,
+        onboarding_status,
         updated_at
       )
-      VALUES ($1, $2, true, $3, $4, $5::jsonb, $6::jsonb, now())
+      VALUES ($1, $2, true, $3, $4, $5::jsonb, $6::jsonb, $7::boolean, $8, now())
       ON CONFLICT (user_id) DO UPDATE
       SET
         mobile_number = EXCLUDED.mobile_number,
@@ -552,19 +596,41 @@ export async function ingestApprovedLearner(
         external_source_id = EXCLUDED.external_source_id,
         locked_fields = EXCLUDED.locked_fields,
         source_metadata = EXCLUDED.source_metadata,
+        activation_required = CASE
+          WHEN student_profiles.activated_at IS NOT NULL
+            OR student_profiles.onboarding_status = 'ACTIVATED'
+            THEN false
+          WHEN EXCLUDED.activation_required THEN true
+          ELSE student_profiles.activation_required
+        END,
+        onboarding_status = CASE
+          WHEN student_profiles.activated_at IS NOT NULL
+            OR student_profiles.onboarding_status = 'ACTIVATED'
+            THEN 'ACTIVATED'
+          WHEN EXCLUDED.onboarding_status IS NOT NULL
+            THEN COALESCE(student_profiles.onboarding_status, EXCLUDED.onboarding_status)
+          ELSE student_profiles.onboarding_status
+        END,
         updated_at = now()
+      RETURNING
+        activation_required,
+        onboarding_status,
+        activated_at::text AS activated_at
     `,
     [
       userId,
       nextMobileNumber,
-      TRUSTED_LEARNER_SOURCE,
+      externalSource,
       externalSourceId,
       JSON.stringify(lockedFields),
       nextSourceMetadata ? JSON.stringify(nextSourceMetadata) : null,
+      activationRequiredForNewImport,
+      onboardingStatusForNewImport,
     ]
   );
 
   const studentNumber = await ensureGeneratedStudentNumber(db, userId);
+  const profileState = profileResult.rows[0];
 
   return {
     action: existingLearner ? "updated" : "created",
@@ -574,10 +640,14 @@ export async function ingestApprovedLearner(
     studentNumber,
     courseLinked,
     courseId: courseLinked ? course?.id ?? null : null,
+    warnings,
     sourceMetadataStored: nextSourceMetadata != null,
+    activationRequired: Boolean(profileState?.activation_required),
+    onboardingStatus: profileState?.onboarding_status ?? null,
+    activatedAt: profileState?.activated_at ?? null,
     source: {
       verifiedFromTalent: true,
-      externalSource: TRUSTED_LEARNER_SOURCE,
+      externalSource,
       externalSourceId,
       lockedFields,
     },

@@ -22,10 +22,20 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function csvValue(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+function csvLine(values: string[]): string {
+  return values.map(csvValue).join(",");
+}
+
 describe("approved learner import foundation", () => {
   const unique = `test_import_foundation_${Date.now()}`;
   let academicToken = "";
   let financeToken = "";
+  let studentToken = "";
+  let parentToken = "";
   let courseId = "";
   let facultyId = "";
   let moduleId = "";
@@ -33,9 +43,13 @@ describe("approved learner import foundation", () => {
   beforeAll(async () => {
     const academicAdmin = await createUser("ADMIN", `${unique}_academic@co.za`, "Passw0rd!", "ACADEMIC");
     const financeAdmin = await createUser("ADMIN", `${unique}_finance@co.za`, "Passw0rd!", "FINANCE");
+    const student = await createUser("STUDENT", `${unique}_student@co.za`);
+    const parent = await createUser("PARENT", `${unique}_parent@co.za`);
 
     academicToken = signJwt(academicAdmin);
     financeToken = signJwt(financeAdmin);
+    studentToken = signJwt(student);
+    parentToken = signJwt(parent);
 
     const courseRes = await pool.query<{ id: string }>(
       `
@@ -286,6 +300,203 @@ describe("approved learner import foundation", () => {
         last_name: "Import",
         email: `${unique}_blocked@co.za`,
         external_source_id: `${unique}-blocked`,
+      });
+
+    expect(res.status).toBe(403);
+  });
+
+  test("student and parent roles cannot trigger approved learner import routes", async () => {
+    const body = {
+      first_name: "Blocked",
+      last_name: "Import",
+      email: `${unique}_blocked_student_parent@co.za`,
+      external_source_id: `${unique}-blocked-student-parent`,
+    };
+    const csv = "first_name,last_name,email,external_source_id\nBlocked,Import,test_blocked_role_csv@co.za,blocked-role-csv\n";
+
+    for (const token of [studentToken, parentToken]) {
+      const singleRes = await request(app)
+        .post("/api/admin/imports/approved-learner")
+        .set(auth(token))
+        .send(body);
+      const csvRes = await request(app)
+        .post("/api/admin/imports/approved-learners/csv")
+        .set(auth(token))
+        .send({ csv });
+
+      expect(singleRes.status).toBe(403);
+      expect(csvRes.status).toBe(403);
+    }
+  });
+
+  test("academic admin can upload CSV learners and repeated imports do not duplicate users", async () => {
+    const learnerEmail = `${unique}_csv_created@co.za`;
+    const externalSourceId = `${unique}-csv-created`;
+    const header = csvLine([
+      "first_name",
+      "last_name",
+      "email",
+      "phone",
+      "id_number",
+      "external_source_id",
+      "course_id",
+      "metadata_json",
+    ]);
+    const row = csvLine([
+      "Csv",
+      "Learner",
+      learnerEmail,
+      "0820003001",
+      "9901011234083",
+      externalSourceId,
+      courseId,
+      JSON.stringify({ cohort: "CSV Intake" }),
+    ]);
+    const csv = `${header}\n${row}\n`;
+
+    const firstRes = await request(app)
+      .post("/api/admin/imports/approved-learners/csv")
+      .set(auth(academicToken))
+      .attach("file", Buffer.from(csv), {
+        filename: "approved-learners.csv",
+        contentType: "text/csv",
+      });
+
+    expect(firstRes.status).toBe(200);
+    expect(Number(firstRes.body?.summary?.totalRows ?? "0")).toBe(1);
+    expect(Number(firstRes.body?.summary?.createdCount ?? "0")).toBe(1);
+    expect(String(firstRes.body?.results?.[0]?.outcome ?? "")).toBe("CREATED");
+    expect(String(firstRes.body?.results?.[0]?.studentNumber ?? "")).toMatch(/^STU-\d{4}-\d{4}$/);
+
+    const firstUserId = String(firstRes.body?.results?.[0]?.userId ?? "");
+
+    const secondRes = await request(app)
+      .post("/api/admin/imports/approved-learners/csv")
+      .set(auth(academicToken))
+      .attach("file", Buffer.from(csv), {
+        filename: "approved-learners.csv",
+        contentType: "text/csv",
+      });
+
+    expect(secondRes.status).toBe(200);
+    expect(Number(secondRes.body?.summary?.createdCount ?? "0")).toBe(0);
+    expect(Number(secondRes.body?.summary?.updatedCount ?? "0")).toBe(1);
+    expect(String(secondRes.body?.results?.[0]?.outcome ?? "")).toBe("UPDATED");
+    expect(String(secondRes.body?.results?.[0]?.userId ?? "")).toBe(firstUserId);
+
+    const counts = await pool.query<{
+      user_count: string;
+      profile_count: string;
+      course_count: string;
+    }>(
+      `
+        SELECT
+          (SELECT COUNT(*)::text FROM users WHERE lower(email) = lower($1)) AS user_count,
+          (
+            SELECT COUNT(*)::text
+            FROM student_profiles sp
+            JOIN users u ON u.id = sp.user_id
+            WHERE lower(u.email) = lower($1)
+              AND sp.external_source = 'FORGE_TALENT_CSV'
+              AND sp.external_source_id = $2
+          ) AS profile_count,
+          (
+            SELECT COUNT(*)::text
+            FROM student_courses sc
+            JOIN users u ON u.id = sc.student_user_id
+            WHERE lower(u.email) = lower($1)
+              AND sc.course_id = $3
+          ) AS course_count
+      `,
+      [learnerEmail, externalSourceId, courseId]
+    );
+
+    expect(Number(counts.rows[0]?.user_count ?? "0")).toBe(1);
+    expect(Number(counts.rows[0]?.profile_count ?? "0")).toBe(1);
+    expect(Number(counts.rows[0]?.course_count ?? "0")).toBe(1);
+  });
+
+  test("CSV import reports partial success with row-level failures and skipped rows", async () => {
+    const validEmail = `${unique}_csv_partial_valid@co.za`;
+    const header = csvLine([
+      "first_name",
+      "last_name",
+      "email",
+      "id_number",
+      "external_source_id",
+      "metadata_json",
+    ]);
+    const csv = [
+      header,
+      csvLine([
+        "Partial",
+        "Valid",
+        validEmail,
+        "9901011234084",
+        `${unique}-csv-partial-valid`,
+        JSON.stringify({ source: "partial-test" }),
+      ]),
+      csvLine([
+        "Partial",
+        "Invalid Email",
+        "not-an-email",
+        "9901011234085",
+        `${unique}-csv-partial-invalid-email`,
+        "",
+      ]),
+      csvLine([
+        "Partial",
+        "Invalid Metadata",
+        `${unique}_csv_bad_metadata@co.za`,
+        "9901011234086",
+        `${unique}-csv-partial-bad-metadata`,
+        "{not-json",
+      ]),
+      csvLine(["", "", "", "", "", ""]),
+    ].join("\n");
+
+    const res = await request(app)
+      .post("/api/admin/imports/approved-learners/csv")
+      .set(auth(academicToken))
+      .send({ csv });
+
+    expect(res.status).toBe(200);
+    expect(Number(res.body?.summary?.totalRows ?? "0")).toBe(4);
+    expect(Number(res.body?.summary?.createdCount ?? "0")).toBe(1);
+    expect(Number(res.body?.summary?.failedCount ?? "0")).toBe(2);
+    expect(Number(res.body?.summary?.skippedCount ?? "0")).toBe(1);
+    expect(
+      res.body.results.some(
+        (row: { outcome?: string; email?: string }) =>
+          row.outcome === "CREATED" && row.email === validEmail
+      )
+    ).toBe(true);
+    expect(
+      res.body.results.some(
+        (row: { outcome?: string; message?: string }) =>
+          row.outcome === "FAILED" && String(row.message ?? "").includes("email is invalid")
+      )
+    ).toBe(true);
+    expect(
+      res.body.results.some(
+        (row: { outcome?: string; message?: string }) =>
+          row.outcome === "FAILED" && String(row.message ?? "").includes("metadata_json")
+      )
+    ).toBe(true);
+    expect(
+      res.body.results.some(
+        (row: { outcome?: string; message?: string }) =>
+          row.outcome === "SKIPPED" && String(row.message ?? "").includes("Blank row")
+      )
+    ).toBe(true);
+  });
+
+  test("finance admin cannot trigger the approved learner CSV import route", async () => {
+    const res = await request(app)
+      .post("/api/admin/imports/approved-learners/csv")
+      .set(auth(financeToken))
+      .send({
+        csv: "first_name,last_name,email,external_source_id\nBlocked,Import,test_blocked_csv@co.za,blocked-csv\n",
       });
 
     expect(res.status).toBe(403);

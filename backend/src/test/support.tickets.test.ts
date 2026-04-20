@@ -101,6 +101,19 @@ describe("support tickets", () => {
       )
     ).toBe(true);
 
+    const unfilteredAdminListRes = await request(app)
+      .get("/api/support/admin/tickets")
+      .set(auth(superToken));
+
+    expect(unfilteredAdminListRes.status).toBe(200);
+    expect(
+      unfilteredAdminListRes.body.value.some(
+        (ticket: { requesterEmail?: string; category?: string }) =>
+          ticket.requesterEmail === "test_support_legacy@co.za" &&
+          ticket.category === "GENERAL"
+      )
+    ).toBe(true);
+
     const patchRes = await request(app)
       .patch(`/api/support/admin/tickets/${legacyTicketId}`)
       .set(auth(superToken))

@@ -11,8 +11,15 @@ export type CalendarEntry = {
   createdAt: string;
   channelId?: string | null;
   courseId?: string | null;
+  moduleId?: string | null;
   courseCode?: string | null;
   courseName?: string | null;
+  eventSource?: "INTERNAL" | "COURSE_SYNC" | "TEAMS_SYNC" | null;
+  sourceReferenceId?: string | null;
+  reminderMinutesBefore?: number | null;
+  externalProvider?: string | null;
+  externalEventId?: string | null;
+  syncMetadata?: unknown;
   canDelete?: boolean;
   source?: "CALENDAR_ENTRY" | "COURSE_ENTRY" | "CHANNEL_EVENT";
 };
@@ -26,6 +33,7 @@ export type EditableCalendarEntry = {
   startsAt: string;
   endsAt: string;
   courseId: string | null;
+  eventSource: "INTERNAL" | "COURSE_SYNC" | "TEAMS_SYNC" | null;
 };
 
 type Row = {
@@ -39,8 +47,15 @@ type Row = {
   created_at: string;
   channel_id: string | null;
   course_id: string | null;
+  module_id: string | null;
   course_code: string | null;
   course_name: string | null;
+  event_source: "INTERNAL" | "COURSE_SYNC" | "TEAMS_SYNC" | null;
+  source_reference_id: string | null;
+  reminder_minutes_before: number | null;
+  external_provider: string | null;
+  external_event_id: string | null;
+  sync_metadata: unknown;
   can_delete: boolean;
   source: "CALENDAR_ENTRY" | "COURSE_ENTRY" | "CHANNEL_EVENT";
 };
@@ -54,6 +69,7 @@ type EditableRow = {
   starts_at: string;
   ends_at: string;
   course_id: string | null;
+  event_source: "INTERNAL" | "COURSE_SYNC" | "TEAMS_SYNC" | null;
 };
 
 function parseLimit(raw: unknown, fallback = 50) {
@@ -74,8 +90,15 @@ function mapCalendarEntry(row: Row): CalendarEntry {
     createdAt: row.created_at,
     channelId: row.channel_id,
     courseId: row.course_id,
+    moduleId: row.module_id,
     courseCode: row.course_code,
     courseName: row.course_name,
+    eventSource: row.event_source,
+    sourceReferenceId: row.source_reference_id,
+    reminderMinutesBefore: row.reminder_minutes_before,
+    externalProvider: row.external_provider,
+    externalEventId: row.external_event_id,
+    syncMetadata: row.sync_metadata,
     canDelete: Boolean(row.can_delete),
     source: row.source,
   };
@@ -91,6 +114,7 @@ function mapEditableEntry(row: EditableRow): EditableCalendarEntry {
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     courseId: row.course_id,
+    eventSource: row.event_source,
   };
 }
 
@@ -124,8 +148,15 @@ export const pgCalendarRepo = {
           ce.created_at,
           NULL::uuid AS channel_id,
           NULL::uuid AS course_id,
+          NULL::uuid AS module_id,
           NULL::text AS course_code,
           NULL::text AS course_name,
+          COALESCE(ce.event_source, 'INTERNAL') AS event_source,
+          ce.source_reference_id,
+          ce.reminder_minutes_before,
+          ce.external_provider,
+          ce.external_event_id,
+          ce.sync_metadata,
           ($1::text = ce.user_id::text) AS can_delete,
           'CALENDAR_ENTRY'::text AS source
         FROM calendar_entries ce
@@ -155,9 +186,17 @@ export const pgCalendarRepo = {
           ce.created_at,
           NULL::uuid AS channel_id,
           ce.course_id,
+          ce.module_id,
           c.code AS course_code,
           c.name AS course_name,
+          COALESCE(ce.event_source, 'INTERNAL') AS event_source,
+          ce.source_reference_id,
+          ce.reminder_minutes_before,
+          ce.external_provider,
+          ce.external_event_id,
+          ce.sync_metadata,
           CASE
+            WHEN COALESCE(ce.event_source, 'INTERNAL') = 'COURSE_SYNC' THEN false
             WHEN $4::text = 'ADMIN' THEN true
             WHEN ce.user_id::text = $1::text THEN true
             ELSE false
@@ -167,8 +206,17 @@ export const pgCalendarRepo = {
         JOIN courses c ON c.id = ce.course_id
         WHERE ce.course_id IS NOT NULL
           AND (
-            $4::text = 'ADMIN'
+            (
+              COALESCE(ce.event_source, 'INTERNAL') = 'COURSE_SYNC'
+              AND ce.user_id::text = $1::text
+            )
             OR (
+              COALESCE(ce.event_source, 'INTERNAL') <> 'COURSE_SYNC'
+              AND $4::text = 'ADMIN'
+            )
+            OR (
+              COALESCE(ce.event_source, 'INTERNAL') <> 'COURSE_SYNC'
+              AND
               $4::text = 'LECTURER'
               AND EXISTS (
                 SELECT 1
@@ -179,6 +227,8 @@ export const pgCalendarRepo = {
               )
             )
             OR (
+              COALESCE(ce.event_source, 'INTERNAL') <> 'COURSE_SYNC'
+              AND
               $4::text IN ('STUDENT', 'PARENT')
               AND EXISTS (
                 SELECT 1
@@ -213,8 +263,15 @@ export const pgCalendarRepo = {
           e.created_at,
           e.channel_id,
           NULL::uuid AS course_id,
+          NULL::uuid AS module_id,
           NULL::text AS course_code,
           NULL::text AS course_name,
+          NULL::text AS event_source,
+          NULL::text AS source_reference_id,
+          NULL::int AS reminder_minutes_before,
+          NULL::text AS external_provider,
+          NULL::text AS external_event_id,
+          NULL::jsonb AS sync_metadata,
           false AS can_delete,
           'CHANNEL_EVENT'::text AS source
         FROM events e
@@ -247,8 +304,15 @@ export const pgCalendarRepo = {
         created_at,
         channel_id,
         course_id,
+        module_id,
         course_code,
         course_name,
+        event_source,
+        source_reference_id,
+        reminder_minutes_before,
+        external_provider,
+        external_event_id,
+        sync_metadata,
         can_delete,
         source
       FROM combined
@@ -286,7 +350,23 @@ export const pgCalendarRepo = {
     const q = `
       INSERT INTO calendar_entries (user_id, course_id, title, description, location, starts_at, ends_at)
       VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz)
-      RETURNING id, user_id, title, description, location, starts_at, ends_at, created_at, course_id
+      RETURNING
+        id,
+        user_id,
+        title,
+        description,
+        location,
+        starts_at,
+        ends_at,
+        created_at,
+        course_id,
+        module_id,
+        event_source,
+        source_reference_id,
+        reminder_minutes_before,
+        external_provider,
+        external_event_id,
+        sync_metadata
     `;
     const res = await pool.query<Row>(q, [
       userId,
@@ -309,6 +389,13 @@ export const pgCalendarRepo = {
       endsAt: r.ends_at,
       createdAt: r.created_at,
       courseId: r.course_id,
+      moduleId: r.module_id,
+      eventSource: r.event_source,
+      sourceReferenceId: r.source_reference_id,
+      reminderMinutesBefore: r.reminder_minutes_before,
+      externalProvider: r.external_provider,
+      externalEventId: r.external_event_id,
+      syncMetadata: r.sync_metadata,
       canDelete: true,
       source: r.course_id ? "COURSE_ENTRY" : "CALENDAR_ENTRY",
     };
@@ -323,9 +410,19 @@ export const pgCalendarRepo = {
     if (!id) throw Object.assign(new Error("id is required"), { code: "VALIDATION" });
 
     const q = `
-      SELECT id, user_id, title, description, location, starts_at, ends_at, course_id
+      SELECT
+        id,
+        user_id,
+        title,
+        description,
+        location,
+        starts_at,
+        ends_at,
+        course_id,
+        COALESCE(event_source, 'INTERNAL') AS event_source
       FROM calendar_entries
       WHERE id = $1
+        AND COALESCE(event_source, 'INTERNAL') <> 'COURSE_SYNC'
         AND (
           user_id = $2
           OR ($3 = 'ADMIN' AND course_id IS NOT NULL)
@@ -373,13 +470,31 @@ export const pgCalendarRepo = {
         description = $6,
         location = $7,
         starts_at = $8::timestamptz,
-        ends_at = $9::timestamptz
+        ends_at = $9::timestamptz,
+        updated_at = now()
       WHERE id = $1
+        AND COALESCE(event_source, 'INTERNAL') <> 'COURSE_SYNC'
         AND (
           user_id = $2
           OR ($3 = 'ADMIN' AND course_id IS NOT NULL)
         )
-      RETURNING id, user_id, title, description, location, starts_at, ends_at, created_at, course_id
+      RETURNING
+        id,
+        user_id,
+        title,
+        description,
+        location,
+        starts_at,
+        ends_at,
+        created_at,
+        course_id,
+        module_id,
+        event_source,
+        source_reference_id,
+        reminder_minutes_before,
+        external_provider,
+        external_event_id,
+        sync_metadata
     `;
     const res = await pool.query<Row>(q, [
       id,
@@ -406,6 +521,13 @@ export const pgCalendarRepo = {
       endsAt: row.ends_at,
       createdAt: row.created_at,
       courseId: row.course_id,
+      moduleId: row.module_id,
+      eventSource: row.event_source,
+      sourceReferenceId: row.source_reference_id,
+      reminderMinutesBefore: row.reminder_minutes_before,
+      externalProvider: row.external_provider,
+      externalEventId: row.external_event_id,
+      syncMetadata: row.sync_metadata,
       canDelete: true,
       source: row.course_id ? "COURSE_ENTRY" : "CALENDAR_ENTRY",
     };
@@ -422,6 +544,7 @@ export const pgCalendarRepo = {
     const q = `
       DELETE FROM calendar_entries
       WHERE id = $1
+        AND COALESCE(event_source, 'INTERNAL') <> 'COURSE_SYNC'
         AND (
           user_id = $2
           OR ($3 = 'ADMIN' AND course_id IS NOT NULL)

@@ -1,5 +1,6 @@
-import { Router, type Response } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import type { PoolClient } from "pg";
+import multer from "multer";
 import { pool } from "../config/db";
 import {
   assignCourseToStudent,
@@ -11,6 +12,15 @@ import {
   ingestApprovedLearner,
   LearnerImportError,
 } from "../lib/learnerImports";
+import {
+  issueLearnerActivation,
+  LearnerActivationError,
+  type LearnerOnboardingStatus,
+} from "../lib/learnerActivation";
+import {
+  CsvImportError,
+  importApprovedLearnersFromCsv,
+} from "../lib/learnerCsvImport";
 import { requireAccess, requireRole } from "../middleware/rbac";
 
 type StudentProfileRow = {
@@ -55,6 +65,24 @@ type StudentListRow = {
   completed_at: string | null;
 };
 
+type ImportedLearnerListRow = {
+  total_count: string;
+  user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  public_student_id: string | null;
+  external_source: string | null;
+  external_source_id: string | null;
+  activation_required: boolean | null;
+  onboarding_status: LearnerOnboardingStatus | null;
+  activation_invited_at: string | null;
+  activated_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+  has_active_activation_token: boolean;
+};
+
 type CourseOptionRow = {
   id: string;
   code: string;
@@ -95,6 +123,23 @@ type StudentProfileDetail = {
 function err(res: Response, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
 }
+
+function learnerActivationIssueStatus(
+  error: LearnerActivationError
+): "already_activated" | "not_eligible" | null {
+  const message = error.message.toLowerCase();
+  if (message.includes("already activated")) return "already_activated";
+  if (message.includes("only be issued")) return "not_eligible";
+  return null;
+}
+
+const csvImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 2 * 1024 * 1024,
+    files: 1,
+  },
+});
 
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -139,12 +184,68 @@ function parseLimit(raw: unknown, fallback = 50, max = 100) {
   return Math.min(Math.floor(n), max);
 }
 
+function parseOffset(raw: unknown, fallback = 0, max = 10000) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.min(Math.floor(n), max);
+}
+
+function singleQueryValue(raw: unknown): string {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return toTrimmedString(value);
+}
+
+function parseOptionalBoolean(raw: unknown): boolean | null | undefined {
+  const normalized = singleQueryValue(raw).toLowerCase();
+  if (!normalized) return null;
+  if (["true", "1", "yes"].includes(normalized)) return true;
+  if (["false", "0", "no"].includes(normalized)) return false;
+  return undefined;
+}
+
+const ONBOARDING_STATUS_FILTERS: LearnerOnboardingStatus[] = [
+  "PENDING_ACTIVATION",
+  "INVITED",
+  "ACTIVATED",
+];
+
+function parseOnboardingStatus(raw: unknown): LearnerOnboardingStatus | null | undefined {
+  const normalized = singleQueryValue(raw).toUpperCase();
+  if (!normalized || normalized === "ALL") return null;
+  if (ONBOARDING_STATUS_FILTERS.includes(normalized as LearnerOnboardingStatus)) {
+    return normalized as LearnerOnboardingStatus;
+  }
+  return undefined;
+}
+
 function normalizeFeeStatus(raw: unknown): "PAID" | "PARTIAL" | "OUTSTANDING" | null {
   const normalized = toTrimmedString(raw).toUpperCase();
   if (normalized === "PAID" || normalized === "PARTIAL" || normalized === "OUTSTANDING") {
     return normalized;
   }
   return null;
+}
+
+function isSupportedCsvUpload(file: Express.Multer.File): boolean {
+  const fileName = String(file.originalname ?? "").trim().toLowerCase();
+  const mimeType = String(file.mimetype ?? "").trim().toLowerCase();
+  return (
+    fileName.endsWith(".csv") ||
+    mimeType === "text/csv" ||
+    mimeType === "application/csv" ||
+    mimeType === "application/vnd.ms-excel" ||
+    mimeType === "text/plain"
+  );
+}
+
+function csvImportUploadMiddleware(req: Request, res: Response, next: NextFunction) {
+  csvImportUpload.single("file")(req, res, (error: unknown) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError) {
+      return err(res, 400, "UPLOAD", error.message);
+    }
+    return err(res, 400, "UPLOAD", "Invalid CSV upload");
+  });
 }
 
 function amountFromCents(value: number | null): number | null {
@@ -235,6 +336,32 @@ function redactStudentFinance(profile: StudentProfileDetail | null): StudentProf
     amountPaid: null,
     lastPaymentDate: null,
     paymentReference: null,
+  };
+}
+
+function mapImportedLearner(row: ImportedLearnerListRow) {
+  const firstName = row.first_name?.trim() ?? "";
+  const lastName = row.last_name?.trim() ?? "";
+  const learnerName = [firstName, lastName].filter(Boolean).join(" ").trim() || row.email;
+  const isActivated = Boolean(row.activated_at || row.onboarding_status === "ACTIVATED");
+
+  return {
+    userId: row.user_id,
+    email: row.email,
+    firstName,
+    lastName,
+    learnerName,
+    studentNumber: row.public_student_id?.trim() ?? null,
+    externalSource: row.external_source?.trim() ?? null,
+    externalSourceId: row.external_source_id?.trim() ?? null,
+    activationRequired: Boolean(row.activation_required),
+    onboardingStatus: row.onboarding_status,
+    activationInvitedAt: row.activation_invited_at,
+    activatedAt: row.activated_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    hasActiveActivationToken: Boolean(row.has_active_activation_token),
+    canReissueActivation: !isActivated,
   };
 }
 
@@ -632,6 +759,140 @@ studentRouter.put(
   }
 );
 
+studentRouter.get(
+  "/admin/imports/learners",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const onboardingStatus = parseOnboardingStatus(
+        req.query.onboardingStatus ?? req.query.onboarding_status
+      );
+      if (onboardingStatus === undefined) {
+        return err(
+          res,
+          400,
+          "VALIDATION",
+          "onboardingStatus must be PENDING_ACTIVATION, INVITED, ACTIVATED, or ALL"
+        );
+      }
+
+      const activationRequired = parseOptionalBoolean(
+        req.query.activationRequired ?? req.query.activation_required
+      );
+      if (activationRequired === undefined) {
+        return err(res, 400, "VALIDATION", "activationRequired must be true or false");
+      }
+
+      const limit = parseLimit(req.query.limit, 50, 250);
+      const offset = parseOffset(req.query.offset);
+      const externalSource = singleQueryValue(
+        req.query.externalSource ?? req.query.external_source ?? req.query.source
+      ).toUpperCase();
+      const q = singleQueryValue(req.query.q).toLowerCase();
+      const params: unknown[] = [];
+      const where: string[] = [
+        `u.role = 'STUDENT'`,
+        `(
+          sp.verified_from_talent = true
+          OR (
+            NULLIF(btrim(COALESCE(sp.external_source, '')), '') IS NOT NULL
+            AND NULLIF(btrim(COALESCE(sp.external_source_id, '')), '') IS NOT NULL
+          )
+        )`,
+      ];
+
+      if (onboardingStatus) {
+        params.push(onboardingStatus);
+        where.push(`sp.onboarding_status = $${params.length}`);
+      }
+
+      if (activationRequired !== null) {
+        params.push(activationRequired);
+        where.push(`COALESCE(sp.activation_required, false) = $${params.length}::boolean`);
+      }
+
+      if (externalSource) {
+        params.push(externalSource);
+        where.push(`upper(COALESCE(sp.external_source, '')) = $${params.length}`);
+      }
+
+      if (q) {
+        params.push(`%${q}%`);
+        where.push(`(
+          lower(u.email) LIKE $${params.length}
+          OR lower(COALESCE(u.first_name, '')) LIKE $${params.length}
+          OR lower(COALESCE(u.last_name, '')) LIKE $${params.length}
+          OR lower(COALESCE(u.public_student_id, '')) LIKE $${params.length}
+          OR lower(COALESCE(sp.external_source_id, '')) LIKE $${params.length}
+        )`);
+      }
+
+      params.push(limit);
+      const limitIndex = params.length;
+      params.push(offset);
+      const offsetIndex = params.length;
+
+      const result = await pool.query<ImportedLearnerListRow>(
+        `
+          SELECT
+            COUNT(*) OVER()::text AS total_count,
+            u.id AS user_id,
+            u.email,
+            u.first_name,
+            u.last_name,
+            u.public_student_id,
+            sp.external_source,
+            sp.external_source_id,
+            sp.activation_required,
+            sp.onboarding_status,
+            sp.activation_invited_at::text AS activation_invited_at,
+            sp.activated_at::text AS activated_at,
+            u.created_at::text AS created_at,
+            sp.updated_at::text AS updated_at,
+            EXISTS (
+              SELECT 1
+              FROM learner_activation_tokens lat
+              WHERE lat.user_id = u.id
+                AND lat.consumed_at IS NULL
+                AND lat.revoked_at IS NULL
+                AND lat.expires_at > now()
+            ) AS has_active_activation_token
+          FROM users u
+          JOIN student_profiles sp ON sp.user_id = u.id
+          WHERE ${where.join(" AND ")}
+          ORDER BY
+            CASE sp.onboarding_status
+              WHEN 'PENDING_ACTIVATION' THEN 0
+              WHEN 'INVITED' THEN 1
+              WHEN 'ACTIVATED' THEN 2
+              ELSE 3
+            END ASC,
+            sp.activation_invited_at DESC NULLS LAST,
+            sp.updated_at DESC NULLS LAST,
+            u.created_at DESC
+          LIMIT $${limitIndex}
+          OFFSET $${offsetIndex}
+        `,
+        params
+      );
+
+      const value = result.rows.map(mapImportedLearner);
+      const total = Number(result.rows[0]?.total_count ?? value.length);
+
+      return res.json({
+        value,
+        count: value.length,
+        total,
+        limit,
+        offset,
+      });
+    } catch (e) {
+      console.error("[students] GET /admin/imports/learners error", e);
+      return err(res, 500, "INTERNAL", "Failed to load imported learners");
+    }
+  }
+);
+
 studentRouter.post(
   "/admin/imports/approved-learner",
   requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
@@ -652,6 +913,7 @@ studentRouter.post(
           req.body?.idNumber,
         courseId: req.body?.course_id ?? req.body?.courseId,
         courseCode: req.body?.course_code ?? req.body?.courseCode,
+        externalSource: req.body?.external_source ?? req.body?.externalSource,
         externalSourceId: req.body?.external_source_id ?? req.body?.externalSourceId,
         metadata: req.body?.metadata ?? null,
       };
@@ -697,6 +959,92 @@ studentRouter.post(
       return err(res, 500, "INTERNAL", "Failed to import approved learner");
     } finally {
       client.release();
+    }
+  }
+);
+
+studentRouter.post(
+  "/admin/imports/approved-learners/csv",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  csvImportUploadMiddleware,
+  async (req, res) => {
+    try {
+      let csvText = "";
+
+      if (req.file) {
+        if (!isSupportedCsvUpload(req.file)) {
+          return err(res, 400, "VALIDATION", "Upload must be a CSV file");
+        }
+        csvText = req.file.buffer.toString("utf8");
+      } else if (typeof req.body?.csv === "string") {
+        csvText = req.body.csv;
+      }
+
+      if (!csvText.trim()) {
+        return err(res, 400, "VALIDATION", "CSV content is required");
+      }
+
+      const report = await importApprovedLearnersFromCsv(pool, csvText);
+
+      return res.json({
+        ok: true,
+        summary: {
+          totalRows: report.totalRows,
+          createdCount: report.createdCount,
+          updatedCount: report.updatedCount,
+          skippedCount: report.skippedCount,
+          failedCount: report.failedCount,
+        },
+        results: report.results,
+      });
+    } catch (e: any) {
+      if (e instanceof CsvImportError) {
+        return err(res, e.status, e.code, e.message);
+      }
+
+      console.error("[students] POST /admin/imports/approved-learners/csv error", e);
+      return err(res, 500, "INTERNAL", "Failed to import approved learners CSV");
+    }
+  }
+);
+
+studentRouter.post(
+  "/admin/imports/:userId/send-activation",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const userId = toTrimmedString(req.params.userId);
+      if (!isUuid(userId)) return err(res, 400, "VALIDATION", "userId must be a UUID");
+
+      const activation = await issueLearnerActivation(pool, {
+        userId,
+        issuedByUserId: req.user?.id ?? null,
+      });
+
+      return res.json({
+        ok: true,
+        activation,
+      });
+    } catch (e: any) {
+      if (e instanceof LearnerActivationError) {
+        const operationalStatus = learnerActivationIssueStatus(e);
+        if (operationalStatus) {
+          return res.status(e.status).json({
+            error: {
+              code: e.code,
+              message: e.message,
+            },
+            activation: {
+              issued: false,
+              operationalStatus,
+            },
+          });
+        }
+        return err(res, e.status, e.code, e.message);
+      }
+
+      console.error("[students] POST /admin/imports/:userId/send-activation error", e);
+      return err(res, 500, "INTERNAL", "Failed to issue learner activation");
     }
   }
 );

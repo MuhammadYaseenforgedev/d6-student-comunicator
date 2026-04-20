@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { PoolClient } from "pg";
 import { pool } from "../config/db";
 import { requireAccess, requireRole } from "../middleware/rbac";
 import { createAttendanceNotifications } from "../lib/notifications";
@@ -10,15 +11,70 @@ import {
 } from "../lib/courseAccess";
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE";
+type AttendanceRecordStatus = AttendanceStatus | "PENDING";
 const VALID_ATTENDANCE_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE"];
 
 type AttendanceSessionContext = {
   id: string;
   lecturer_id: string;
   module_id: string;
+  course_id: string | null;
+  calendar_entry_id: string | null;
+  course_schedule_template_id: string | null;
   attendance_date: string;
   starts_at: string | null;
   ends_at: string | null;
+  attendance_open_at: string | null;
+  attendance_close_at: string | null;
+  lateness_threshold_minutes: number;
+  finalized_at: string | null;
+};
+
+type Queryable = Pick<PoolClient, "query"> | typeof pool;
+
+type CalendarAttendanceSource = {
+  id: string;
+  course_id: string;
+  module_id: string | null;
+  course_schedule_template_id: string | null;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  event_source: string;
+};
+
+type AttendanceSessionRow = {
+  id: string;
+  lecturer_id: string;
+  module_id: string;
+  course_id: string | null;
+  calendar_entry_id: string | null;
+  course_schedule_template_id: string | null;
+  attendance_date: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  attendance_open_at: string | null;
+  attendance_close_at: string | null;
+  lateness_threshold_minutes: number;
+  session_source: string;
+  finalized_at: string | null;
+  created_at: string;
+};
+
+type AttendanceMarkInput = {
+  studentId?: unknown;
+  status?: unknown;
+  markedAt?: unknown;
+  marked_at?: unknown;
+  statusReason?: unknown;
+  status_reason?: unknown;
+};
+
+type ParsedAttendanceMark = {
+  studentId: string;
+  status: AttendanceStatus | null;
+  markedAt: string;
+  statusReason: string;
 };
 
 function err(res: any, status: number, code: string, message: string) {
@@ -35,6 +91,27 @@ function parseDateOnly(raw: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
+function parseDateTime(raw: unknown): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const timestamp = Date.parse(s);
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp).toISOString();
+}
+
+function parseOptionalDateTime(raw: unknown): string | null | undefined {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  return parseDateTime(s) ?? undefined;
+}
+
+function parseLatenessThresholdMinutes(raw: unknown, fallback = 10): number | null {
+  if (raw == null || String(raw).trim() === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 1440) return null;
+  return Math.floor(n);
+}
+
 function compareDateOnly(a: string, b: string): number {
   return Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`);
 }
@@ -44,24 +121,77 @@ function normalizeStatus(raw: unknown): AttendanceStatus | null {
   return VALID_ATTENDANCE_STATUSES.includes(s as AttendanceStatus) ? (s as AttendanceStatus) : null;
 }
 
+function inferTimedAttendanceStatus(
+  session: Pick<AttendanceSessionContext, "starts_at" | "lateness_threshold_minutes">,
+  markedAt: string
+): AttendanceStatus {
+  if (!session.starts_at) return "PRESENT";
+
+  const startMs = Date.parse(session.starts_at);
+  const markedMs = Date.parse(markedAt);
+  if (!Number.isFinite(startMs) || !Number.isFinite(markedMs)) return "PRESENT";
+
+  const lateAfterMs = startMs + Number(session.lateness_threshold_minutes ?? 10) * 60 * 1000;
+  return markedMs > lateAfterMs ? "LATE" : "PRESENT";
+}
+
+function mapAttendanceSession(row: AttendanceSessionRow, created: boolean) {
+  return {
+    id: row.id,
+    lecturerId: row.lecturer_id,
+    moduleId: row.module_id,
+    courseId: row.course_id,
+    calendarEntryId: row.calendar_entry_id,
+    courseScheduleTemplateId: row.course_schedule_template_id,
+    date: row.attendance_date,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    attendanceOpenAt: row.attendance_open_at,
+    attendanceCloseAt: row.attendance_close_at,
+    latenessThresholdMinutes: Number(row.lateness_threshold_minutes ?? 10),
+    sessionSource: row.session_source,
+    finalizedAt: row.finalized_at,
+    createdAt: row.created_at,
+    created,
+  };
+}
+
 async function isStudentEnrolledInModule(studentId: string, moduleId: string): Promise<boolean> {
   return isStudentAllowedForModule(pool, studentId, moduleId);
 }
 
-function inferSuggestedStatus(startsAt: string | null, checkedInAt: string | null): AttendanceStatus {
+function inferSuggestedStatus(
+  startsAt: string | null,
+  checkedInAt: string | null,
+  latenessThresholdMinutes = 0
+): AttendanceStatus {
   if (!checkedInAt) return "ABSENT";
   if (!startsAt) return "PRESENT";
 
   const startsAtMs = Date.parse(startsAt);
   const checkedInAtMs = Date.parse(checkedInAt);
   if (!Number.isFinite(startsAtMs) || !Number.isFinite(checkedInAtMs)) return "PRESENT";
-  return checkedInAtMs > startsAtMs ? "LATE" : "PRESENT";
+  const lateAfterMs = startsAtMs + latenessThresholdMinutes * 60 * 1000;
+  return checkedInAtMs > lateAfterMs ? "LATE" : "PRESENT";
 }
 
 async function getAttendanceSessionContext(sessionId: string): Promise<AttendanceSessionContext | null> {
   const r = await pool.query<AttendanceSessionContext>(
     `
-      SELECT id, lecturer_id, module_id, attendance_date, starts_at, ends_at
+      SELECT
+        id,
+        lecturer_id,
+        module_id,
+        course_id,
+        calendar_entry_id,
+        course_schedule_template_id,
+        attendance_date,
+        starts_at::text AS starts_at,
+        ends_at::text AS ends_at,
+        attendance_open_at::text AS attendance_open_at,
+        attendance_close_at::text AS attendance_close_at,
+        lateness_threshold_minutes,
+        finalized_at::text AS finalized_at
       FROM attendance_sessions
       WHERE id = $1
       LIMIT 1
@@ -89,6 +219,113 @@ async function ensureParentCanAccessChild(parentId: string, childId: string): Pr
   `;
   const r = await pool.query(q, [parentId, childId]);
   return (r.rowCount ?? 0) > 0;
+}
+
+async function loadCalendarAttendanceSource(
+  calendarEntryId: string
+): Promise<CalendarAttendanceSource | null> {
+  const result = await pool.query<CalendarAttendanceSource>(
+    `
+      SELECT
+        ce.id,
+        ce.course_id,
+        ce.module_id,
+        ce.course_schedule_template_id,
+        ce.title,
+        ce.starts_at::text AS starts_at,
+        ce.ends_at::text AS ends_at,
+        COALESCE(ce.event_source, 'INTERNAL') AS event_source
+      FROM calendar_entries ce
+      WHERE ce.id = $1
+        AND ce.course_id IS NOT NULL
+      LIMIT 1
+    `,
+    [calendarEntryId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+async function seedPendingAttendanceRecords(
+  db: Queryable,
+  input: { sessionId: string; moduleId: string }
+): Promise<number> {
+  const result = await db.query<{ inserted_count: number }>(
+    `
+      WITH roster AS (
+        SELECT DISTINCT sme.student_id
+        FROM faculty_modules fm
+        JOIN student_module_enrollments sme
+          ON sme.module_id = fm.id
+        JOIN student_courses sc
+          ON sc.student_user_id = sme.student_id
+         AND sc.course_id = fm.course_id
+         AND sc.status = 'ACTIVE'
+        WHERE fm.id = $2
+      ),
+      inserted AS (
+        INSERT INTO attendance_records (
+          session_id,
+          student_id,
+          status,
+          marked_at,
+          marked_by,
+          status_reason,
+          attendance_source,
+          updated_at
+        )
+        SELECT
+          $1,
+          roster.student_id,
+          'PENDING',
+          NULL,
+          NULL,
+          'SEEDED_FROM_SESSION',
+          'SESSION_SEED',
+          now()
+        FROM roster
+        ON CONFLICT (session_id, student_id) DO NOTHING
+        RETURNING student_id
+      )
+      SELECT COUNT(*)::int AS inserted_count
+      FROM inserted
+    `,
+    [input.sessionId, input.moduleId]
+  );
+
+  return Number(result.rows[0]?.inserted_count ?? 0);
+}
+
+async function loadAttendanceSessionRow(
+  db: Queryable,
+  sessionId: string
+): Promise<AttendanceSessionRow | null> {
+  const result = await db.query<AttendanceSessionRow>(
+    `
+      SELECT
+        id,
+        lecturer_id,
+        module_id,
+        course_id,
+        calendar_entry_id,
+        course_schedule_template_id,
+        attendance_date,
+        starts_at::text AS starts_at,
+        ends_at::text AS ends_at,
+        attendance_open_at::text AS attendance_open_at,
+        attendance_close_at::text AS attendance_close_at,
+        lateness_threshold_minutes,
+        session_source,
+        finalized_at::text AS finalized_at,
+        created_at::text AS created_at
+      FROM attendance_sessions
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [sessionId]
+  );
+
+  return result.rows[0] ?? null;
 }
 
 function buildAttendanceCsv(rows: Array<{
@@ -648,12 +885,72 @@ attendanceRouter.post(
   try {
     const user = req.user!;
 
-    const moduleId = String(req.body?.moduleId ?? "").trim();
+    const calendarEntryId = String(req.body?.calendarEntryId ?? req.body?.calendar_entry_id ?? "").trim();
+    if (calendarEntryId && !isUuid(calendarEntryId)) {
+      return err(res, 400, "VALIDATION", "calendarEntryId must be a UUID");
+    }
+
+    const calendarSource = calendarEntryId
+      ? await loadCalendarAttendanceSource(calendarEntryId)
+      : null;
+    if (calendarEntryId && !calendarSource) {
+      return err(res, 404, "NOT_FOUND", "Course-linked calendar entry not found");
+    }
+    if (calendarSource && !calendarSource.module_id) {
+      return err(
+        res,
+        400,
+        "VALIDATION",
+        "Attendance sessions require a module-linked calendar entry"
+      );
+    }
+
+    const moduleId = calendarSource?.module_id ?? String(req.body?.moduleId ?? "").trim();
     if (!isUuid(moduleId)) return err(res, 400, "VALIDATION", "moduleId must be a UUID");
 
-    const date = parseDateOnly(req.body?.date) ?? new Date().toISOString().slice(0, 10);
-    const startsAt = String(req.body?.startsAt ?? "").trim() || null;
-    const endsAt = String(req.body?.endsAt ?? "").trim() || null;
+    const startsAtFromBody = parseOptionalDateTime(req.body?.startsAt);
+    const endsAtFromBody = parseOptionalDateTime(req.body?.endsAt);
+    if (startsAtFromBody === undefined) {
+      return err(res, 400, "VALIDATION", "startsAt must be a valid ISO date/time");
+    }
+    if (endsAtFromBody === undefined) {
+      return err(res, 400, "VALIDATION", "endsAt must be a valid ISO date/time");
+    }
+
+    const startsAt = calendarSource?.starts_at ?? startsAtFromBody;
+    const endsAt = calendarSource?.ends_at ?? endsAtFromBody;
+    if (startsAt && endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) {
+      return err(res, 400, "VALIDATION", "endsAt must be after startsAt");
+    }
+
+    const date =
+      parseDateOnly(req.body?.date) ??
+      (startsAt ? new Date(startsAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+    const attendanceOpenParsed = parseOptionalDateTime(
+      req.body?.attendanceOpenAt ?? req.body?.attendance_open_at
+    );
+    const attendanceCloseParsed = parseOptionalDateTime(
+      req.body?.attendanceCloseAt ?? req.body?.attendance_close_at
+    );
+    if (attendanceOpenParsed === undefined) {
+      return err(res, 400, "VALIDATION", "attendanceOpenAt must be a valid ISO date/time");
+    }
+    if (attendanceCloseParsed === undefined) {
+      return err(res, 400, "VALIDATION", "attendanceCloseAt must be a valid ISO date/time");
+    }
+    const attendanceOpenAt = attendanceOpenParsed ?? startsAt;
+    const attendanceCloseAt = attendanceCloseParsed ?? endsAt;
+    const latenessThresholdMinutes = parseLatenessThresholdMinutes(
+      req.body?.latenessThresholdMinutes ?? req.body?.lateness_threshold_minutes
+    );
+    if (latenessThresholdMinutes === null) {
+      return err(
+        res,
+        400,
+        "VALIDATION",
+        "latenessThresholdMinutes must be between 0 and 1440 minutes"
+      );
+    }
 
     let lecturerId = String(req.body?.lecturerId ?? "").trim();
     if (!lecturerId && user.role === "LECTURER") {
@@ -663,9 +960,9 @@ attendanceRouter.post(
       return err(res, 400, "VALIDATION", "lecturerId is required and must be a UUID");
     }
 
-    const moduleRes = await pool.query<{ id: string; code: string; name: string }>(
+    const moduleRes = await pool.query<{ id: string; code: string; name: string; course_id: string }>(
       `
-        SELECT id, code, name
+        SELECT id, code, name, course_id
         FROM faculty_modules
         WHERE id = $1
         LIMIT 1
@@ -673,6 +970,10 @@ attendanceRouter.post(
       [moduleId]
     );
     if ((moduleRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Module not found");
+    const courseId = calendarSource?.course_id ?? moduleRes.rows[0].course_id;
+    if (calendarSource && moduleRes.rows[0].course_id !== calendarSource.course_id) {
+      return err(res, 400, "VALIDATION", "Calendar entry module does not belong to its course");
+    }
 
     const lecturerRes = await pool.query(
       `
@@ -700,40 +1001,143 @@ attendanceRouter.post(
       );
     }
 
-    const created = await pool.query<{
-      id: string;
-      lecturer_id: string;
-      module_id: string;
-      attendance_date: string;
-      starts_at: string | null;
-      ends_at: string | null;
-      created_at: string;
-    }>(
+    if (calendarSource) {
+      const existing = await pool.query<AttendanceSessionRow>(
+        `
+          SELECT
+            id,
+            lecturer_id,
+            module_id,
+            course_id,
+            calendar_entry_id,
+            course_schedule_template_id,
+            attendance_date,
+            starts_at::text AS starts_at,
+            ends_at::text AS ends_at,
+            attendance_open_at::text AS attendance_open_at,
+            attendance_close_at::text AS attendance_close_at,
+            lateness_threshold_minutes,
+            session_source,
+            finalized_at::text AS finalized_at,
+            created_at::text AS created_at
+          FROM attendance_sessions
+          WHERE (
+              $1::uuid IS NOT NULL
+              AND course_schedule_template_id = $1::uuid
+            )
+            OR (
+              $1::uuid IS NULL
+              AND calendar_entry_id = $2::uuid
+            )
+          LIMIT 1
+        `,
+        [calendarSource.course_schedule_template_id, calendarSource.id]
+      );
+      const existingRow = existing.rows[0];
+      if (existingRow) {
+        const seededCount = await seedPendingAttendanceRecords(pool, {
+          sessionId: existingRow.id,
+          moduleId: existingRow.module_id,
+        });
+        return res.json({
+          ok: true,
+          session: mapAttendanceSession(existingRow, false),
+          seededCount,
+        });
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const created = await client.query<AttendanceSessionRow>(
       `
         INSERT INTO attendance_sessions (
           lecturer_id,
           module_id,
+          course_id,
+          calendar_entry_id,
+          course_schedule_template_id,
           attendance_date,
           starts_at,
           ends_at,
+          attendance_open_at,
+          attendance_close_at,
+          lateness_threshold_minutes,
+          session_source,
           created_by
         )
-        VALUES ($1, $2, $3::date, $4::timestamptz, $5::timestamptz, $6)
-        RETURNING id, lecturer_id, module_id, attendance_date, starts_at, ends_at, created_at
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6::date,
+          $7::timestamptz,
+          $8::timestamptz,
+          $9::timestamptz,
+          $10::timestamptz,
+          $11,
+          $12,
+          $13
+        )
+        RETURNING
+          id,
+          lecturer_id,
+          module_id,
+          course_id,
+          calendar_entry_id,
+          course_schedule_template_id,
+          attendance_date,
+          starts_at::text AS starts_at,
+          ends_at::text AS ends_at,
+          attendance_open_at::text AS attendance_open_at,
+          attendance_close_at::text AS attendance_close_at,
+          lateness_threshold_minutes,
+          session_source,
+          finalized_at::text AS finalized_at,
+          created_at::text AS created_at
       `,
-      [lecturerId, moduleId, date, startsAt, endsAt, user.id]
-    );
+        [
+          lecturerId,
+          moduleId,
+          courseId,
+          calendarSource?.id ?? null,
+          calendarSource?.course_schedule_template_id ?? null,
+          date,
+          startsAt,
+          endsAt,
+          attendanceOpenAt,
+          attendanceCloseAt,
+          latenessThresholdMinutes,
+          calendarSource ? "CALENDAR_EVENT" : "MANUAL",
+          user.id,
+        ]
+      );
 
-    const row = created.rows[0];
-    return res.status(201).json({
-      id: row.id,
-      lecturerId: row.lecturer_id,
-      moduleId: row.module_id,
-      date: row.attendance_date,
-      startsAt: row.starts_at,
-      endsAt: row.ends_at,
-      createdAt: row.created_at,
-    });
+      const row = created.rows[0];
+      const seededCount = calendarSource
+        ? await seedPendingAttendanceRecords(client, {
+            sessionId: row.id,
+            moduleId: row.module_id,
+          })
+        : 0;
+
+      await client.query("COMMIT");
+      return res.status(201).json({
+        ok: true,
+        ...mapAttendanceSession(row, true),
+        session: mapAttendanceSession(row, true),
+        seededCount,
+      });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
   } catch (e) {
     console.error("[attendance] POST /attendance/sessions error", e);
     return err(res, 500, "INTERNAL", "Failed to create attendance session");
@@ -898,7 +1302,7 @@ attendanceRouter.get(
       course_name: string | null;
       public_student_id: string | null;
       checked_in_at: string | null;
-      current_status: AttendanceStatus | null;
+      current_status: AttendanceRecordStatus | null;
       marked_at: string | null;
     }>(
       `
@@ -943,7 +1347,11 @@ attendanceRouter.get(
       checkedInAt: row.checked_in_at,
       currentStatus: row.current_status,
       markedAt: row.marked_at,
-      suggestedStatus: inferSuggestedStatus(session.starts_at, row.checked_in_at),
+      suggestedStatus: inferSuggestedStatus(
+        session.starts_at,
+        row.checked_in_at,
+        Number(session.lateness_threshold_minutes ?? 10)
+      ),
     }));
 
     return res.json({
@@ -954,6 +1362,10 @@ attendanceRouter.get(
         date: session.attendance_date,
         startsAt: session.starts_at,
         endsAt: session.ends_at,
+        attendanceOpenAt: session.attendance_open_at,
+        attendanceCloseAt: session.attendance_close_at,
+        latenessThresholdMinutes: Number(session.lateness_threshold_minutes ?? 10),
+        finalizedAt: session.finalized_at,
       },
       value,
       count: value.length,
@@ -977,9 +1389,9 @@ attendanceRouter.post("/attendance/sessions/:id/check-in", requireRole("STUDENT"
     const enrolled = await isStudentEnrolledInModule(user.id, session.module_id);
     if (!enrolled) return err(res, 403, "FORBIDDEN", "Student is not enrolled in this module");
 
-    const existingRecord = await pool.query(
+    const existingRecord = await pool.query<{ status: AttendanceRecordStatus }>(
       `
-        SELECT 1
+        SELECT status
         FROM attendance_records
         WHERE session_id = $1
           AND student_id = $2
@@ -987,7 +1399,10 @@ attendanceRouter.post("/attendance/sessions/:id/check-in", requireRole("STUDENT"
       `,
       [sessionId, user.id]
     );
-    if ((existingRecord.rowCount ?? 0) > 0) {
+    if (
+      (existingRecord.rowCount ?? 0) > 0 &&
+      existingRecord.rows[0]?.status !== "PENDING"
+    ) {
       return err(res, 400, "VALIDATION", "Attendance is already marked for this session");
     }
 
@@ -1020,7 +1435,11 @@ attendanceRouter.post("/attendance/sessions/:id/check-in", requireRole("STUDENT"
       ok: true,
       created: (inserted.rowCount ?? 0) > 0,
       checkedInAt,
-      suggestedStatus: inferSuggestedStatus(session.starts_at, checkedInAt),
+      suggestedStatus: inferSuggestedStatus(
+        session.starts_at,
+        checkedInAt,
+        Number(session.lateness_threshold_minutes ?? 10)
+      ),
     });
   } catch (e) {
     console.error("[attendance] POST /attendance/sessions/:id/check-in error", e);
@@ -1036,19 +1455,32 @@ attendanceRouter.post(
   const sessionId = String(req.params.id ?? "").trim();
   if (!isUuid(sessionId)) return err(res, 400, "VALIDATION", "session id must be a UUID");
 
-  const marksRaw = Array.isArray(req.body) ? req.body : [];
+  const marksRaw: AttendanceMarkInput[] = Array.isArray(req.body)
+    ? req.body
+    : Array.isArray(req.body?.marks)
+      ? req.body.marks
+      : [];
   if (marksRaw.length === 0) {
     return err(res, 400, "VALIDATION", "Body must be a non-empty array of { studentId, status }");
   }
 
-  const marks = marksRaw
-    .map((row) => ({
-      studentId: String((row as { studentId?: unknown }).studentId ?? "").trim(),
-      status: normalizeStatus((row as { status?: unknown }).status),
+  const marks: ParsedAttendanceMark[] = marksRaw
+    .map((row: AttendanceMarkInput): ParsedAttendanceMark => ({
+      studentId: String(row.studentId ?? "").trim(),
+      status: normalizeStatus(row.status),
+      markedAt: parseDateTime(row.markedAt ?? row.marked_at) ?? new Date().toISOString(),
+      statusReason: String(
+        row.statusReason ?? row.status_reason ?? ""
+      ).trim(),
     }))
-    .filter((row) => row.studentId && row.status !== null);
+    .filter((row: ParsedAttendanceMark) => row.studentId);
 
-  if (marks.length !== marksRaw.length) {
+  if (
+    marks.length !== marksRaw.length ||
+    marks.some((row: ParsedAttendanceMark, index: number) =>
+      String(marksRaw[index]?.status ?? "").trim() && row.status === null
+    )
+  ) {
     return err(
       res,
       400,
@@ -1065,22 +1497,11 @@ attendanceRouter.post(
 
   try {
     const user = req.user!;
-    const sessionRes = await pool.query<{
-      id: string;
-      module_id: string;
-      lecturer_id: string;
-    }>(
-      `
-        SELECT id, module_id, lecturer_id
-        FROM attendance_sessions
-        WHERE id = $1
-        LIMIT 1
-      `,
-      [sessionId]
-    );
-
-    if ((sessionRes.rowCount ?? 0) === 0) return err(res, 404, "NOT_FOUND", "Attendance session not found");
-    const session = sessionRes.rows[0];
+    const session = await getAttendanceSessionContext(sessionId);
+    if (!session) return err(res, 404, "NOT_FOUND", "Attendance session not found");
+    if (session.finalized_at) {
+      return err(res, 409, "CONFLICT", "Attendance session has already been finalized");
+    }
 
     if (user.role === "LECTURER") {
       const allowed = await canLecturerManageModule(user.id, session.module_id);
@@ -1089,7 +1510,7 @@ attendanceRouter.post(
       }
     }
 
-    const studentIds = [...new Set(marks.map((m) => m.studentId))];
+    const studentIds = [...new Set(marks.map((m: ParsedAttendanceMark) => m.studentId))];
       const enrolledRes = await pool.query<{ student_id: string }>(
         `
           SELECT sme.student_id
@@ -1133,16 +1554,35 @@ attendanceRouter.post(
           marked_by: string;
         }>(
           `
-            INSERT INTO attendance_records (session_id, student_id, status, marked_by)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO attendance_records (
+              session_id,
+              student_id,
+              status,
+              marked_at,
+              marked_by,
+              status_reason,
+              attendance_source,
+              updated_at
+            )
+            VALUES ($1, $2, $3, $4::timestamptz, $5, $6, 'MANUAL', now())
             ON CONFLICT (session_id, student_id)
             DO UPDATE SET
               status = EXCLUDED.status,
               marked_by = EXCLUDED.marked_by,
-              marked_at = now()
+              marked_at = EXCLUDED.marked_at,
+              status_reason = EXCLUDED.status_reason,
+              attendance_source = 'MANUAL',
+              updated_at = now()
             RETURNING session_id, student_id, status, marked_at, marked_by
           `,
-          [sessionId, m.studentId, m.status, user.id]
+          [
+            sessionId,
+            m.studentId,
+            m.status ?? inferTimedAttendanceStatus(session, m.markedAt),
+            m.markedAt,
+            user.id,
+            m.statusReason || null,
+          ]
         );
         const row = upsert.rows[0];
         out.push({
@@ -1175,6 +1615,98 @@ attendanceRouter.post(
     console.error("[attendance] POST /attendance/sessions/:id/mark error", e);
     return err(res, 500, "INTERNAL", "Failed to mark attendance");
   }
+  }
+);
+
+attendanceRouter.post(
+  "/attendance/sessions/:id/finalize",
+  requireAccess({ roles: ["LECTURER", "ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    const sessionId = String(req.params.id ?? "").trim();
+    if (!isUuid(sessionId)) return err(res, 400, "VALIDATION", "session id must be a UUID");
+
+    try {
+      const user = req.user!;
+      const session = await getAttendanceSessionContext(sessionId);
+      if (!session) return err(res, 404, "NOT_FOUND", "Attendance session not found");
+
+      if (user.role === "LECTURER") {
+        const allowed = await canLecturerManageModule(user.id, session.module_id);
+        if (!allowed) {
+          return err(res, 403, "FORBIDDEN", "Lecturer cannot finalize this attendance session");
+        }
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        await seedPendingAttendanceRecords(client, {
+          sessionId,
+          moduleId: session.module_id,
+        });
+
+        const absent = await client.query<{
+          session_id: string;
+          student_id: string;
+          status: AttendanceStatus;
+          marked_at: string;
+          marked_by: string;
+        }>(
+          `
+            UPDATE attendance_records
+            SET
+              status = 'ABSENT',
+              marked_at = COALESCE(marked_at, now()),
+              marked_by = COALESCE(marked_by, $2),
+              status_reason = COALESCE(NULLIF(status_reason, ''), 'FINALIZED_UNMARKED'),
+              attendance_source = 'FINALIZATION',
+              updated_at = now()
+            WHERE session_id = $1
+              AND status = 'PENDING'
+            RETURNING session_id, student_id, status, marked_at, marked_by
+          `,
+          [sessionId, user.id]
+        );
+
+        await client.query(
+          `
+            UPDATE attendance_sessions
+            SET
+              finalized_at = COALESCE(finalized_at, now()),
+              finalized_by = COALESCE(finalized_by, $2),
+              updated_at = now()
+            WHERE id = $1
+          `,
+          [sessionId, user.id]
+        );
+
+        const updatedSession = await loadAttendanceSessionRow(client, sessionId);
+        await client.query("COMMIT");
+
+        return res.json({
+          ok: true,
+          finalized: true,
+          session: updatedSession ? mapAttendanceSession(updatedSession, false) : null,
+          absentCount: absent.rowCount ?? 0,
+          value: absent.rows.map((row) => ({
+            sessionId: row.session_id,
+            studentId: row.student_id,
+            status: row.status,
+            markedAt: row.marked_at,
+            markedBy: row.marked_by,
+          })),
+        });
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
+    } catch (e) {
+      console.error("[attendance] POST /attendance/sessions/:id/finalize error", e);
+      return err(res, 500, "INTERNAL", "Failed to finalize attendance session");
+    }
   }
 );
 
@@ -1298,6 +1830,7 @@ attendanceRouter.get(
             AND s.attendance_date <= $2::date
             AND ($3::uuid IS NULL OR s.module_id = $3::uuid)
             AND ($4::uuid IS NULL OR ar.student_id = $4::uuid)
+            AND ar.status <> 'PENDING'
           ORDER BY s.attendance_date ASC, lower(u.email) ASC, fm.code ASC
         `,
         [from, to, moduleId || null, studentId]
@@ -1403,6 +1936,7 @@ attendanceRouter.get("/attendance/me", requireRole("STUDENT", "PARENT"), async (
         WHERE ar.student_id = $1
           AND ($2::date IS NULL OR s.attendance_date >= $2::date)
           AND ($3::date IS NULL OR s.attendance_date <= $3::date)
+          AND ar.status <> 'PENDING'
         ORDER BY s.attendance_date DESC, ar.marked_at DESC
       `,
       [studentId, from, to]

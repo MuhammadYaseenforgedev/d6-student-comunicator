@@ -57,6 +57,25 @@ type CourseDeleteDependencyCounts = {
   calendar_entry_count: number;
 };
 
+type CourseScheduleTemplateRow = {
+  id: string;
+  course_id: string;
+  module_id: string | null;
+  title: string;
+  description: string | null;
+  location: string | null;
+  starts_at: string;
+  ends_at: string;
+  recurrence_rule: string | null;
+  reminder_minutes_before: number | null;
+  external_provider: string | null;
+  external_event_id: string | null;
+  sync_metadata: unknown;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 function err(res: Response, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
 }
@@ -78,6 +97,51 @@ function normalizeStatus(value: unknown): "ACTIVE" | "INACTIVE" | null {
   const normalized = String(value ?? "").trim().toUpperCase();
   if (normalized === "ACTIVE" || normalized === "INACTIVE") return normalized;
   return null;
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized : null;
+}
+
+function parseDateTime(value: unknown): string | null {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+  const timestamp = Date.parse(normalized);
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp).toISOString();
+}
+
+function parseReminderMinutes(value: unknown): number | null {
+  if (value == null || String(value).trim() === "") return 15;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 10080) return null;
+  return Math.floor(n);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function mapCourseScheduleTemplate(row: CourseScheduleTemplateRow) {
+  return {
+    id: row.id,
+    courseId: row.course_id,
+    moduleId: row.module_id,
+    title: row.title,
+    description: row.description,
+    location: row.location,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    recurrenceRule: row.recurrence_rule,
+    reminderMinutesBefore: row.reminder_minutes_before,
+    externalProvider: row.external_provider,
+    externalEventId: row.external_event_id,
+    syncMetadata: row.sync_metadata,
+    isActive: Boolean(row.is_active),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 function pluralize(count: number, singular: string, plural = `${singular}s`): string {
@@ -628,6 +692,203 @@ courseRouter.delete(
       return err(res, 500, "INTERNAL", "Failed to delete course");
     } finally {
       client.release();
+    }
+  }
+);
+
+courseRouter.get(
+  "/admin/courses/:courseId/schedule-templates",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const courseId = String(req.params.courseId ?? "").trim();
+      if (!isUuid(courseId)) return err(res, 400, "VALIDATION", "courseId must be a UUID");
+
+      const courseRes = await pool.query(`SELECT 1 FROM courses WHERE id = $1 LIMIT 1`, [
+        courseId,
+      ]);
+      if ((courseRes.rowCount ?? 0) === 0) {
+        return err(res, 404, "NOT_FOUND", "Course not found");
+      }
+
+      const templates = await pool.query<CourseScheduleTemplateRow>(
+        `
+          SELECT
+            id,
+            course_id,
+            module_id,
+            title,
+            description,
+            location,
+            starts_at::text AS starts_at,
+            ends_at::text AS ends_at,
+            recurrence_rule,
+            reminder_minutes_before,
+            external_provider,
+            external_event_id,
+            sync_metadata,
+            is_active,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+          FROM course_schedule_templates
+          WHERE course_id = $1
+          ORDER BY starts_at ASC, created_at ASC
+        `,
+        [courseId]
+      );
+
+      const value = templates.rows.map(mapCourseScheduleTemplate);
+      return res.json({ value, count: value.length });
+    } catch (e) {
+      console.error("[courses] GET /admin/courses/:courseId/schedule-templates error", e);
+      return err(res, 500, "INTERNAL", "Failed to load course schedule templates");
+    }
+  }
+);
+
+courseRouter.post(
+  "/admin/courses/:courseId/schedule-templates",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    try {
+      const courseId = String(req.params.courseId ?? "").trim();
+      if (!isUuid(courseId)) return err(res, 400, "VALIDATION", "courseId must be a UUID");
+
+      const title = String(req.body?.title ?? "").trim();
+      const description = normalizeOptionalText(req.body?.description);
+      const location = normalizeOptionalText(req.body?.location);
+      const moduleId = normalizeOptionalText(req.body?.moduleId ?? req.body?.module_id);
+      const startsAt = parseDateTime(req.body?.startsAt ?? req.body?.starts_at);
+      const endsAt = parseDateTime(req.body?.endsAt ?? req.body?.ends_at);
+      const recurrenceRule = normalizeOptionalText(
+        req.body?.recurrenceRule ?? req.body?.recurrence_rule
+      );
+      const reminderMinutesBefore = parseReminderMinutes(
+        req.body?.reminderMinutesBefore ?? req.body?.reminder_minutes_before
+      );
+      const externalProvider = normalizeOptionalText(
+        req.body?.externalProvider ?? req.body?.external_provider
+      );
+      const externalEventId = normalizeOptionalText(
+        req.body?.externalEventId ?? req.body?.external_event_id
+      );
+      const syncMetadata = req.body?.syncMetadata ?? req.body?.sync_metadata ?? {};
+
+      if (!title) return err(res, 400, "VALIDATION", "title is required");
+      if (!startsAt) return err(res, 400, "VALIDATION", "startsAt must be a valid ISO date/time");
+      if (!endsAt) return err(res, 400, "VALIDATION", "endsAt must be a valid ISO date/time");
+      if (Date.parse(endsAt) <= Date.parse(startsAt)) {
+        return err(res, 400, "VALIDATION", "endsAt must be after startsAt");
+      }
+      if (reminderMinutesBefore === null) {
+        return err(
+          res,
+          400,
+          "VALIDATION",
+          "reminderMinutesBefore must be between 0 and 10080 minutes"
+        );
+      }
+      if (moduleId && !isUuid(moduleId)) {
+        return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+      }
+      if (!isPlainObject(syncMetadata)) {
+        return err(res, 400, "VALIDATION", "syncMetadata must be a JSON object");
+      }
+
+      const courseRes = await pool.query(`SELECT 1 FROM courses WHERE id = $1 LIMIT 1`, [
+        courseId,
+      ]);
+      if ((courseRes.rowCount ?? 0) === 0) {
+        return err(res, 404, "NOT_FOUND", "Course not found");
+      }
+
+      if (moduleId) {
+        const moduleRes = await pool.query(
+          `
+            SELECT 1
+            FROM faculty_modules
+            WHERE id = $1
+              AND course_id = $2
+            LIMIT 1
+          `,
+          [moduleId, courseId]
+        );
+        if ((moduleRes.rowCount ?? 0) === 0) {
+          return err(res, 404, "NOT_FOUND", "Module not found for this course");
+        }
+      }
+
+      const created = await pool.query<CourseScheduleTemplateRow>(
+        `
+          INSERT INTO course_schedule_templates (
+            course_id,
+            module_id,
+            title,
+            description,
+            location,
+            starts_at,
+            ends_at,
+            recurrence_rule,
+            reminder_minutes_before,
+            external_provider,
+            external_event_id,
+            sync_metadata
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6::timestamptz,
+            $7::timestamptz,
+            $8,
+            $9,
+            $10,
+            $11,
+            $12::jsonb
+          )
+          RETURNING
+            id,
+            course_id,
+            module_id,
+            title,
+            description,
+            location,
+            starts_at::text AS starts_at,
+            ends_at::text AS ends_at,
+            recurrence_rule,
+            reminder_minutes_before,
+            external_provider,
+            external_event_id,
+            sync_metadata,
+            is_active,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
+        `,
+        [
+          courseId,
+          moduleId,
+          title,
+          description,
+          location,
+          startsAt,
+          endsAt,
+          recurrenceRule,
+          reminderMinutesBefore,
+          externalProvider,
+          externalEventId,
+          JSON.stringify(syncMetadata),
+        ]
+      );
+
+      return res.status(201).json({
+        ok: true,
+        template: mapCourseScheduleTemplate(created.rows[0]),
+      });
+    } catch (e) {
+      console.error("[courses] POST /admin/courses/:courseId/schedule-templates error", e);
+      return err(res, 500, "INTERNAL", "Failed to create course schedule template");
     }
   }
 );

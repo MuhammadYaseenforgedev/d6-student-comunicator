@@ -10,6 +10,11 @@ import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
 import { isSmtpConfigured, sendOtpEmail as sendOtpEmailViaSmtp } from "../lib/mailer";
 import { validatePassword } from "../lib/passwordPolicy";
 import { getEffectiveAdminScope, normalizeAdminScope, type AdminScope } from "../lib/adminAccess";
+import {
+  completeLearnerActivation,
+  LearnerActivationError,
+  validateLearnerActivationToken,
+} from "../lib/learnerActivation";
 
 export const authRouter = Router();
 
@@ -236,6 +241,15 @@ function timingSafeEquals(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aa, bb);
 }
 
+function activationErr(res: any, error: LearnerActivationError) {
+  return res.status(error.status).json({
+    error: {
+      code: error.code,
+      message: error.message,
+    },
+  });
+}
+
 /**
  * DB-backed rate limit per EMAIL (request-otp)
  */
@@ -450,6 +464,46 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
     client.release();
   }
 }
+
+/* ===============================
+   IMPORTED LEARNER ACTIVATION
+=================================*/
+authRouter.get("/activate/validate", async (req, res) => {
+  try {
+    const activation = await validateLearnerActivationToken(pool, req.query.token);
+    return res.json({
+      ok: true,
+      activation,
+    });
+  } catch (e) {
+    if (e instanceof LearnerActivationError) {
+      return activationErr(res, e);
+    }
+    console.error("[auth] GET /activate/validate error", e);
+    return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to validate activation token" } });
+  }
+});
+
+authRouter.post("/activate", async (req, res) => {
+  try {
+    const activation = await completeLearnerActivation(pool, {
+      token: req.body?.token,
+      password: req.body?.password,
+      acceptedLegalTerms: req.body?.acceptedLegalTerms,
+    });
+
+    return res.json({
+      ok: true,
+      activation,
+    });
+  } catch (e) {
+    if (e instanceof LearnerActivationError) {
+      return activationErr(res, e);
+    }
+    console.error("[auth] POST /activate error", e);
+    return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to activate learner account" } });
+  }
+});
 
 /* ===============================
    REQUEST OTP

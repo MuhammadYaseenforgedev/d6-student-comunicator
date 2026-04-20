@@ -1,3 +1,5 @@
+import { syncCalendarForAssignedCourse } from "./courseCalendarSync";
+
 type Queryable = {
   query: <T>(
     text: string,
@@ -210,6 +212,10 @@ export async function assignCourseToStudent(
 
   if (status === "ACTIVE") {
     await syncStudentModulesForCourse(db, input.studentId, input.courseId);
+    await syncCalendarForAssignedCourse(db, {
+      studentId: input.studentId,
+      courseId: input.courseId,
+    });
   }
 }
 
