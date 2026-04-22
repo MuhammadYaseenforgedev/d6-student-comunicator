@@ -60,8 +60,8 @@ export async function getMyStudentProfile() {
 export async function saveMyStudentProfile(input: {
   fullName: string;
   surname: string;
-  studentNumber: string;
-  idNumber: string;
+  studentNumber?: string;
+  idNumber?: string;
   dateOfBirth?: string | null;
   mobileNumber: string;
   alternativeContactNumber?: string | null;

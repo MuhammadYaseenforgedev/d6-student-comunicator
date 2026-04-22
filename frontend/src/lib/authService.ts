@@ -16,9 +16,6 @@ export type RegisterResponse = { token?: string; user?: AuthUserDTO; message?: s
 export type OtpResponse = {
   ok: boolean;
   expiresAt?: string;
-  devOtp?: string;
-  devCode?: string;
-  debugOtp?: string;
   emailDeliveryEnabled?: boolean;
 };
 

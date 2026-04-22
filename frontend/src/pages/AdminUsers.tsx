@@ -473,7 +473,7 @@ export default function AdminUsers() {
             title="Account type"
             aria-label="Account type"
           >
-            {ACCOUNT_TYPE_OPTIONS.map((option) => (
+            {accountTypeOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>

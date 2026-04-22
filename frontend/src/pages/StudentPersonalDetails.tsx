@@ -55,7 +55,7 @@ function toFormState(profile: StudentProfileDetail): FormState {
     fullName: profile.fullName,
     surname: profile.surname,
     email: profile.email,
-    idNumber: profile.idNumber,
+    idNumber: profile.idNumber ?? "",
     dateOfBirth: profile.dateOfBirth ?? "",
     mobileNumber: profile.mobileNumber,
     alternativeContactNumber: profile.alternativeContactNumber ?? "",
@@ -66,7 +66,7 @@ function toFormState(profile: StudentProfileDetail): FormState {
     emergencyContactName: profile.emergencyContactName ?? "",
     emergencyContactNumber: profile.emergencyContactNumber ?? "",
     courseId: profile.courseId ?? "",
-    studentNumber: profile.studentNumber,
+    studentNumber: profile.studentNumber ?? "",
   };
 }
 

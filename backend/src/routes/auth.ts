@@ -774,7 +774,7 @@ authRouter.post(
     }
 
     const role = roleRaw as Role;
-    if (role === "ADMIN" && getEffectiveAdminScope(req.user) !== "SUPER") {
+    if (role === "ADMIN" && getEffectiveAdminScope(req.user ?? {}) !== "SUPER") {
       return res.status(403).json({
         error: {
           code: "FORBIDDEN",

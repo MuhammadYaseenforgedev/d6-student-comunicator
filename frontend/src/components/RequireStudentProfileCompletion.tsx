@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { getToken, getUser } from "../lib/auth";
+import { getUser } from "../lib/auth";
 import { getMyStudentProfile } from "../lib/studentProfileApi";
 
 export default function RequireStudentProfileCompletion() {
   const location = useLocation();
   const user = getUser();
-  const token = getToken();
-  const isMockDemo = token?.startsWith("mock-demo-token-") ?? false;
   const [loading, setLoading] = useState(user?.role === "STUDENT");
   const [isComplete, setIsComplete] = useState<boolean>(user?.role !== "STUDENT");
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +44,7 @@ export default function RequireStudentProfileCompletion() {
     };
   }, [user?.id, user?.role]);
 
-  if (user?.role !== "STUDENT" || isMockDemo) {
+  if (user?.role !== "STUDENT") {
     return <Outlet />;
   }
 

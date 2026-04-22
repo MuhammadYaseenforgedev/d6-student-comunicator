@@ -48,77 +48,6 @@ const LOGIN_QUICK_ACCESS_LINKS = [
     href: "https://pulse.forgetalent.co.za/ticket.php",
   },
 ] as const;
-const DEMO_LOGIN_ACCOUNTS = [
-  {
-    label: "Student",
-    email: "demo.student@d6.local",
-    role: "STUDENT",
-    adminScope: null,
-    studentNumber: "20231771",
-    firstName: "Thabo",
-    lastName: "Maseko",
-    courseName: "Demo Computer Science Course",
-  },
-  {
-    label: "Lecturer",
-    email: "demo.lecturer@d6.local",
-    role: "LECTURER",
-    adminScope: null,
-    studentNumber: "",
-    firstName: "Lerato",
-    lastName: "Dlamini",
-    courseName: null,
-  },
-  {
-    label: "Parent",
-    email: "demo.parent@d6.local",
-    role: "PARENT",
-    adminScope: null,
-    studentNumber: "",
-    firstName: "Naledi",
-    lastName: "Maseko",
-    courseName: null,
-  },
-  {
-    label: "Admin",
-    email: "demo.academic.admin@d6.local",
-    role: "ADMIN",
-    adminScope: "ACADEMIC",
-    studentNumber: "",
-    firstName: "Amina",
-    lastName: "Nkosi",
-    courseName: null,
-  },
-  {
-    label: "Finance",
-    email: "demo.finance.admin@d6.local",
-    role: "ADMIN",
-    adminScope: "FINANCE",
-    studentNumber: "",
-    firstName: "Farah",
-    lastName: "Mokoena",
-    courseName: null,
-  },
-  {
-    label: "Super",
-    email: "demo.super.admin@d6.local",
-    role: "ADMIN",
-    adminScope: "SUPER",
-    studentNumber: "",
-    firstName: "Simon",
-    lastName: "Naidoo",
-    courseName: null,
-  },
-] satisfies readonly {
-  label: string;
-  email: string;
-  role: UserRole;
-  adminScope: AuthUser["adminScope"];
-  studentNumber: string;
-  firstName: string;
-  lastName: string;
-  courseName: string | null;
-}[];
 
 function landingFor(user: Pick<AuthUser, "role" | "adminScope">) {
   if (user.role === "STUDENT") return "/app/personal-details";
@@ -139,7 +68,6 @@ const API_TARGET = String(import.meta.env.VITE_API_TARGET ?? "")
 const API_BASE =
   API_TARGET === "secondary" && API_SECONDARY ? API_SECONDARY : API_PRIMARY;
 const IS_PROD_BUILD = Boolean(import.meta.env.PROD);
-const SHOW_DEMO_LOGIN = Boolean(import.meta.env.DEV);
 const LOGIN_REQUIRES_OTP = IS_PROD_BUILD;
 const ENV_CONFIG_ERROR = !API_BASE
   ? "Environment misconfigured: VITE_API_URL is missing. Contact support."
@@ -284,18 +212,12 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     setInfo(null);
 
     const data = await requestOtpApi({ email: eNorm, purpose });
-    const devOtp = String(data?.devOtp ?? data?.devCode ?? "").trim();
     const emailDeliveryEnabled = data?.emailDeliveryEnabled;
     const purposeLabel = purpose === "REGISTER" ? "Registration" : "Sign-in";
 
     setLastOtpRequest({ email: eNorm, purpose });
 
-    if (devOtp) {
-      setOtp(devOtp);
-      setInfo(
-        `${purposeLabel} OTP generated and auto-filled. Expires: ${data.expiresAt ?? "soon"}`
-      );
-    } else if (emailDeliveryEnabled === false) {
+    if (emailDeliveryEnabled === false) {
       setInfo(
         `${purposeLabel} OTP created, but email delivery is not configured on this server.`
       );
@@ -507,30 +429,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     } finally {
       setBusy(false);
     }
-  }
-
-  function onDemoLogin(account: (typeof DEMO_LOGIN_ACCOUNTS)[number]) {
-    setError(null);
-    setInfo(null);
-    setMode("login");
-    setEmail(account.email);
-    setPassword("DemoPass123");
-    setStudentNumber(account.studentNumber);
-    setOtp("");
-    setLastOtpRequest(null);
-
-    const user: AuthUser = {
-      id: `mock-demo-${account.role.toLowerCase()}-${account.adminScope ?? "user"}`,
-      email: account.email,
-      role: account.role,
-      adminScope: account.adminScope,
-      firstName: account.firstName,
-      lastName: account.lastName,
-      courseName: account.courseName,
-    };
-
-    setAuth(`mock-demo-token-${account.email}`, user);
-    navigate(landingFor(user), { replace: true });
   }
 
   const canRequestOtp = !ENV_CONFIG_ERROR && !!email.trim() && !busy;
@@ -931,28 +829,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                 ))}
             </div>
 
-            {SHOW_DEMO_LOGIN && (
-              <div className="mt-5 rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.52)] p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
-                  Demo access
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {DEMO_LOGIN_ACCOUNTS.map((account) => (
-                    <button
-                      key={account.email}
-                      type="button"
-                      disabled={busy || Boolean(ENV_CONFIG_ERROR)}
-                      onClick={() => {
-                        onDemoLogin(account);
-                      }}
-                      className="rounded-xl border border-[rgba(140,235,255,0.24)] bg-[rgba(9,19,50,0.78)] px-3 py-2 text-xs font-semibold text-[#8CEBFF] transition hover:border-[rgba(140,235,255,0.42)] hover:bg-[rgba(15,31,78,0.88)] disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      {account.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

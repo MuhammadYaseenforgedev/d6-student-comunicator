@@ -196,7 +196,7 @@ userRouter.delete(
         return err(res, 404, "NOT_FOUND", "User not found");
       }
 
-      if (target.rows[0].role === "ADMIN" && getEffectiveAdminScope(req.user) !== "SUPER") {
+      if (target.rows[0].role === "ADMIN" && getEffectiveAdminScope(req.user ?? {}) !== "SUPER") {
         return err(res, 403, "FORBIDDEN", "Only Super Admin can delete admin accounts");
       }
 
@@ -294,7 +294,7 @@ userRouter.patch(
         return err(res, 404, "NOT_FOUND", "User not found");
       }
 
-      const requesterScope = getEffectiveAdminScope(req.user);
+      const requesterScope = getEffectiveAdminScope(req.user ?? {});
       if (target.rows[0].role === "ADMIN" && requesterScope !== "SUPER") {
         return err(res, 403, "FORBIDDEN", "Only Super Admin can update admin accounts");
       }

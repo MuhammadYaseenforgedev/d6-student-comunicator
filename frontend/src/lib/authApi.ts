@@ -52,14 +52,6 @@ export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-/**
- * Dev fallback toggle:
- * If BASE_URL is empty, we assume backend is not wired yet.
- */
-function isDevFallbackEnabled() {
-  return false;
-}
-
 function requireBaseUrl(): string {
   if (API_CONFIG_ERROR) throw new Error(API_CONFIG_ERROR);
   return BASE_URL;
@@ -148,23 +140,6 @@ async function api<T>(path: string, init: RequestInit): Promise<T> {
   }
 }
 
-/**
- * DEV: create a fake user object.
- * Used ONLY when backend isn't connected.
- */
-function devUser(params: {
-  role: UserRole;
-  email: string;
-  campusId?: string;
-}): AuthUser {
-  return {
-    id: `dev-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    email: params.email,
-    role: params.role,
-    campusId: params.campusId,
-  };
-}
-
 /* ============================================================================
    LOGIN (email + password -> OTP challenge -> verify OTP -> token + user)
    ============================================================================ */
@@ -178,15 +153,6 @@ export async function requestLoginOtp(params: {
   password: string;
 }): Promise<OtpChallenge> {
   const email = normalizeEmail(params.email);
-
-  if (isDevFallbackEnabled()) {
-    return {
-      challengeId: `dev-login-${Date.now()}`,
-      email,
-      purpose: "LOGIN",
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-    };
-  }
 
   return api<OtpChallenge>("/auth/login/otp/request", {
     method: "POST",
@@ -205,22 +171,6 @@ export async function verifyLoginOtp(params: {
   challengeId: string;
   otp: string;
 }): Promise<{ token: string; user: AuthUser }> {
-  if (isDevFallbackEnabled()) {
-    if (params.otp.trim() !== "000000") {
-      throw new Error("Invalid OTP (dev: use 000000)");
-    }
-
-    // DEV default: return a student user (you can change role in the UI by registering)
-    return {
-      token: `dev-token-${Date.now()}`,
-      user: devUser({
-        role: "STUDENT",
-        email: "student@demo.com",
-        campusId: "STU-1001",
-      }),
-    };
-  }
-
   return api<{ token: string; user: AuthUser }>("/auth/login/otp/verify", {
     method: "POST",
     body: JSON.stringify({
@@ -251,15 +201,6 @@ export async function requestRegisterOtp(params: {
   const email = normalizeEmail(params.email);
   const campusId = params.campusId.trim();
 
-  if (isDevFallbackEnabled()) {
-    return {
-      challengeId: `dev-register-${Date.now()}`,
-      email,
-      purpose: "REGISTER",
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-    };
-  }
-
   return api<OtpChallenge>("/auth/register/otp/request", {
     method: "POST",
     body: JSON.stringify({
@@ -279,22 +220,6 @@ export async function verifyRegisterOtp(params: {
   challengeId: string;
   otp: string;
 }): Promise<{ token: string; user: AuthUser }> {
-  if (isDevFallbackEnabled()) {
-    if (params.otp.trim() !== "000000") {
-      throw new Error("Invalid OTP (dev: use 000000)");
-    }
-
-    // DEV: simulate a registered student by default
-    return {
-      token: `dev-token-${Date.now()}`,
-      user: devUser({
-        role: "STUDENT",
-        email: "newuser@demo.com",
-        campusId: "STU-9999",
-      }),
-    };
-  }
-
   return api<{ token: string; user: AuthUser }>("/auth/register/otp/verify", {
     method: "POST",
     body: JSON.stringify({
