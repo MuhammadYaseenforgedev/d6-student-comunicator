@@ -267,20 +267,31 @@ describe("Attendance RBAC + marking", () => {
     expect(assignment.rowCount ?? 0).toBe(1);
   });
 
-  test("lecturer can list modules globally", async () => {
-    const res = await request(app)
+  test("lecturer sees assigned modules while admin sees all modules", async () => {
+    const lecturerRes = await request(app)
       .get("/api/attendance/modules")
       .set(auth(ctx.lecturerToken));
 
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body?.value)).toBe(true);
-    expect(res.body.value.some((row: { id?: string }) => row.id === ctx.moduleId)).toBe(true);
-    expect(res.body.value.some((row: { id?: string }) => row.id === ctx.otherModuleId)).toBe(true);
+    expect(lecturerRes.status).toBe(200);
+    expect(Array.isArray(lecturerRes.body?.value)).toBe(true);
+    expect(lecturerRes.body.value.some((row: { id?: string }) => row.id === ctx.moduleId)).toBe(true);
+    expect(lecturerRes.body.value.some((row: { id?: string }) => row.id === ctx.otherModuleId)).toBe(
+      false
+    );
+
+    const adminRes = await request(app)
+      .get("/api/attendance/modules")
+      .set(auth(ctx.adminToken));
+
+    expect(adminRes.status).toBe(200);
+    expect(Array.isArray(adminRes.body?.value)).toBe(true);
+    expect(adminRes.body.value.some((row: { id?: string }) => row.id === ctx.moduleId)).toBe(true);
+    expect(adminRes.body.value.some((row: { id?: string }) => row.id === ctx.otherModuleId)).toBe(true);
   });
 
-  test("lecturer can assign and remove lecturers on a global module", async () => {
+  test("lecturer can assign and remove lecturers on an assigned module", async () => {
     const assignRes = await request(app)
-      .post(`/api/attendance/modules/${ctx.otherModuleId}/lecturers`)
+      .post(`/api/attendance/modules/${ctx.moduleId}/lecturers`)
       .set(auth(ctx.lecturerToken))
       .send({ lecturerId: ctx.strangerLecturerId });
 
@@ -288,7 +299,7 @@ describe("Attendance RBAC + marking", () => {
     expect(Boolean(assignRes.body?.ok)).toBe(true);
 
     const removeRes = await request(app)
-      .delete(`/api/attendance/modules/${ctx.otherModuleId}/lecturers/${ctx.strangerLecturerId}`)
+      .delete(`/api/attendance/modules/${ctx.moduleId}/lecturers/${ctx.strangerLecturerId}`)
       .set(auth(ctx.lecturerToken));
 
     expect(removeRes.status).toBe(200);
@@ -398,7 +409,14 @@ describe("Attendance RBAC + marking", () => {
     expect(String(row?.suggestedStatus ?? "")).toBe("PRESENT");
   });
 
-  test("lecturer can view and mark another lecturer's session", async () => {
+  test("lecturer can view and mark another lecturer's session after becoming assigned to that module", async () => {
+    const bootstrapRes = await request(app)
+      .post("/api/attendance/sessions")
+      .set(auth(ctx.lecturerToken))
+      .send({ moduleId: ctx.otherModuleId, date: "2026-03-03" });
+
+    expect(bootstrapRes.status).toBe(201);
+
     await pool.query(
       `
         INSERT INTO student_module_enrollments (module_id, student_id)
@@ -440,7 +458,14 @@ describe("Attendance RBAC + marking", () => {
     expect(Boolean(removeRes.body?.ok)).toBe(true);
   });
 
-  test("lecturer can change enrollments on a global module without prior assignment", async () => {
+  test("lecturer can change enrollments after becoming assigned to a module via session creation", async () => {
+    const bootstrapRes = await request(app)
+      .post("/api/attendance/sessions")
+      .set(auth(ctx.strangerLecturerToken))
+      .send({ moduleId: ctx.otherModuleId, date: "2026-03-04" });
+
+    expect(bootstrapRes.status).toBe(201);
+
     const enrollRes = await request(app)
       .post(`/api/attendance/modules/${ctx.otherModuleId}/enrollments`)
       .set(auth(ctx.strangerLecturerToken))

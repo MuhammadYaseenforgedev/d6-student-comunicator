@@ -359,6 +359,15 @@ async function createOtp(
 
     if (!smtpConfigured) {
       if (isProduction()) {
+        await pool.query(
+          `
+            DELETE FROM email_otps
+            WHERE lower(email) = lower($1)
+              AND purpose = $2
+              AND code_hash = $3
+          `,
+          [email, purpose, codeHash]
+        );
         throw new OtpDeliveryError(503, "OTP email service is not configured");
       }
     } else {
