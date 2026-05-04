@@ -180,4 +180,55 @@ describe("Notification inbox and auth header parsing", () => {
       afterItems.some((item) => String(item.meta?.announcementId ?? "") === announcementId)
     ).toBe(false);
   });
+
+  test("removes announcement notifications after the source announcement expires", async () => {
+    const lecturer = await createUser("LECTURER");
+    const student = await createUser("STUDENT");
+
+    const lecturerToken = signJwt(lecturer);
+    const studentToken = signJwt(student);
+    const channelId = await createChannel(lecturer.id, `expiring-notice-${Date.now()}`);
+
+    const createRes = await request(app)
+      .post(`/api/channels/${channelId}/announcements`)
+      .set(auth(lecturerToken))
+      .send({
+        title: `expiring-${Date.now()}`,
+        body: "temporary notice",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      });
+
+    expect(createRes.status).toBe(201);
+    const announcementId = String(createRes.body?.id ?? "");
+    expect(announcementId).toBeTruthy();
+
+    const beforeRes = await request(app)
+      .get("/api/notifications?category=ANNOUNCEMENT")
+      .set(auth(studentToken));
+
+    expect(beforeRes.status).toBe(200);
+    const beforeItems = Array.isArray(beforeRes.body?.value) ? (beforeRes.body.value as NotificationDto[]) : [];
+    expect(
+      beforeItems.some((item) => String(item.meta?.announcementId ?? "") === announcementId)
+    ).toBe(true);
+
+    await pool.query(
+      `
+        UPDATE announcements
+        SET expires_at = now() - interval '2 minutes'
+        WHERE id = $1
+      `,
+      [announcementId]
+    );
+
+    const afterRes = await request(app)
+      .get("/api/notifications?category=ANNOUNCEMENT")
+      .set(auth(studentToken));
+
+    expect(afterRes.status).toBe(200);
+    const afterItems = Array.isArray(afterRes.body?.value) ? (afterRes.body.value as NotificationDto[]) : [];
+    expect(
+      afterItems.some((item) => String(item.meta?.announcementId ?? "") === announcementId)
+    ).toBe(false);
+  });
 });

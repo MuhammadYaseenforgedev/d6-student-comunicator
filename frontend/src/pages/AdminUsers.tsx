@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
+import StudentProfileDetailPanel from "../components/StudentProfileDetailPanel";
 import { getUser, type AdminScope } from "../lib/auth";
 import { adminScopeLabel } from "../lib/adminAccess";
 import {
+  getStudentProfileDetail,
+  type StudentProfileDetail,
+} from "../lib/studentProfileApi";
+import {
+  createAdminAccount,
   deleteAdminAccount,
   listAdminAccounts,
   updateAdminAccount,
@@ -11,6 +17,13 @@ import {
 } from "../lib/userAdminApi";
 
 type RoleFilter = "ALL" | AdminAccountRole;
+type AccountType =
+  | "STUDENT"
+  | "PARENT"
+  | "LECTURER"
+  | "ACADEMIC_ADMIN"
+  | "SUPER_ADMIN"
+  | "FINANCE_ADMIN";
 
 const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
   { value: "ALL", label: "All" },
@@ -22,6 +35,29 @@ const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
 
 const MIN_PASSWORD_LENGTH = 6;
 const ADMIN_SCOPE_OPTIONS: AdminScope[] = ["FINANCE", "ACADEMIC", "SUPER"];
+const ACCOUNT_TYPE_OPTIONS: Array<{ value: AccountType; label: string }> = [
+  { value: "STUDENT", label: "Student" },
+  { value: "PARENT", label: "Parent" },
+  { value: "LECTURER", label: "Lecturer" },
+  { value: "ACADEMIC_ADMIN", label: "Academic Admin" },
+  { value: "SUPER_ADMIN", label: "Super Admin" },
+  { value: "FINANCE_ADMIN", label: "Finance Admin" },
+];
+
+function accountTypeToPayload(
+  accountType: AccountType
+): { role: AdminAccountRole; adminScope?: AdminScope } {
+  if (accountType === "ACADEMIC_ADMIN") {
+    return { role: "ADMIN", adminScope: "ACADEMIC" };
+  }
+  if (accountType === "SUPER_ADMIN") {
+    return { role: "ADMIN", adminScope: "SUPER" };
+  }
+  if (accountType === "FINANCE_ADMIN") {
+    return { role: "ADMIN", adminScope: "FINANCE" };
+  }
+  return { role: accountType };
+}
 
 function roleTone(role: AdminAccountRole): string {
   if (role === "ADMIN") {
@@ -82,10 +118,19 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [studentProfileOpenId, setStudentProfileOpenId] = useState<string | null>(null);
+  const [studentProfileLoadingId, setStudentProfileLoadingId] = useState<string | null>(null);
+  const [studentProfiles, setStudentProfiles] = useState<Record<string, StudentProfileDetail>>({});
   const [editStudentNumber, setEditStudentNumber] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editAdminScope, setEditAdminScope] = useState<AdminScope>("ACADEMIC");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newAccountType, setNewAccountType] = useState<AccountType>("STUDENT");
+  const [newStudentNumber, setNewStudentNumber] = useState("");
+  const [newSouthAfricanId, setNewSouthAfricanId] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -142,6 +187,14 @@ export default function AdminUsers() {
       setError(null);
       setInfo(null);
       await deleteAdminAccount(account.id);
+      setStudentProfiles((current) => {
+        const next = { ...current };
+        delete next[account.id];
+        return next;
+      });
+      if (studentProfileOpenId === account.id) {
+        setStudentProfileOpenId(null);
+      }
       setInfo(`Deleted ${account.email}.`);
       await loadAccounts();
     } catch (e) {
@@ -167,6 +220,88 @@ export default function AdminUsers() {
     setEditPassword("");
     setEditAdminScope("ACADEMIC");
     setShowPassword(false);
+  }
+
+  async function toggleStudentProfile(account: AdminAccount) {
+    if (account.role !== "STUDENT") return;
+
+    if (studentProfileOpenId === account.id) {
+      setStudentProfileOpenId(null);
+      return;
+    }
+
+    setStudentProfileOpenId(account.id);
+    if (studentProfiles[account.id]) return;
+
+    try {
+      setStudentProfileLoadingId(account.id);
+      setError(null);
+      const profile = await getStudentProfileDetail(account.id);
+      setStudentProfiles((current) => ({
+        ...current,
+        [account.id]: profile,
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load student profile");
+      setStudentProfileOpenId(null);
+    } finally {
+      setStudentProfileLoadingId(null);
+    }
+  }
+
+  async function onCreateAccount(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const email = newEmail.trim().toLowerCase();
+    const password = newPassword;
+    const studentNumber = normalizeStudentNumber(newStudentNumber);
+    const southAfricanId = String(newSouthAfricanId ?? "").replace(/\D+/g, "");
+    const { role: nextRole, adminScope: nextAdminScope } =
+      accountTypeToPayload(newAccountType);
+
+    if (!email || !password) {
+      setError("Email and password are required.");
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Passwords must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
+    if (nextRole === "STUDENT") {
+      if (!studentNumber) {
+        setError("Student number is required for student accounts.");
+        return;
+      }
+      if (!/^\d{13}$/.test(southAfricanId)) {
+        setError("South African ID must be exactly 13 digits for student accounts.");
+        return;
+      }
+    }
+
+    try {
+      setCreating(true);
+      setError(null);
+      setInfo(null);
+      await createAdminAccount({
+        email,
+        password,
+        role: nextRole,
+        studentNumber: nextRole === "STUDENT" ? studentNumber : undefined,
+        southAfricanId: nextRole === "STUDENT" ? southAfricanId : undefined,
+        adminScope: nextRole === "ADMIN" ? nextAdminScope : undefined,
+      });
+      setNewEmail("");
+      setNewPassword("");
+      setNewAccountType("STUDENT");
+      setNewStudentNumber("");
+      setNewSouthAfricanId("");
+      setInfo(`Created ${email}.`);
+      await loadAccounts();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create account");
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function onSave(account: AdminAccount) {
@@ -217,6 +352,11 @@ export default function AdminUsers() {
       setError(null);
       setInfo(null);
       await updateAdminAccount(account.id, payload);
+      setStudentProfiles((current) => {
+        const next = { ...current };
+        delete next[account.id];
+        return next;
+      });
       await loadAccounts();
 
       const changed: string[] = [];
@@ -266,6 +406,89 @@ export default function AdminUsers() {
       </div>
 
       <section className="teal-glow-card p-5 space-y-4">
+        <div>
+          <div className="text-lg font-semibold text-white">Create Account</div>
+          <div className="mt-1 text-sm text-white/72">
+            Create protected admin-managed student, parent, lecturer, academic admin, super admin, and finance admin accounts. Public registration stays limited to safe self-service roles.
+          </div>
+        </div>
+
+        <form
+          onSubmit={onCreateAccount}
+          className="grid grid-cols-1 gap-3 xl:grid-cols-2"
+        >
+          <input
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="name@example.com"
+            className="input-glass"
+            title="Account email"
+            aria-label="Account email"
+          />
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Temporary password"
+            className="input-glass"
+            title="Temporary password"
+            aria-label="Temporary password"
+          />
+          <select
+            value={newAccountType}
+            onChange={(e) => setNewAccountType(e.target.value as AccountType)}
+            className="select-glass"
+            title="Account type"
+            aria-label="Account type"
+          >
+            {ACCOUNT_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <div className="info-banner text-white/70">
+            {newAccountType === "STUDENT"
+              ? "Student accounts need a student number and South African ID."
+              : newAccountType === "ACADEMIC_ADMIN" ||
+                  newAccountType === "SUPER_ADMIN" ||
+                  newAccountType === "FINANCE_ADMIN"
+                ? "Admin account type sets the correct admin scope automatically."
+                : "This account type uses the selected app role without extra admin access fields."}
+          </div>
+          {newAccountType === "STUDENT" && (
+            <>
+              <input
+                value={newStudentNumber}
+                onChange={(e) => setNewStudentNumber(e.target.value.toUpperCase())}
+                placeholder="Student number"
+                className="input-glass"
+                title="Student number"
+                aria-label="Student number"
+              />
+              <input
+                value={newSouthAfricanId}
+                onChange={(e) => setNewSouthAfricanId(e.target.value)}
+                placeholder="13-digit South African ID"
+                className="input-glass"
+                title="South African ID"
+                aria-label="South African ID"
+              />
+            </>
+          )}
+          <div className="xl:col-span-2">
+            <button
+              type="submit"
+              disabled={creating}
+              className="btn-primary min-w-[150px] w-full sm:w-auto"
+            >
+              {creating ? "Creating..." : "Create account"}
+            </button>
+          </div>
+        </form>
+
+        <div className="divider-soft" />
+
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
           <form
             onSubmit={(e) => {
@@ -275,13 +498,13 @@ export default function AdminUsers() {
             className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]"
           >
             <label htmlFor="accounts-search" className="sr-only">
-              Search by email, name, course, or student number
+              Search by email, name, course, student number, or ID number
             </label>
             <input
               id="accounts-search"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search by email, name, course, or student number"
+              placeholder="Search by email, name, course, student number, or ID number"
               className="input-glass w-full"
               title="Search accounts"
               aria-label="Search accounts"
@@ -289,13 +512,13 @@ export default function AdminUsers() {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary min-w-[110px]"
+              className="btn-primary min-w-[110px] w-full sm:w-auto"
             >
               Search
             </button>
           </form>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="mobile-chip-row sm:flex sm:flex-wrap sm:gap-2">
             {ROLE_FILTERS.map((option) => {
               const active = option.value === roleFilter;
               return (
@@ -326,11 +549,11 @@ export default function AdminUsers() {
         <div className="info-banner border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] text-white/80 shadow-none">
           Finance Admin can access Finance and Messages. Academic Admin can
           access the academic/admin tools except Finance. Super Admin can
-          access the academic/admin tools except Finance, plus Tickets.
+          access the academic/admin tools except Finance.
         </div>
       </section>
 
-      <section className="teal-glow-card p-5">
+      <section className="workspace-scroll-panel">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="text-lg font-semibold text-white">
@@ -343,14 +566,14 @@ export default function AdminUsers() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+          <div className="workspace-meta-pill">
             {accounts.length} account(s)
           </div>
         </div>
 
         <div className="divider-soft my-5" />
 
-        <div className="space-y-3">
+        <div className="app-page-scroll space-y-3 max-h-none overflow-visible pr-0 lg:max-h-[26rem] lg:overflow-y-auto lg:pr-1">
           {loading ? (
             <div className="info-banner">Loading accounts...</div>
           ) : accounts.length === 0 ? (
@@ -406,10 +629,15 @@ export default function AdminUsers() {
                       </div>
 
                       {account.role === "STUDENT" && (
-                        <div className="text-xs text-white/72">
-                          Student number:{" "}
-                          {account.studentNumber?.trim() || "Not set"}
-                        </div>
+                        <>
+                          <div className="text-xs text-white/72">
+                            Student number:{" "}
+                            {account.studentNumber?.trim() || "Not set"}
+                          </div>
+                          <div className="text-xs text-white/60">
+                            ID number: {account.idNumber?.trim() || "Not set"}
+                          </div>
+                        </>
                       )}
 
                       <div className="text-xs text-white/45">
@@ -417,7 +645,24 @@ export default function AdminUsers() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mobile-inline-actions">
+                      {account.role === "STUDENT" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void toggleStudentProfile(account);
+                          }}
+                          disabled={studentProfileLoadingId === account.id}
+                          className="btn-secondary"
+                        >
+                          {studentProfileOpenId === account.id
+                            ? "Hide student profile"
+                            : studentProfileLoadingId === account.id
+                              ? "Loading profile..."
+                              : "Student profile"}
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => {
@@ -451,6 +696,44 @@ export default function AdminUsers() {
                       </button>
                     </div>
                   </div>
+
+                  {account.role === "STUDENT" &&
+                    studentProfileOpenId === account.id && (
+                      <div className="mt-4 rounded-3xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.42)] p-4">
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-base font-semibold text-white">
+                              Student Profile
+                            </div>
+                            <div className="mt-1 text-sm text-white/68">
+                              Personal details and course information linked to this account.
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void toggleStudentProfile(account);
+                            }}
+                            className="btn-secondary"
+                          >
+                            Close
+                          </button>
+                        </div>
+
+                        {studentProfileLoadingId === account.id ? (
+                          <div className="info-banner">Loading student profile...</div>
+                        ) : studentProfiles[account.id] ? (
+                          <StudentProfileDetailPanel
+                            profile={studentProfiles[account.id]}
+                          />
+                        ) : (
+                          <div className="info-banner">
+                            Student profile is not available yet.
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                   {editingId === account.id && (
                     <div className="mt-4 rounded-3xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.42)] p-4">
@@ -533,7 +816,7 @@ export default function AdminUsers() {
                         </div>
                       </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
+                      <div className="mt-4 flex flex-wrap gap-2 mobile-inline-actions">
                         <button
                           type="button"
                           onClick={() => {

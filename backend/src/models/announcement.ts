@@ -9,5 +9,6 @@ export type Announcement = {
   pinned: boolean;
   createdBy: string;
   createdAt: string;
+  expiresAt?: string | null;
   updatedAt?: string;
 };

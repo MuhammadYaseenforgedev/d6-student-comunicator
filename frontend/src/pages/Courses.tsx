@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
+import CourseAssessmentsPanel from "../components/CourseAssessmentsPanel";
+import CourseMarksheetPanel from "../components/CourseMarksheetPanel";
+import CourseModulesManager from "../components/CourseModulesManager";
 import PageHeader from "../components/PageHeader";
+import StudentProfileDetailPanel from "../components/StudentProfileDetailPanel";
 import { getUser } from "../lib/auth";
 import { isAcademicOrSuperAdmin, isFinanceAdmin } from "../lib/adminAccess";
 import {
   assignModuleToCourse,
   createCourse,
+  deleteCourse,
   enrollStudentInCourse,
   listCourses,
   removeStudentFromCourse,
@@ -19,6 +24,12 @@ import {
   type AttendanceDirectoryUser,
   type AttendanceModule,
 } from "../lib/attendanceApi";
+import {
+  getStudentProfileDetail,
+  listStudentProfiles,
+  type StudentProfileDetail,
+  type StudentProfileListItem,
+} from "../lib/studentProfileApi";
 
 function formatDate(raw: string | null): string {
   if (!raw) return "Not recorded";
@@ -42,6 +53,41 @@ function summarizeModules(modules: CourseModule[], limit = 3): string {
 
   if (modules.length <= limit) return visible.join(", ");
   return `${visible.join(", ")} +${modules.length - limit} more`;
+}
+
+function getStatusTone(status: string | null | undefined): string {
+  const normalized = status?.trim().toUpperCase();
+
+  if (normalized === "ACTIVE") {
+    return "border-[rgba(140,235,255,0.32)] bg-[rgba(8,18,48,0.82)] text-[#8CEBFF] shadow-[0_0_14px_rgba(140,235,255,0.34)]";
+  }
+
+  if (normalized === "INACTIVE" || normalized === "ARCHIVED") {
+    return "border-[rgba(255,94,130,0.30)] bg-[rgba(74,10,31,0.62)] text-[#ff8ea8] shadow-[0_0_14px_rgba(255,94,130,0.28)]";
+  }
+
+  return "border-[rgba(255,255,255,0.24)] bg-[rgba(255,255,255,0.06)] text-white shadow-[0_0_10px_rgba(255,255,255,0.14)]";
+}
+
+function StatusBadge({
+  status,
+  fallback = "NONE",
+}: {
+  status?: string | null;
+  fallback?: string;
+}) {
+  const label = status?.trim() ? status.trim().toUpperCase() : fallback;
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] transition",
+        getStatusTone(label),
+      ].join(" ")}
+    >
+      {label}
+    </span>
+  );
 }
 
 function EmptyState({
@@ -87,11 +133,121 @@ function SummaryCard({
 }) {
   return (
     <div className="teal-glow-card p-4">
-      <div className="text-xs uppercase tracking-wide text-white/65">{label}</div>
+      <div className="text-xs uppercase tracking-[0.16em] text-white/60">{label}</div>
       <div className="mt-2 text-2xl font-bold text-white">{value}</div>
     </div>
   );
 }
+
+function SectionTitle({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div>
+      <div className="text-lg font-semibold text-white">{title}</div>
+      {subtitle ? <div className="mt-1 text-sm text-white/70">{subtitle}</div> : null}
+    </div>
+  );
+}
+
+function PremiumCourseCard({
+  course,
+  selected,
+  onClick,
+}: {
+  course: CourseRecord;
+  selected?: boolean;
+  onClick?: () => void;
+}) {
+  const statusLabel = course.isActive ? "ACTIVE" : "INACTIVE";
+
+  const content = (
+    <>
+      <div className="pointer-events-none absolute inset-0 opacity-100">
+        <div className="absolute -left-10 -top-10 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
+        <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/35 to-transparent" />
+      </div>
+
+      <div className="relative">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-lg font-semibold text-white">{course.name}</div>
+            <div className="mt-1 text-xs uppercase tracking-[0.16em] text-white/55">
+              {course.code}
+            </div>
+          </div>
+          <StatusBadge status={statusLabel} />
+        </div>
+
+        <div className="mt-4 text-sm leading-6 text-white/72">
+          {course.description?.trim() || "No course description has been added yet."}
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.12)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-xs text-white/70">
+          Modules: {summarizeModules(course.modules, 3)}
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Modules</div>
+            <div className="mt-1 text-base font-semibold text-white">
+              {course.summary.moduleCount}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Students</div>
+            <div className="mt-1 text-base font-semibold text-white">
+              {course.summary.studentCount}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Lecturers</div>
+            <div className="mt-1 text-base font-semibold text-white">
+              {course.summary.lecturerCount}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={[
+          "relative overflow-hidden rounded-3xl border p-5 text-left transition-all duration-200",
+          selected
+            ? "border-[rgba(140,235,255,0.34)] bg-[rgba(15,37,88,0.82)] shadow-[0_0_0_1px_rgba(140,235,255,0.18)_inset,0_0_22px_rgba(140,235,255,0.14)]"
+            : "border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] hover:border-[rgba(140,235,255,0.28)] hover:shadow-[0_0_18px_rgba(140,235,255,0.12)]",
+        ].join(" ")}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-5 shadow-[0_0_18px_rgba(140,235,255,0.10)]">
+      {content}
+    </div>
+  );
+}
+
+const adminCourseWorkspaceTabs = [
+  { id: "overview", label: "Overview" },
+  { id: "modules", label: "Modules" },
+  { id: "marksheet", label: "Marksheet" },
+  { id: "assessments", label: "Assessments" },
+] as const;
+
+type AdminCourseWorkspaceTab = (typeof adminCourseWorkspaceTabs)[number]["id"];
 
 export default function CoursesPage() {
   const user = getUser();
@@ -146,7 +302,12 @@ function StudentCoursesView() {
           label="Assigned Lecturers"
           value={uniqueLecturerEmails(linkedModules).length}
         />
-        <SummaryCard label="Status" value={courses.length > 0 ? "Active" : "None"} />
+        <div className="teal-glow-card p-4">
+          <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
+          <div className="mt-3">
+            <StatusBadge status={courses.length > 0 ? "ACTIVE" : "NONE"} />
+          </div>
+        </div>
       </div>
 
       {loading ? (
@@ -157,74 +318,92 @@ function StudentCoursesView() {
           message="Your student account is not enrolled in a course yet. Ask an academic admin to enroll you before modules can appear here."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          {courses.map((course, index) => {
-            const modules = course.modules.filter((module) => module.isStudentLinked);
-            const lecturers = uniqueLecturerEmails(modules);
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            {courses.map((course, index) => {
+              const modules = course.modules.filter((module) => module.isStudentLinked);
+              const lecturers = uniqueLecturerEmails(modules);
 
-            return (
-              <div key={course.id} className="teal-glow-card p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold text-white">
-                      {course.name}
+              return (
+                <div
+                  key={course.id}
+                  className="relative overflow-hidden rounded-3xl border border-[rgba(140,235,255,0.20)] bg-[rgba(8,18,48,0.66)] p-5 shadow-[0_0_20px_rgba(140,235,255,0.10)]"
+                >
+                  <div className="pointer-events-none absolute inset-0 opacity-100">
+                    <div className="absolute -left-10 -top-10 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
+                    <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
+                  </div>
+
+                  <div className="relative flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-semibold text-white">{course.name}</div>
+                      <div className="mt-1 text-sm text-white/65">
+                        {course.code}
+                        {index === 0 ? " | Primary course in your dashboard" : ""}
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm text-white/65">
-                      {course.code}
-                      {index === 0 ? " | Primary course in your dashboard" : ""}
+                    <StatusBadge status={course.enrollmentStatus ?? "ACTIVE"} />
+                  </div>
+
+                  <div className="relative mt-3 text-sm text-white/72">
+                    {course.description?.trim() || "No course description has been added yet."}
+                  </div>
+
+                  <div className="relative mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <SummaryCard label="Modules" value={modules.length} />
+                    <SummaryCard label="Lecturers" value={lecturers.length} />
+                    <div className="teal-glow-card p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
+                      <div className="mt-3">
+                        <StatusBadge status={course.enrollmentStatus ?? "ACTIVE"} />
+                      </div>
                     </div>
                   </div>
-                  <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/80">
-                    {course.enrollmentStatus ?? "ACTIVE"}
+
+                  <div className="relative mt-3 text-xs text-white/60">
+                    Enrolled: {formatDate(course.enrolledAt)}
+                  </div>
+
+                  <div className="relative mt-5">
+                    <SectionTitle title="Linked modules" />
+                    <div className="mt-3 space-y-3">
+                      {modules.length === 0 ? (
+                        <EmptyState
+                          title="No modules in course"
+                          message="Your course is active, but no modules are linked to your student account yet."
+                        />
+                      ) : (
+                        modules.map((module) => (
+                          <div
+                            key={module.id}
+                            className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
+                          >
+                            <div className="font-semibold text-white">
+                              {module.code} - {module.name}
+                            </div>
+                            <div className="mt-1 text-xs text-white/60">{module.facultyName}</div>
+                            <div className="mt-2 text-xs text-white/72">
+                              Lecturers:{" "}
+                              {module.lecturers.length > 0
+                                ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
+                                : "Not assigned yet"}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
 
-                <div className="mt-3 text-sm text-white/72">
-                  {course.description?.trim() || "No course description has been added yet."}
-                </div>
-
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  <SummaryCard label="Modules" value={modules.length} />
-                  <SummaryCard label="Lecturers" value={lecturers.length} />
-                  <SummaryCard label="Status" value={course.enrollmentStatus ?? "ACTIVE"} />
-                </div>
-
-                <div className="mt-3 text-xs text-white/60">
-                  Enrolled: {formatDate(course.enrolledAt)}
-                </div>
-
-                <div className="mt-5">
-                  <div className="text-sm font-semibold text-white">Linked modules</div>
-                  <div className="mt-3 space-y-3">
-                    {modules.length === 0 ? (
-                      <EmptyState
-                        title="No modules in course"
-                        message="Your course is active, but no modules are linked to your student account yet."
-                      />
-                    ) : (
-                      modules.map((module) => (
-                        <div
-                          key={module.id}
-                          className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
-                        >
-                          <div className="font-semibold text-white">
-                            {module.code} - {module.name}
-                          </div>
-                          <div className="mt-1 text-xs text-white/60">{module.facultyName}</div>
-                          <div className="mt-2 text-xs text-white/72">
-                            Lecturers:{" "}
-                            {module.lecturers.length > 0
-                              ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
-                              : "Not assigned yet"}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          <CourseAssessmentsPanel
+            modules={linkedModules}
+            canManage={false}
+            title="Assessments"
+            subtitle="Download lecturer-uploaded assessments for the modules linked to your student account."
+          />
         </div>
       )}
     </div>
@@ -233,15 +412,39 @@ function StudentCoursesView() {
 
 function LecturerCoursesView() {
   const [courses, setCourses] = useState<CourseRecord[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedModuleId, setSelectedModuleId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [studentSearchInput, setStudentSearchInput] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentRows, setStudentRows] = useState<StudentProfileListItem[]>([]);
+  const [studentLoading, setStudentLoading] = useState(false);
+  const [studentError, setStudentError] = useState<string | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [selectedStudentProfile, setSelectedStudentProfile] =
+    useState<StudentProfileDetail | null>(null);
+  const [studentDetailLoading, setStudentDetailLoading] = useState(false);
+
+  const selectedCourse = useMemo(
+    () => courses.find((course) => course.id === selectedCourseId) ?? null,
+    [courses, selectedCourseId]
+  );
+
+  async function loadCoursesData() {
+    const rows = await listCourses();
+    setCourses(rows);
+    setSelectedCourseId((current) =>
+      rows.some((course) => course.id === current) ? current : (rows[0]?.id ?? "")
+    );
+  }
 
   useEffect(() => {
     void (async () => {
       try {
         setLoading(true);
         setError(null);
-        setCourses(await listCourses());
+        await loadCoursesData();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load lecturer courses");
       } finally {
@@ -249,6 +452,87 @@ function LecturerCoursesView() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!selectedCourseId) {
+      setStudentRows([]);
+      setSelectedStudentId("");
+      setSelectedStudentProfile(null);
+      setStudentError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        setStudentLoading(true);
+        setStudentError(null);
+        const rows = await listStudentProfiles({
+          courseId: selectedCourseId,
+          q: studentSearch || undefined,
+          limit: 100,
+        });
+        if (cancelled) return;
+        setStudentRows(rows);
+        setSelectedStudentId((current) =>
+          rows.some((row) => row.userId === current) ? current : (rows[0]?.userId ?? "")
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setStudentRows([]);
+          setSelectedStudentId("");
+          setSelectedStudentProfile(null);
+          setStudentError(
+            e instanceof Error ? e.message : "Failed to load student profiles"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setStudentLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCourseId, studentSearch]);
+
+  useEffect(() => {
+    if (!selectedStudentId) {
+      setSelectedStudentProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        setStudentDetailLoading(true);
+        setStudentError(null);
+        const profile = await getStudentProfileDetail(selectedStudentId);
+        if (!cancelled) {
+          setSelectedStudentProfile(profile);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setSelectedStudentProfile(null);
+          setStudentError(
+            e instanceof Error ? e.message : "Failed to load student profile"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setStudentDetailLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStudentId]);
 
   return (
     <div className="space-y-6">
@@ -267,43 +551,36 @@ function LecturerCoursesView() {
           message="You are not assigned to any course-linked modules yet."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          {courses.map((course) => (
-            <div key={course.id} className="teal-glow-card p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-lg font-semibold text-white">{course.name}</div>
-                  <div className="mt-1 text-sm text-white/65">{course.code}</div>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {courses.map((course) => (
+              <PremiumCourseCard
+                key={course.id}
+                course={course}
+                selected={course.id === selectedCourseId}
+                onClick={() => setSelectedCourseId(course.id)}
+              />
+            ))}
+          </div>
+
+          {selectedCourse ? (
+            <>
+              <div className="teal-glow-card p-5">
+                <SectionTitle
+                  title="Selected Course"
+                  subtitle="Review modules already linked to this course, then manage module setup and membership below."
+                />
+                <div className="mt-4 rounded-2xl border border-[rgba(140,235,255,0.12)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-white/72">
+                  {selectedCourse.code} - {selectedCourse.name}
                 </div>
-                <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/80">
-                  {course.isActive ? "Active" : "Archived"}
-                </div>
-              </div>
-
-              <div className="mt-3 text-sm text-white/72">
-                {course.description?.trim() || "No course description has been added yet."}
-              </div>
-
-              <div className="mt-3 text-xs text-white/65">
-                Linked modules: {summarizeModules(course.modules, 4)}
-              </div>
-
-              <div className="mt-4 grid grid-cols-3 gap-3">
-                <SummaryCard label="Modules" value={course.summary.moduleCount} />
-                <SummaryCard label="Students" value={course.summary.studentCount} />
-                <SummaryCard label="Lecturers" value={course.summary.lecturerCount} />
-              </div>
-
-              <div className="mt-5">
-                <div className="text-sm font-semibold text-white">Modules in this course</div>
-                <div className="mt-3 space-y-3">
-                  {course.modules.length === 0 ? (
+                <div className="mt-4 space-y-3">
+                  {selectedCourse.modules.length === 0 ? (
                     <EmptyState
                       title="No modules in course"
-                      message="This course does not have any linked modules yet."
+                      message="Create the first module for this course below."
                     />
                   ) : (
-                    course.modules.map((module) => (
+                    selectedCourse.modules.map((module) => (
                       <div
                         key={module.id}
                         className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
@@ -319,8 +596,155 @@ function LecturerCoursesView() {
                   )}
                 </div>
               </div>
-            </div>
-          ))}
+
+              <div className="teal-glow-card p-5">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <SectionTitle
+                    title="Student Profiles"
+                    subtitle="Search learners in your allowed course and inspect their personal and academic details."
+                  />
+
+                  <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+                    {studentRows.length} learner{studentRows.length === 1 ? "" : "s"}
+                  </div>
+                </div>
+
+                <div className="divider-soft my-5" />
+
+                <form
+                  className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setStudentSearch(studentSearchInput.trim());
+                  }}
+                >
+                  <input
+                    value={studentSearchInput}
+                    onChange={(e) => setStudentSearchInput(e.target.value)}
+                    className="input-glass"
+                    placeholder="Search by email or ID number"
+                    title="Search student profiles"
+                    aria-label="Search student profiles"
+                  />
+                  <button type="submit" className="btn-primary min-w-[110px]">
+                    Search
+                  </button>
+                </form>
+
+                {studentError && <div className="error-banner mt-4">{studentError}</div>}
+
+                <div className="mt-5 grid grid-cols-1 gap-6 xl:h-[min(42rem,calc(100vh-16rem))] xl:grid-cols-[320px_minmax(0,1fr)]">
+                  <div className="workspace-scroll-panel">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <SectionTitle
+                        title="Learner Directory"
+                        subtitle="Choose a learner from this course to inspect their profile."
+                      />
+                      <div className="workspace-meta-pill">
+                        {studentRows.length} learner{studentRows.length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+
+                    <div className="divider-soft my-5" />
+
+                    <div className="app-page-scroll space-y-3 max-h-none overflow-visible pr-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+                      {studentLoading ? (
+                        <div className="info-banner">Loading student profiles...</div>
+                      ) : studentRows.length === 0 ? (
+                        <EmptyState
+                          title="No learners matched"
+                          message="Try another email or ID number, or pick a different course."
+                        />
+                      ) : (
+                        studentRows.map((student) => (
+                          <button
+                            key={student.userId}
+                            type="button"
+                            onClick={() => setSelectedStudentId(student.userId)}
+                            className={[
+                              "w-full rounded-3xl border p-4 text-left transition-all duration-200",
+                              student.userId === selectedStudentId
+                                ? "border-[rgba(140,235,255,0.30)] bg-[rgba(14,42,99,0.28)] shadow-[0_0_0_1px_rgba(140,235,255,0.05),0_0_18px_rgba(140,235,255,0.08)]"
+                                : "border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)] hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.24)] hover:bg-[rgba(8,18,48,0.66)]",
+                            ].join(" ")}
+                          >
+                            <div className="text-sm font-semibold text-white">
+                              {`${student.fullName} ${student.surname}`.trim() || student.email}
+                            </div>
+                            <div className="mt-1 text-xs text-white/60">{student.email}</div>
+                            <div className="mt-2 text-xs text-white/72">
+                              {student.idNumber || "No ID number"} |{" "}
+                              {student.studentNumber || "No student number"}
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-2.5 py-1 text-[11px] text-white/70">
+                                {student.courseCode?.trim() || student.courseName?.trim() || "Course not assigned"}
+                              </span>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="workspace-scroll-panel">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <SectionTitle
+                        title="Profile Detail"
+                        subtitle="View the selected learner's personal and academic details."
+                      />
+                      <div className="workspace-meta-pill">
+                        {selectedStudentProfile?.email || "No learner selected"}
+                      </div>
+                    </div>
+
+                    <div className="divider-soft my-5" />
+
+                    <div className="app-page-scroll max-h-none overflow-visible pr-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+                      {!selectedStudentId ? (
+                        <div className="info-banner">
+                          Select a learner to view their profile.
+                        </div>
+                      ) : studentDetailLoading ? (
+                        <div className="info-banner">Loading selected learner...</div>
+                      ) : selectedStudentProfile ? (
+                        <StudentProfileDetailPanel profile={selectedStudentProfile} />
+                      ) : (
+                        <div className="info-banner">
+                          Student profile detail is unavailable for the selected learner.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <CourseModulesManager
+                courses={courses}
+                selectedCourseId={selectedCourseId}
+                idPrefix="courses-lecturer-modules"
+                title="Modules"
+                subtitle="Manage module setup and module membership from inside Courses."
+                onSelectedModuleIdChange={setSelectedModuleId}
+                onChanged={loadCoursesData}
+              />
+
+              <CourseMarksheetPanel
+                modules={selectedCourse.modules}
+                selectedModuleId={selectedModuleId}
+                onSelectedModuleIdChange={setSelectedModuleId}
+              />
+
+              <CourseAssessmentsPanel
+                modules={selectedCourse.modules}
+                selectedModuleId={selectedModuleId}
+                onSelectedModuleIdChange={setSelectedModuleId}
+                canManage
+                title="Assessments"
+                subtitle="Upload and manage assessment files for the selected course modules."
+              />
+            </>
+          ) : null}
         </div>
       )}
     </div>
@@ -332,6 +756,7 @@ function AdminCoursesView() {
   const [modules, setModules] = useState<AttendanceModule[]>([]);
   const [students, setStudents] = useState<AttendanceDirectoryUser[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedCourseModuleId, setSelectedCourseModuleId] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [newCode, setNewCode] = useState("");
@@ -345,6 +770,8 @@ function AdminCoursesView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [workspaceTab, setWorkspaceTab] =
+    useState<AdminCourseWorkspaceTab>("overview");
 
   const selectedCourse = useMemo(
     () => courses.find((course) => course.id === selectedCourseId) ?? null,
@@ -473,6 +900,33 @@ function AdminCoursesView() {
     }
   }
 
+  async function onDeleteCourse() {
+    if (!selectedCourse) return;
+
+    const confirmationMessage =
+      selectedCourse.summary.studentCount > 0
+        ? `Delete "${selectedCourse.code} - ${selectedCourse.name}"? This will remove ${selectedCourse.summary.studentCount} student course enrollment(s) and any course calendar entries. Linked modules must already be removed first.`
+        : `Delete "${selectedCourse.code} - ${selectedCourse.name}"? Linked modules must already be removed first.`;
+
+    if (!window.confirm(confirmationMessage)) return;
+
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+      const deleted = await deleteCourse(selectedCourse.id);
+      await loadAll();
+      setSelectedCourseModuleId("");
+      setSelectedModuleId("");
+      setSelectedStudentId("");
+      setInfo(`Course ${deleted.code} deleted.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete course");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onAssignModule() {
     if (!selectedCourseId || !selectedModuleId) {
       setError("Select a course and module first.");
@@ -543,70 +997,44 @@ function AdminCoursesView() {
       {loading ? (
         <EmptyState title="Loading courses" message="Fetching course management data." />
       ) : (
-        <>
+        <section className="workspace-scroll-panel">
+          <div className="app-page-scroll space-y-6 max-h-none overflow-visible pr-0 lg:max-h-[calc(100vh-16rem)] lg:overflow-y-auto lg:pr-2">
           <div className="teal-glow-card p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-lg font-semibold text-white">Course Catalog</div>
-                <div className="mt-1 text-sm text-white/72">
-                  Review each course and the modules currently linked to it before making changes.
-                </div>
-              </div>
-              <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/80">
+              <SectionTitle
+                title="Course Catalog"
+                subtitle="Review each course and the modules currently linked to it before making changes."
+              />
+              <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
                 {courses.length} course{courses.length === 1 ? "" : "s"}
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
               {courses.length === 0 ? (
                 <EmptyState
                   title="No courses yet"
                   message="Create the first course before assigning modules or students."
                 />
               ) : (
-                courses.map((course) => {
-                  const isSelected = course.id === selectedCourseId;
-                  return (
-                    <button
-                      key={course.id}
-                      type="button"
-                      onClick={() => setSelectedCourseId(course.id)}
-                      className={[
-                        "rounded-3xl border p-4 text-left transition",
-                        isSelected
-                          ? "border-[rgba(140,235,255,0.34)] bg-[rgba(15,37,88,0.82)] shadow-[0_0_0_1px_rgba(140,235,255,0.18)_inset]"
-                          : "border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] hover:border-[rgba(140,235,255,0.28)]",
-                      ].join(" ")}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="font-semibold text-white">{course.name}</div>
-                          <div className="mt-1 text-xs text-white/60">{course.code}</div>
-                        </div>
-                        <div className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.66)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/80">
-                          {course.isActive ? "Active" : "Archived"}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 text-xs text-white/72">
-                        Modules: {summarizeModules(course.modules, 3)}
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-white/60">
-                        <div>{course.summary.moduleCount} modules</div>
-                        <div>{course.summary.studentCount} students</div>
-                        <div>{course.summary.lecturerCount} lecturers</div>
-                      </div>
-                    </button>
-                  );
-                })
+                courses.map((course) => (
+                  <PremiumCourseCard
+                    key={course.id}
+                    course={course}
+                    selected={course.id === selectedCourseId}
+                    onClick={() => setSelectedCourseId(course.id)}
+                  />
+                ))
               )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_1fr]">
             <div className="teal-glow-card space-y-4 p-5">
-              <div className="text-lg font-semibold text-white">Create Course</div>
+              <SectionTitle
+                title="Create Course"
+                subtitle="Add a new course to the catalog before linking modules or students."
+              />
               <input
                 value={newCode}
                 onChange={(e) => setNewCode(e.target.value.toUpperCase())}
@@ -629,14 +1057,17 @@ function AdminCoursesView() {
                 type="button"
                 onClick={() => void onCreateCourse()}
                 disabled={busy}
-                className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
               >
                 {busy ? "Saving..." : "Create course"}
               </button>
             </div>
 
             <div className="teal-glow-card space-y-4 p-5">
-              <div className="text-lg font-semibold text-white">Manage Course</div>
+              <SectionTitle
+                title="Manage Course"
+                subtitle="Update details, linked modules, and the current course state."
+              />
               {courses.length === 0 ? (
                 <EmptyState
                   title="No courses yet"
@@ -648,6 +1079,8 @@ function AdminCoursesView() {
                     value={selectedCourseId}
                     onChange={(e) => setSelectedCourseId(e.target.value)}
                     className="select-glass"
+                    aria-label="Select course to manage"
+                    title="Select course to manage"
                   >
                     {courses.map((course) => (
                       <option key={course.id} value={course.id}>
@@ -655,6 +1088,7 @@ function AdminCoursesView() {
                       </option>
                     ))}
                   </select>
+
                   <input
                     value={editCode}
                     onChange={(e) => setEditCode(e.target.value.toUpperCase())}
@@ -673,24 +1107,43 @@ function AdminCoursesView() {
                     placeholder="Course description"
                     className="input-glass min-h-[120px]"
                   />
+
                   <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] p-3 text-sm text-white/72">
                     Linked modules: {summarizeModules(selectedCourse?.modules ?? [], 5)}
                   </div>
+
+                  <div className="rounded-2xl border border-[rgba(255,196,87,0.20)] bg-[rgba(78,54,12,0.22)] p-3 text-sm text-[#ffe7b0]">
+                    Deleting a course removes student course enrollments and course calendar entries.
+                    Remove linked modules first before deleting the selected course.
+                  </div>
+
                   <select
                     value={editIsActive}
                     onChange={(e) => setEditIsActive(e.target.value)}
                     className="select-glass"
+                    aria-label="Set course status"
+                    title="Set course status"
                   >
                     <option value="true">Active</option>
                     <option value="false">Archived</option>
                   </select>
+
                   <button
                     type="button"
                     onClick={() => void onSaveCourse()}
                     disabled={busy || !selectedCourse}
-                    className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                    className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
                   >
                     {busy ? "Saving..." : "Save course"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void onDeleteCourse()}
+                    disabled={busy || !selectedCourse || selectedCourse.modules.length > 0}
+                    className="btn-danger px-4 py-2 text-sm disabled:opacity-60"
+                  >
+                    {busy ? "Working..." : "Delete course"}
                   </button>
                 </>
               )}
@@ -698,154 +1151,279 @@ function AdminCoursesView() {
           </div>
 
           {selectedCourse ? (
-            <>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <SummaryCard label="Modules" value={selectedCourse.summary.moduleCount} />
-                <SummaryCard label="Students" value={selectedCourse.summary.studentCount} />
-                <SummaryCard label="Lecturers" value={selectedCourse.summary.lecturerCount} />
-                <SummaryCard label="Status" value={selectedCourse.isActive ? "Active" : "Archived"} />
-              </div>
-
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <div className="teal-glow-card space-y-4 p-5">
-                  <div className="text-lg font-semibold text-white">Assign Module</div>
-                  <div className="text-sm text-white/72">
-                    Link an existing module to the selected course.
-                  </div>
-                  <select
-                    value={selectedModuleId}
-                    onChange={(e) => setSelectedModuleId(e.target.value)}
-                    disabled={availableModules.length === 0}
-                    className="select-glass"
-                  >
-                    {availableModules.length === 0 ? (
-                      <option value="">All modules are already linked to this course</option>
-                    ) : (
-                      availableModules.map((module) => (
-                        <option key={module.id} value={module.id}>
-                          {module.code} - {module.name}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => void onAssignModule()}
-                    disabled={busy || !selectedModuleId}
-                    className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
-                  >
-                    Link module
-                  </button>
+            <div className="teal-glow-card overflow-hidden p-5">
+              <div className="relative overflow-hidden rounded-[1.75rem] border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] p-5">
+                <div className="pointer-events-none absolute inset-0 opacity-100">
+                  <div className="absolute -left-10 top-0 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
+                  <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/35 to-transparent" />
                 </div>
 
-                <div className="teal-glow-card space-y-4 p-5">
-                  <div className="text-lg font-semibold text-white">Enroll Student</div>
-                  <div className="text-sm text-white/72">
-                    Add a student to the selected course before linking them to its modules.
+                <div className="relative flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8CEBFF]/72">
+                      Selected Course Workspace
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-white">
+                      {selectedCourse.code} - {selectedCourse.name}
+                    </div>
+                    <div className="mt-2 max-w-3xl text-sm leading-6 text-white/72">
+                      {selectedCourse.description?.trim() ||
+                        "No course description has been added yet."}
+                    </div>
                   </div>
-                  <select
-                    value={selectedStudentId}
-                    onChange={(e) => setSelectedStudentId(e.target.value)}
-                    disabled={availableStudents.length === 0}
-                    className="select-glass"
-                  >
-                    {availableStudents.length === 0 ? (
-                      <option value="">All available students are already enrolled</option>
-                    ) : (
-                      availableStudents.map((student) => (
-                        <option key={student.id} value={student.id}>
-                          {student.email}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => void onEnrollStudent()}
-                    disabled={busy || !selectedStudentId}
-                    className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
-                  >
-                    Enroll student
-                  </button>
+
+                  <StatusBadge status={selectedCourse.isActive ? "ACTIVE" : "INACTIVE"} />
+                </div>
+
+                <div className="relative mt-4 rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-white/72">
+                  Modules linked: {summarizeModules(selectedCourse.modules, 4)}
+                </div>
+
+                <div className="relative mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <SummaryCard label="Modules" value={selectedCourse.summary.moduleCount} />
+                  <SummaryCard label="Students" value={selectedCourse.summary.studentCount} />
+                  <SummaryCard label="Lecturers" value={selectedCourse.summary.lecturerCount} />
+                  <div className="teal-glow-card p-4">
+                    <div className="text-xs uppercase tracking-[0.16em] text-white/60">
+                      Status
+                    </div>
+                    <div className="mt-3">
+                      <StatusBadge status={selectedCourse.isActive ? "ACTIVE" : "INACTIVE"} />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <div className="teal-glow-card p-5">
-                  <div className="text-lg font-semibold text-white">Module Coverage</div>
-                  <div className="mt-3 space-y-3">
-                    {selectedCourse.modules.length === 0 ? (
-                      <EmptyState
-                        title="No modules in course"
-                        message="Assign at least one module to this course to expose lecturer coverage."
-                      />
-                    ) : (
-                      selectedCourse.modules.map((module) => (
-                        <div
-                          key={module.id}
-                          className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
-                        >
-                          <div className="font-semibold text-white">
-                            {module.code} - {module.name}
-                          </div>
-                          <div className="mt-1 text-xs text-white/60">
-                            {module.facultyName} | {module.enrolledCount} linked students
-                          </div>
-                          <div className="mt-2 text-xs text-white/72">
-                            Lecturers:{" "}
-                            {module.lecturers.length > 0
-                              ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
-                              : "Not assigned yet"}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+              <div
+                className="mobile-chip-row mt-5 sm:flex sm:flex-wrap sm:gap-2"
+                role="tablist"
+                aria-label="Selected course workspace sections"
+              >
+                {adminCourseWorkspaceTabs.map((tab) => {
+                  const active = workspaceTab === tab.id;
 
-                <div className="teal-glow-card p-5">
-                  <div className="text-lg font-semibold text-white">Enrolled Students</div>
-                  <div className="mt-3 space-y-3">
-                    {selectedCourse.students.length === 0 ? (
-                      <EmptyState
-                        title="No students enrolled"
-                        message="Enroll a student in this course to unlock module access and dashboard course content."
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setWorkspaceTab(tab.id)}
+                      className={[
+                        "tab-pill",
+                        active ? "tab-pill-active" : "tab-pill-idle",
+                      ].join(" ")}
+                      aria-pressed={active}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="divider-soft mt-5" />
+
+              <div className="mt-5 space-y-6">
+                <div
+                  className={workspaceTab === "overview" ? "space-y-6" : "hidden"}
+                  aria-hidden={workspaceTab !== "overview"}
+                >
+                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                    <div className="teal-glow-card space-y-4 p-5">
+                      <SectionTitle
+                        title="Assign Module"
+                        subtitle="Link an existing module to the selected course."
                       />
-                    ) : (
-                      selectedCourse.students.map((student) => (
-                        <div
-                          key={student.id}
-                          className="flex items-center justify-between gap-3 rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
-                        >
-                          <div>
-                            <div className="font-semibold text-white">{student.email}</div>
-                            <div className="mt-1 text-xs text-white/60">
-                              {student.studentNumber?.trim() || "No student number"} | Enrolled{" "}
-                              {formatDate(student.enrolledAt)}
+                      <select
+                        value={selectedModuleId}
+                        onChange={(e) => setSelectedModuleId(e.target.value)}
+                        disabled={availableModules.length === 0}
+                        className="select-glass"
+                        aria-label="Select module to link to course"
+                        title="Select module to link to course"
+                      >
+                        {availableModules.length === 0 ? (
+                          <option value="">All modules are already linked to this course</option>
+                        ) : (
+                          availableModules.map((module) => (
+                            <option key={module.id} value={module.id}>
+                              {module.code} - {module.name}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void onAssignModule()}
+                        disabled={busy || !selectedModuleId}
+                        className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
+                      >
+                        Link module
+                      </button>
+                    </div>
+
+                    <div className="teal-glow-card space-y-4 p-5">
+                      <SectionTitle
+                        title="Enroll Student"
+                        subtitle="Add a student to the selected course before linking them to its modules."
+                      />
+                      <select
+                        value={selectedStudentId}
+                        onChange={(e) => setSelectedStudentId(e.target.value)}
+                        disabled={availableStudents.length === 0}
+                        className="select-glass"
+                        aria-label="Select student to enroll in course"
+                        title="Select student to enroll in course"
+                      >
+                        {availableStudents.length === 0 ? (
+                          <option value="">All available students are already enrolled</option>
+                        ) : (
+                          availableStudents.map((student) => (
+                            <option key={student.id} value={student.id}>
+                              {student.email}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void onEnrollStudent()}
+                        disabled={busy || !selectedStudentId}
+                        className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
+                      >
+                        Enroll student
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                    <div className="teal-glow-card p-5">
+                      <SectionTitle
+                        title="Module Coverage"
+                        subtitle="Review all modules linked to this course and their lecturer coverage."
+                      />
+                      <div className="mt-3 space-y-3">
+                        {selectedCourse.modules.length === 0 ? (
+                          <EmptyState
+                            title="No modules in course"
+                            message="Assign at least one module to this course to expose lecturer coverage."
+                          />
+                        ) : (
+                          selectedCourse.modules.map((module) => (
+                            <div
+                              key={module.id}
+                              className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
+                            >
+                              <div className="font-semibold text-white">
+                                {module.code} - {module.name}
+                              </div>
+                              <div className="mt-1 text-xs text-white/60">
+                                {module.facultyName} | {module.enrolledCount} linked students
+                              </div>
+                              <div className="mt-2 text-xs text-white/72">
+                                Lecturers:{" "}
+                                {module.lecturers.length > 0
+                                  ? module.lecturers
+                                      .map((lecturer) => lecturer.email)
+                                      .join(", ")
+                                  : "Not assigned yet"}
+                              </div>
                             </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void onRemoveStudent(student.id)}
-                            disabled={busy}
-                            className="btn-danger px-3 py-1 text-xs disabled:opacity-60"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))
-                    )}
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="teal-glow-card p-5">
+                      <SectionTitle
+                        title="Enrolled Students"
+                        subtitle="Students in this course will receive linked module access."
+                      />
+                      <div className="mt-3 space-y-3">
+                        {selectedCourse.students.length === 0 ? (
+                          <EmptyState
+                            title="No students enrolled"
+                            message="Enroll a student in this course to unlock module access and dashboard course content."
+                          />
+                        ) : (
+                          selectedCourse.students.map((student) => (
+                            <div
+                              key={student.id}
+                              className="flex items-center justify-between gap-3 rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4"
+                            >
+                              <div>
+                                <div className="font-semibold text-white">{student.email}</div>
+                                <div className="mt-1 text-xs text-white/60">
+                                  {student.studentNumber?.trim() || "No student number"} |
+                                  {" "}Enrolled {formatDate(student.enrolledAt)}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void onRemoveStudent(student.id)}
+                                disabled={busy}
+                                className="btn-danger px-3 py-1 text-xs disabled:opacity-60"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                <div
+                  className={workspaceTab === "modules" ? "space-y-6" : "hidden"}
+                  aria-hidden={workspaceTab !== "modules"}
+                >
+                  <CourseModulesManager
+                    courses={courses}
+                    selectedCourseId={selectedCourseId}
+                    eligibleStudentIds={selectedCourse.students.map((student) => student.id)}
+                    idPrefix="courses-admin-modules"
+                    title="Modules"
+                    subtitle="Create modules for the selected course and manage lecturer plus learner membership here."
+                    canRemoveModules
+                    onSelectedModuleIdChange={setSelectedCourseModuleId}
+                    onChanged={loadAll}
+                  />
+                </div>
+
+                <div
+                  className={workspaceTab === "marksheet" ? "space-y-6" : "hidden"}
+                  aria-hidden={workspaceTab !== "marksheet"}
+                >
+                  <CourseMarksheetPanel
+                    modules={selectedCourse.modules}
+                    selectedModuleId={selectedCourseModuleId}
+                    onSelectedModuleIdChange={setSelectedCourseModuleId}
+                  />
+                </div>
+
+                <div
+                  className={workspaceTab === "assessments" ? "space-y-6" : "hidden"}
+                  aria-hidden={workspaceTab !== "assessments"}
+                >
+                  <CourseAssessmentsPanel
+                    modules={selectedCourse.modules}
+                    selectedModuleId={selectedCourseModuleId}
+                    onSelectedModuleIdChange={setSelectedCourseModuleId}
+                    canManage
+                    title="Assessments"
+                    subtitle="Upload and manage assessment files for the selected course modules."
+                  />
+                </div>
               </div>
-            </>
+            </div>
           ) : (
             <EmptyState
               title="No course selected"
               message="Create a course or pick an existing one to manage modules and enrollments."
             />
           )}
-        </>
+          </div>
+        </section>
       )}
     </div>
   );

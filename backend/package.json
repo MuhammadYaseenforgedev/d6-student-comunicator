@@ -16,6 +16,7 @@
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "test": "jest --runInBand",
+    "test:unit": "jest --config jest.unit.config.cjs --runInBand",
     "test:watch": "jest --watch --runInBand",
     "test:rbac": "jest rbac --runInBand",
     "test:walkthrough": "jest --runInBand src/test/auth.register.roles.test.ts src/test/rbac.matrix.test.ts src/test/announcements.uploads.permissions.test.ts src/test/parent.link.sa-id.test.ts src/test/thread.permissions.test.ts"
@@ -57,5 +58,8 @@
     "ts-jest": "^29.2.6",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "minimatch": "^10.2.3"
   }
 }

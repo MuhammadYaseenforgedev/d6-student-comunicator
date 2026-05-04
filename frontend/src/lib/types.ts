@@ -12,6 +12,7 @@ export type Announcement = {
   pinned: boolean;
   author: string;
   createdAt: string; // ISO string
+  expiresAt?: string | null;
   moduleId?: string | null;
   moduleCode?: string | null;
   moduleName?: string | null;
@@ -23,6 +24,7 @@ export type AnnouncementCreate = {
   body: string;
   pinned: boolean;
   author: string;
+  expiresAt: string;
   moduleId?: string | null;
 };
 
@@ -70,6 +72,12 @@ export type UploadRecord = {
   targetUserId?: string | null;
   targetUserEmail?: string | null;
   targetUserRole?: UserRole | null;
+  moduleId?: string | null;
+  moduleCode?: string | null;
+  moduleName?: string | null;
+  courseId?: string | null;
+  courseCode?: string | null;
+  courseName?: string | null;
 };
 
 // ---------- Calendar ----------

@@ -19,12 +19,17 @@ import { calendarRouter } from "./routes/calendar";
 import { financeRouter } from "./routes/finance";
 import { userRouter } from "./routes/users";
 import { meRouter } from "./routes/me";
+import { studentRouter } from "./routes/students";
 import { attendanceRouter } from "./routes/attendance";
 import { courseRouter } from "./routes/courses";
 import { demoRouter } from "./routes/demo";
 import { teamsLinksRouter } from "./routes/teamsLinks";
 import { notificationRouter } from "./routes/notifications";
 import { supportRouter } from "./routes/support";
+import {
+  assistantProtectedRouter,
+  assistantPublicRouter,
+} from "./routes/assistant";
 
 function normalizeOrigin(origin: string): string {
   return String(origin).trim().replace(/\/+$/, "");
@@ -116,12 +121,14 @@ export function createApp() {
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/support", supportRouter);
+  app.use("/api/assistant", assistantPublicRouter);
 
   // =========================
   // Everything below requires auth
   // =========================
   app.use(requireAuth);
 
+  app.use("/api/assistant", assistantProtectedRouter);
   app.use("/api", meRouter);
   app.use("/api", courseRouter);
   app.use("/api/channels", channelRouter);
@@ -133,6 +140,7 @@ export function createApp() {
 
   app.use("/api/uploads", uploadRouter);
   app.use("/api/users", userRouter);
+  app.use("/api", studentRouter);
   app.use("/api/integrations", teamsLinksRouter);
 
   app.use("/api/parent", parentRouter);

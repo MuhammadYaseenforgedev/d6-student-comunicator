@@ -93,6 +93,10 @@ export default function Inbox() {
     let cancelled = false;
 
     async function loadTeamsLinks() {
+      if (isParent) {
+        setTeamsLinks([]);
+        return;
+      }
       try {
         const res = await fetchTeamsLinks();
         if (!cancelled) {
@@ -109,7 +113,7 @@ export default function Inbox() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isParent]);
 
   const threadTitle = useCallback(
     (t: Thread) => {
@@ -272,68 +276,65 @@ export default function Inbox() {
             </div>
           </section>
 
-          <section className="teal-glow-card p-5 transition-all duration-300 hover:-translate-y-[1px]">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.6)] p-2 shadow-[0_0_12px_rgba(140,235,255,0.12)]">
-                <img
-                  src={teamsLogo}
-                  alt="Microsoft Teams logo"
-                  className="h-6 w-6 object-contain"
-                />
-              </div>
-
-              <div>
-                <h2 className="text-lg font-semibold text-white">
-                  Microsoft Teams
-                </h2>
-                <p className="text-sm text-white/70">
-                  Open your role-specific Teams workspace.
-                </p>
-              </div>
-            </div>
-
-            <div className="divider-soft my-4" />
-
-            {canUseTeamsWorkspace ? (
-              teamsLinks.length > 0 ? (
-                <div className="space-y-3">
-                  {teamsLinks.map((link) => (
-                    <a
-                      key={link.key}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group block w-full rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.6)] px-5 py-3 text-sm font-semibold text-white transition-all duration-200 hover:border-[rgba(140,235,255,0.4)] hover:bg-[rgba(14,42,99,0.65)] hover:shadow-[0_0_16px_rgba(140,235,255,0.15)] active:scale-[0.99]"
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={teamsLogo}
-                          alt=""
-                          aria-hidden="true"
-                          className="h-5 w-5 object-contain opacity-95 transition-transform duration-200 group-hover:scale-105"
-                        />
-                        <span>{link.label}</span>
-                      </div>
-                    </a>
-                  ))}
+          {!isParent && (
+            <section className="teal-glow-card p-5 transition-all duration-300 hover:-translate-y-[1px]">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.6)] p-2 shadow-[0_0_12px_rgba(140,235,255,0.12)]">
+                  <img
+                    src={teamsLogo}
+                    alt="Microsoft Teams logo"
+                    className="h-6 w-6 object-contain"
+                  />
                 </div>
-              ) : (
-                <div className="info-banner border-[rgba(255,196,87,0.24)] bg-[rgba(97,59,9,0.45)] text-[#ffe8b0] shadow-none">
-                  Teams links are not configured for your role yet. Add the
-                  relevant{" "}
-                  <code className="rounded bg-black/20 px-1.5 py-0.5 text-xs">
-                    {`TEAMS_LINK_*`}
-                  </code>{" "}
-                  value in the backend environment to restore this shortcut.
+
+                <div>
+                  <h2 className="text-lg font-semibold text-white">
+                    Microsoft Teams
+                  </h2>
+                  <p className="text-sm text-white/70">
+                    Open your role-specific Teams workspace.
+                  </p>
                 </div>
-              )
-            ) : (
-              <div className="info-banner text-white/75">
-                Teams workspace links are only available for student, lecturer,
-                and admin accounts.
               </div>
-            )}
-          </section>
+
+              <div className="divider-soft my-4" />
+
+              {canUseTeamsWorkspace ? (
+                teamsLinks.length > 0 ? (
+                  <div className="space-y-3">
+                    {teamsLinks.map((link) => (
+                      <a
+                        key={link.key}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group block w-full rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.6)] px-5 py-3 text-sm font-semibold text-white transition-all duration-200 hover:border-[rgba(140,235,255,0.4)] hover:bg-[rgba(14,42,99,0.65)] hover:shadow-[0_0_16px_rgba(140,235,255,0.15)] active:scale-[0.99]"
+                      >
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={teamsLogo}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-5 w-5 object-contain opacity-95 transition-transform duration-200 group-hover:scale-105"
+                          />
+                          <span>{link.label}</span>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="info-banner border-[rgba(255,196,87,0.24)] bg-[rgba(97,59,9,0.45)] text-[#ffe8b0] shadow-none">
+                    Teams links are not configured for your role yet. Add the
+                    relevant{" "}
+                    <code className="rounded bg-black/20 px-1.5 py-0.5 text-xs">
+                      {`TEAMS_LINK_*`}
+                    </code>{" "}
+                    value in the backend environment to restore this shortcut.
+                  </div>
+                )
+              ) : null}
+            </section>
+          )}
         </div>
 
         <section className="teal-glow-card p-6">

@@ -52,11 +52,102 @@ describe("Auth register role policy", () => {
     restoreEnvVar("AUTH_STAFF_REGISTER_PASSWORD");
   });
 
+  test("rejects registration when acceptedLegalTerms is missing", async () => {
+    const res = await request(app).post("/api/auth/register").send({
+      email: uniqueEmail("legal_missing"),
+      password: "Passw0rd!",
+      role: "PARENT",
+    });
+
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+    expect(String(res.body?.error?.message ?? "")).toBe(
+      "You must accept the POPIA Disclosure and IT Terms of Use before registering."
+    );
+  });
+
+  test("rejects registration when acceptedLegalTerms is false", async () => {
+    const res = await request(app).post("/api/auth/register").send({
+      email: uniqueEmail("legal_false"),
+      password: "Passw0rd!",
+      role: "PARENT",
+      acceptedLegalTerms: false,
+    });
+
+    expect(res.status).toBe(400);
+    expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+    expect(String(res.body?.error?.message ?? "")).toBe(
+      "You must accept the POPIA Disclosure and IT Terms of Use before registering."
+    );
+  });
+
+  test("rejects missing acceptedLegalTerms before OTP validation when OTP is required", async () => {
+    const previousRequireOtp = process.env.AUTH_REQUIRE_OTP;
+    const previousAllowPasswordRegister = process.env.AUTH_ALLOW_PASSWORD_REGISTER;
+    process.env.AUTH_REQUIRE_OTP = "true";
+    delete process.env.AUTH_ALLOW_PASSWORD_REGISTER;
+
+    try {
+      const res = await request(app).post("/api/auth/register").send({
+        email: uniqueEmail("legal_before_otp"),
+        password: "Passw0rd!",
+        role: "PARENT",
+        otp: "000000",
+      });
+
+      expect(res.status).toBe(400);
+      expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+      expect(String(res.body?.error?.message ?? "")).toBe(
+        "You must accept the POPIA Disclosure and IT Terms of Use before registering."
+      );
+    } finally {
+      if (typeof previousRequireOtp === "string") process.env.AUTH_REQUIRE_OTP = previousRequireOtp;
+      else process.env.AUTH_REQUIRE_OTP = "false";
+
+      if (typeof previousAllowPasswordRegister === "string") {
+        process.env.AUTH_ALLOW_PASSWORD_REGISTER = previousAllowPasswordRegister;
+      } else {
+        process.env.AUTH_ALLOW_PASSWORD_REGISTER = "true";
+      }
+    }
+  });
+
+  test("accepts true acceptedLegalTerms into normal OTP validation flow", async () => {
+    const previousRequireOtp = process.env.AUTH_REQUIRE_OTP;
+    const previousAllowPasswordRegister = process.env.AUTH_ALLOW_PASSWORD_REGISTER;
+    process.env.AUTH_REQUIRE_OTP = "true";
+    delete process.env.AUTH_ALLOW_PASSWORD_REGISTER;
+
+    try {
+      const res = await request(app).post("/api/auth/register").send({
+        email: uniqueEmail("legal_true_otp"),
+        password: "Passw0rd!",
+        role: "PARENT",
+        acceptedLegalTerms: true,
+        otp: "000000",
+      });
+
+      expect(res.status).toBe(400);
+      expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
+      expect(String(res.body?.error?.message ?? "")).toBe("OTP not found");
+    } finally {
+      if (typeof previousRequireOtp === "string") process.env.AUTH_REQUIRE_OTP = previousRequireOtp;
+      else process.env.AUTH_REQUIRE_OTP = "false";
+
+      if (typeof previousAllowPasswordRegister === "string") {
+        process.env.AUTH_ALLOW_PASSWORD_REGISTER = previousAllowPasswordRegister;
+      } else {
+        process.env.AUTH_ALLOW_PASSWORD_REGISTER = "true";
+      }
+    }
+  });
+
   test("allows STUDENT self-registration with SA ID and student number", async () => {
     const res = await request(app).post("/api/auth/register").send({
       email: uniqueEmail("student"),
       password: "Passw0rd!",
       role: "STUDENT",
+      acceptedLegalTerms: true,
       southAfricanId: uniqueSouthAfricanId(),
       studentNumber: uniqueStudentNumber("STU"),
     });
@@ -71,6 +162,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("short_password"),
       password: "12345",
       role: "PARENT",
+      acceptedLegalTerms: true,
     });
 
     expect(res.status).toBe(400);
@@ -83,6 +175,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("student_missing_identity"),
       password: "Passw0rd!",
       role: "STUDENT",
+      acceptedLegalTerms: true,
     });
 
     expect(res.status).toBe(400);
@@ -90,14 +183,29 @@ describe("Auth register role policy", () => {
   });
 
   test("allows PARENT self-registration", async () => {
+    const email = uniqueEmail("parent");
+
     const res = await request(app).post("/api/auth/register").send({
-      email: uniqueEmail("parent"),
+      email,
       password: "Passw0rd!",
       role: "PARENT",
+      acceptedLegalTerms: true,
     });
 
     expect(res.status).toBe(201);
     expect(res.body?.user?.role).toBe("PARENT");
+
+    const stored = await pool.query<{ accepted_legal_terms_at: string | null }>(
+      `
+        SELECT accepted_legal_terms_at::text AS accepted_legal_terms_at
+        FROM users
+        WHERE lower(email) = lower($1)
+        LIMIT 1
+      `,
+      [email]
+    );
+
+    expect(stored.rows[0]?.accepted_legal_terms_at).toBeTruthy();
   });
 
   test("blocks LECTURER self-registration when staff password is missing", async () => {
@@ -107,6 +215,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("lecturer_missing"),
       password: "Passw0rd!",
       role: "LECTURER",
+      acceptedLegalTerms: true,
     });
 
     expect(res.status).toBe(403);
@@ -120,6 +229,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("admin_wrong"),
       password: "Passw0rd!",
       role: "ADMIN",
+      acceptedLegalTerms: true,
       staffRegisterPassword: "wrong-password",
     });
 
@@ -134,6 +244,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("lecturer_ok"),
       password: "Passw0rd!",
       role: "LECTURER",
+      acceptedLegalTerms: true,
       staffRegisterPassword: STAFF_PASSWORD,
     });
 
@@ -148,6 +259,7 @@ describe("Auth register role policy", () => {
       email: uniqueEmail("admin_ok"),
       password: "Passw0rd!",
       role: "ADMIN",
+      acceptedLegalTerms: true,
       staffRegisterPassword: STAFF_PASSWORD,
     });
 
@@ -164,6 +276,7 @@ describe("Auth register role policy", () => {
       email,
       password,
       role: "STUDENT",
+      acceptedLegalTerms: true,
       southAfricanId: uniqueSouthAfricanId(),
       studentNumber,
     });

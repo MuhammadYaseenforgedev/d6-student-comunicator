@@ -90,7 +90,7 @@ function channelSupportGlow(channel: ChannelKey): string {
   if (channel === "modules") return "text-[#8CEBFF]";
   if (channel === "faculty") return "text-[#8FFFEF]";
   if (channel === "clubs") return "text-[#B8A6FF]";
-  if (channel === "emergency") return "text-[#FF9C9C]";
+  if (channel === "emergency") return "text-[#FF3B3B]";
   return "text-[#8CCBFF]";
 }
 

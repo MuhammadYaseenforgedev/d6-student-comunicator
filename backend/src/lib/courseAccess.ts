@@ -1,9 +1,13 @@
+import { syncCalendarForAssignedCourse } from "./courseCalendarSync";
+
 type Queryable = {
   query: <T>(
     text: string,
     params?: unknown[]
   ) => Promise<{ rows: T[]; rowCount?: number | null }>;
 };
+
+type CourseEnrollmentStatus = "ACTIVE" | "INACTIVE";
 
 export async function isStudentActiveInCourse(
   db: Queryable,
@@ -20,6 +24,71 @@ export async function isStudentActiveInCourse(
       LIMIT 1
     `,
     [studentId, courseId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function isLecturerAssignedToModule(
+  db: Queryable,
+  lecturerId: string,
+  moduleId: string
+): Promise<boolean> {
+  const result = await db.query(
+    `
+      SELECT 1
+      FROM lecturer_module_assignments
+      WHERE lecturer_id = $1
+        AND module_id = $2
+      LIMIT 1
+    `,
+    [lecturerId, moduleId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function isLecturerAssignedToCourse(
+  db: Queryable,
+  lecturerId: string,
+  courseId: string
+): Promise<boolean> {
+  const result = await db.query(
+    `
+      SELECT 1
+      FROM lecturer_module_assignments lma
+      JOIN faculty_modules fm ON fm.id = lma.module_id
+      WHERE lma.lecturer_id = $1
+        AND fm.course_id = $2
+      LIMIT 1
+    `,
+    [lecturerId, courseId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function isLecturerAllowedForStudent(
+  db: Queryable,
+  lecturerId: string,
+  studentId: string
+): Promise<boolean> {
+  const result = await db.query(
+    `
+      SELECT 1
+      FROM lecturer_module_assignments lma
+      JOIN faculty_modules fm ON fm.id = lma.module_id
+      JOIN student_module_enrollments sme
+        ON sme.module_id = fm.id
+       AND sme.student_id = $2
+      JOIN student_courses sc
+        ON sc.student_user_id = sme.student_id
+       AND sc.course_id = fm.course_id
+       AND sc.status = 'ACTIVE'
+      WHERE lma.lecturer_id = $1
+      LIMIT 1
+    `,
+    [lecturerId, studentId]
   );
 
   return (result.rowCount ?? 0) > 0;
@@ -72,6 +141,82 @@ export async function syncStudentCourseName(
     `,
     [studentId]
   );
+}
+
+export async function syncStudentModulesForCourse(
+  db: Queryable,
+  studentId: string,
+  courseId: string
+): Promise<number> {
+  const result = await db.query<{ inserted_count: number }>(
+    `
+      WITH course_modules AS (
+        SELECT fm.id
+        FROM faculty_modules fm
+        WHERE fm.course_id = $2
+      ),
+      inserted AS (
+        INSERT INTO student_module_enrollments (module_id, student_id)
+        SELECT cm.id, $1
+        FROM course_modules cm
+        ON CONFLICT (module_id, student_id) DO NOTHING
+        RETURNING module_id
+      )
+      SELECT COUNT(*)::int AS inserted_count
+      FROM inserted
+    `,
+    [studentId, courseId]
+  );
+
+  return Number(result.rows[0]?.inserted_count ?? 0);
+}
+
+export async function assignCourseToStudent(
+  db: Queryable,
+  input: {
+    studentId: string;
+    courseId: string;
+    status?: CourseEnrollmentStatus;
+    deactivateOtherCourses?: boolean;
+  }
+): Promise<void> {
+  const status = input.status ?? "ACTIVE";
+
+  if (input.deactivateOtherCourses) {
+    await db.query(
+      `
+        UPDATE student_courses
+        SET status = 'INACTIVE'
+        WHERE student_user_id = $1
+          AND course_id <> $2
+          AND status = 'ACTIVE'
+      `,
+      [input.studentId, input.courseId]
+    );
+  }
+
+  await db.query(
+    `
+      INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
+      VALUES ($1, $2, $3, now())
+      ON CONFLICT (student_user_id, course_id)
+      DO UPDATE SET
+        status = EXCLUDED.status,
+        enrolled_at = CASE
+          WHEN student_courses.status = EXCLUDED.status THEN student_courses.enrolled_at
+          ELSE now()
+        END
+    `,
+    [input.studentId, input.courseId, status]
+  );
+
+  if (status === "ACTIVE") {
+    await syncStudentModulesForCourse(db, input.studentId, input.courseId);
+    await syncCalendarForAssignedCourse(db, {
+      studentId: input.studentId,
+      courseId: input.courseId,
+    });
+  }
 }
 
 export async function syncStudentCourseNames(

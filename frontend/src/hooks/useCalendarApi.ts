@@ -1,16 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getUser } from "../lib/auth";
 import {
   createCalendarEntry,
   deleteCalendarEntry,
   listCalendar,
+  updateCalendarEntry,
   type CalendarEntry,
 } from "../api/calendar";
 
-// ✅ Re-export so other files can import it from the hook without TS2459
 export type { CalendarEntry };
 
-function toLocalInputValue(iso: string) {
+type CalendarQuery = {
+  date?: string;
+  start?: string;
+  end?: string;
+};
+
+export function toLocalInputValue(iso: string) {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   const yyyy = d.getFullYear();
@@ -30,65 +36,127 @@ function isDateOnly(v: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
 
+function normalizeQuery(query?: CalendarQuery): CalendarQuery {
+  const date = String(query?.date ?? "").trim();
+  const start = String(query?.start ?? "").trim();
+  const end = String(query?.end ?? "").trim();
+
+  if (start && end) return { start, end };
+  if (date) return { date };
+  return {};
+}
+
+function buildEntryPayload(payload: {
+  title: string;
+  description?: string;
+  location?: string;
+  startsLocal: string;
+  endsLocal: string;
+  courseId?: string;
+}) {
+  const title = payload.title.trim();
+  if (!title) throw new Error("Title is required");
+
+  const startsAt = fromLocalInputValue(payload.startsLocal);
+  const endsAt = fromLocalInputValue(payload.endsLocal);
+
+  if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+    throw new Error("End time must be after start time");
+  }
+
+  return {
+    title,
+    description: payload.description?.trim() || null,
+    location: payload.location?.trim() || null,
+    startsAt,
+    endsAt,
+    courseId: payload.courseId?.trim() || null,
+  };
+}
+
 /**
  * If childId is provided (Parent Portal Calendar), we fetch that child's entries.
- * If role is PARENT and childId is missing, we DO NOT call the backend (prevents 400).
+ * If role is PARENT and childId is missing, we do not call the backend.
+ * Existing callers may still pass childId as the first argument.
  */
 export function useCalendarApi(date?: string, childId?: string) {
   const user = getUser();
   const role = (user?.role ?? "STUDENT").toUpperCase();
 
-  // Backward compatibility: existing callers may still pass only childId as the first argument.
   const resolvedDate = date && isDateOnly(date) ? date : undefined;
   const resolvedChildId = childId ?? (date && !isDateOnly(date) ? date : undefined);
 
   const canCreate = role === "ADMIN" || role === "LECTURER" || role === "STUDENT";
-  const canDelete = role !== "PARENT"; // parent cannot delete
+  const canDelete = role !== "PARENT";
 
   const [items, setItems] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastQueryRef = useRef<CalendarQuery>(normalizeQuery({ date: resolvedDate }));
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(
+    async (query?: CalendarQuery) => {
+      const nextQuery = normalizeQuery(query ?? lastQueryRef.current);
+      lastQueryRef.current = nextQuery;
 
-    try {
-      // Parent must select a child first, otherwise backend returns 400.
-      if (role === "PARENT" && !resolvedChildId) {
-        setItems([]);
-        return;
+      setLoading(true);
+      setError(null);
+
+      try {
+        if (role === "PARENT" && !resolvedChildId) {
+          setItems([]);
+          return;
+        }
+
+        const list = await listCalendar({
+          ...nextQuery,
+          limit: 250,
+          childId: role === "PARENT" ? resolvedChildId : undefined,
+        });
+
+        setItems(Array.isArray(list) ? list : []);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load calendar");
+      } finally {
+        setLoading(false);
       }
-
-      const list = await listCalendar({
-        date: resolvedDate ?? undefined,
-        limit: 100,
-        childId: role === "PARENT" ? resolvedChildId : undefined,
-      });
-
-      setItems(Array.isArray(list) ? list : []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load calendar");
-    } finally {
-      setLoading(false);
-    }
-  }, [resolvedChildId, resolvedDate, role]);
+    },
+    [resolvedChildId, role]
+  );
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void load(lastQueryRef.current);
+  }, [load]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, CalendarEntry[]>();
     for (const it of items) {
       const ts = Date.parse(it.startsAt);
-      if (!Number.isFinite(ts)) continue; // skip malformed rows without crashing
+      if (!Number.isFinite(ts)) continue;
       const day = new Date(ts).toISOString().slice(0, 10);
       if (!map.has(day)) map.set(day, []);
       map.get(day)!.push(it);
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [items]);
+
+  const reload = useCallback(async () => {
+    await load(lastQueryRef.current);
+  }, [load]);
+
+  const loadDate = useCallback(
+    async (nextDate: string) => {
+      await load({ date: nextDate });
+    },
+    [load]
+  );
+
+  const loadRange = useCallback(
+    async (start: string, end: string) => {
+      await load({ start, end });
+    },
+    [load]
+  );
 
   const create = useCallback(
     async (payload: {
@@ -97,42 +165,56 @@ export function useCalendarApi(date?: string, childId?: string) {
       location?: string;
       startsLocal: string;
       endsLocal: string;
+      courseId?: string;
     }) => {
       setError(null);
 
       if (!canCreate) {
         setError("Your role cannot create calendar entries.");
-        return;
-      }
-
-      const title = payload.title.trim();
-      if (!title) {
-        setError("Title is required");
-        return;
-      }
-
-      const startsAt = fromLocalInputValue(payload.startsLocal);
-      const endsAt = fromLocalInputValue(payload.endsLocal);
-
-      if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
-        setError("End time must be after start time");
-        return;
+        return false;
       }
 
       try {
-        await createCalendarEntry({
-          title,
-          description: payload.description?.trim() || null,
-          location: payload.location?.trim() || null,
-          startsAt,
-          endsAt,
-        });
+        await createCalendarEntry(buildEntryPayload(payload));
         await reload();
+        return true;
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to create entry");
+        return false;
       }
     },
     [canCreate, reload]
+  );
+
+  const update = useCallback(
+    async (
+      id: string,
+      payload: {
+        title: string;
+        description?: string;
+        location?: string;
+        startsLocal: string;
+        endsLocal: string;
+        courseId?: string;
+      }
+    ) => {
+      setError(null);
+
+      if (!canDelete) {
+        setError("Your role cannot update calendar entries.");
+        return false;
+      }
+
+      try {
+        await updateCalendarEntry(id, buildEntryPayload(payload));
+        await reload();
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to update entry");
+        return false;
+      }
+    },
+    [canDelete, reload]
   );
 
   const remove = useCallback(
@@ -141,14 +223,16 @@ export function useCalendarApi(date?: string, childId?: string) {
 
       if (!canDelete) {
         setError("Your role cannot delete calendar entries.");
-        return;
+        return false;
       }
 
       try {
         await deleteCalendarEntry(id);
         await reload();
+        return true;
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to delete entry");
+        return false;
       }
     },
     [canDelete, reload]
@@ -164,7 +248,10 @@ export function useCalendarApi(date?: string, childId?: string) {
     items,
     reload,
     refresh: reload,
+    loadDate,
+    loadRange,
     create,
+    update,
     remove,
     toLocalInputValue,
   };

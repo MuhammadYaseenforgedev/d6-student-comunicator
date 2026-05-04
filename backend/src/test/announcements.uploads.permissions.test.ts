@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import request from "supertest";
 import { app } from "../app";
 import { pool } from "../config/db";
@@ -145,11 +143,30 @@ describe("Announcements and uploads permissions", () => {
 
     await pool.query(
       `
+        INSERT INTO student_courses (student_user_id, course_id, status, enrolled_at)
+        VALUES ($1, $2, 'ACTIVE', now())
+        ON CONFLICT (student_user_id, course_id)
+        DO UPDATE SET status = 'ACTIVE'
+      `,
+      [ctx.otherStudentId, ctx.courseId]
+    );
+
+    await pool.query(
+      `
         INSERT INTO student_module_enrollments (module_id, student_id)
         VALUES ($1, $2)
         ON CONFLICT (module_id, student_id) DO NOTHING
       `,
       [ctx.moduleId, ctx.studentId]
+    );
+
+    await pool.query(
+      `
+        INSERT INTO student_module_enrollments (module_id, student_id)
+        VALUES ($1, $2)
+        ON CONFLICT (module_id, student_id) DO NOTHING
+      `,
+      [ctx.otherModuleId, ctx.otherStudentId]
     );
   });
 
@@ -262,6 +279,77 @@ describe("Announcements and uploads permissions", () => {
     expect(studentBlocked.status).toBe(403);
   });
 
+  test("Announcements: expiry is validated and expired items are hidden by default", async () => {
+    const pastCreate = await request(app)
+      .post(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.lecturerToken))
+      .send({
+        title: `expired-${Date.now()}`,
+        body: "Should be rejected",
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      });
+    expect(pastCreate.status).toBe(400);
+
+    const futureCreate = await request(app)
+      .post(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.lecturerToken))
+      .send({
+        title: `timed-${Date.now()}`,
+        body: "Visible for a while",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      });
+    expect(futureCreate.status).toBe(201);
+
+    const timedAnnouncementId = String(futureCreate.body?.id ?? "");
+    expect(timedAnnouncementId).toBeTruthy();
+    expect(typeof futureCreate.body?.expiresAt).toBe("string");
+
+    await pool.query(
+      `
+        UPDATE announcements
+        SET expires_at = now() - interval '2 minutes'
+        WHERE id = $1
+      `,
+      [timedAnnouncementId]
+    );
+
+    const lecturerActive = await request(app)
+      .get(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.lecturerToken));
+    expect(lecturerActive.status).toBe(200);
+    const lecturerActiveRows = toRows(lecturerActive.body);
+    expect(
+      lecturerActiveRows.some((row) => String(row.id) === timedAnnouncementId)
+    ).toBe(false);
+
+    const studentActive = await request(app)
+      .get(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.studentToken));
+    expect(studentActive.status).toBe(200);
+    const studentActiveRows = toRows(studentActive.body);
+    expect(
+      studentActiveRows.some((row) => String(row.id) === timedAnnouncementId)
+    ).toBe(false);
+
+    const lecturerAll = await request(app)
+      .get(`/api/channels/${ctx.channelId}/announcements?includeExpired=true`)
+      .set(auth(ctx.lecturerToken));
+    expect(lecturerAll.status).toBe(200);
+    const lecturerAllRows = toRows(lecturerAll.body);
+    expect(
+      lecturerAllRows.some((row) => String(row.id) === timedAnnouncementId)
+    ).toBe(true);
+
+    const studentAll = await request(app)
+      .get(`/api/channels/${ctx.channelId}/announcements?includeExpired=true`)
+      .set(auth(ctx.studentToken));
+    expect(studentAll.status).toBe(200);
+    const studentAllRows = toRows(studentAll.body);
+    expect(
+      studentAllRows.some((row) => String(row.id) === timedAnnouncementId)
+    ).toBe(false);
+  });
+
   test("Uploads: student can submit; parent is forbidden; list/download visibility is role-safe", async () => {
     await pool.query(
       `
@@ -276,37 +364,66 @@ describe("Announcements and uploads permissions", () => {
       .post("/api/uploads")
       .set(auth(ctx.lecturerToken))
       .field("kind", "LECTURER_MATERIAL")
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.moduleId)
       .attach("file", Buffer.from("lecturer material"), "guide.txt");
     expect(lecturerUpload.status).toBe(201);
     ctx.uploadId = String(lecturerUpload.body?.id ?? "");
     expect(ctx.uploadId).toBeTruthy();
+    expect(String(lecturerUpload.body?.moduleId ?? "")).toBe(ctx.moduleId);
 
     const adminUpload = await request(app)
       .post("/api/uploads")
       .set(auth(ctx.adminToken))
       .field("kind", "LECTURER_MATERIAL")
-      .field("targetUserId", ctx.lecturerId)
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.moduleId)
       .attach("file", Buffer.from("admin material"), "admin-guide.txt");
     expect(adminUpload.status).toBe(201);
     ctx.adminUploadId = String(adminUpload.body?.id ?? "");
     expect(ctx.adminUploadId).toBeTruthy();
+    expect(String(adminUpload.body?.moduleId ?? "")).toBe(ctx.moduleId);
 
     const adminStudentUpload = await request(app)
       .post("/api/uploads")
       .set(auth(ctx.adminToken))
       .field("kind", "STUDENT_SUBMISSION")
       .field("targetUserId", ctx.studentId)
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.moduleId)
       .attach("file", Buffer.from("admin student submission"), "admin-student-submission.txt");
     expect(adminStudentUpload.status).toBe(201);
     ctx.adminStudentUploadId = String(adminStudentUpload.body?.id ?? "");
     expect(ctx.adminStudentUploadId).toBeTruthy();
+    expect(String(adminStudentUpload.body?.moduleId ?? "")).toBe(ctx.moduleId);
 
     const adminMissingTarget = await request(app)
       .post("/api/uploads")
       .set(auth(ctx.adminToken))
-      .field("kind", "LECTURER_MATERIAL")
+      .field("kind", "STUDENT_SUBMISSION")
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.moduleId)
       .attach("file", Buffer.from("missing target"), "missing-target.txt");
     expect(adminMissingTarget.status).toBe(400);
+
+    const adminWrongStudentModule = await request(app)
+      .post("/api/uploads")
+      .set(auth(ctx.adminToken))
+      .field("kind", "STUDENT_SUBMISSION")
+      .field("targetUserId", ctx.studentId)
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.otherModuleId)
+      .attach("file", Buffer.from("wrong module"), "wrong-module.txt");
+    expect(adminWrongStudentModule.status).toBe(400);
+
+    const adminCourseMismatch = await request(app)
+      .post("/api/uploads")
+      .set(auth(ctx.adminToken))
+      .field("kind", "LECTURER_MATERIAL")
+      .field("courseId", "11111111-1111-4111-8111-111111111111")
+      .field("moduleId", ctx.moduleId)
+      .attach("file", Buffer.from("mismatch"), "mismatch.txt");
+    expect(adminCourseMismatch.status).toBe(400);
 
     const parentUpload = await request(app)
       .post("/api/uploads")
@@ -320,15 +437,20 @@ describe("Announcements and uploads permissions", () => {
       .post("/api/uploads")
       .set(auth(ctx.studentToken))
       .field("kind", "STUDENT_SUBMISSION")
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.moduleId)
       .attach("file", Buffer.from("student submission"), "student-submission.txt");
     expect(studentUpload.status).toBe(201);
     ctx.studentUploadId = String(studentUpload.body?.id ?? "");
     expect(ctx.studentUploadId).toBeTruthy();
+    expect(String(studentUpload.body?.moduleId ?? "")).toBe(ctx.moduleId);
 
     const otherStudentUpload = await request(app)
       .post("/api/uploads")
       .set(auth(ctx.otherStudentToken))
       .field("kind", "STUDENT_SUBMISSION")
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.otherModuleId)
       .attach("file", Buffer.from("other student submission"), "other-student-submission.txt");
     expect(otherStudentUpload.status).toBe(201);
     ctx.otherStudentUploadId = String(otherStudentUpload.body?.id ?? "");
@@ -338,16 +460,39 @@ describe("Announcements and uploads permissions", () => {
       .post("/api/uploads")
       .set(auth(ctx.studentToken))
       .field("kind", "LECTURER_MATERIAL")
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.moduleId)
       .attach("file", Buffer.from("student wrong kind"), "student-wrong-kind.txt");
     expect(studentWrongKind.status).toBe(400);
+
+    const studentWrongModule = await request(app)
+      .post("/api/uploads")
+      .set(auth(ctx.studentToken))
+      .field("kind", "STUDENT_SUBMISSION")
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.otherModuleId)
+      .attach("file", Buffer.from("student wrong module"), "student-wrong-module.txt");
+    expect(studentWrongModule.status).toBe(403);
+
+    const lecturerWrongModule = await request(app)
+      .post("/api/uploads")
+      .set(auth(ctx.lecturerToken))
+      .field("kind", "LECTURER_MATERIAL")
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.otherModuleId)
+      .attach("file", Buffer.from("lecturer wrong module"), "lecturer-wrong-module.txt");
+    expect(lecturerWrongModule.status).toBe(403);
 
     const lecturerList = await request(app)
       .get("/api/uploads")
       .set(auth(ctx.lecturerToken));
     expect(lecturerList.status).toBe(200);
     const lecturerRows = toRows(lecturerList.body);
+    expect(lecturerRows.some((x) => String(x.id) === ctx.uploadId)).toBe(true);
+    expect(lecturerRows.some((x) => String(x.id) === ctx.adminUploadId)).toBe(true);
     expect(lecturerRows.some((x) => String(x.id) === ctx.studentUploadId)).toBe(true);
     expect(lecturerRows.some((x) => String(x.id) === ctx.adminStudentUploadId)).toBe(true);
+    expect(lecturerRows.some((x) => String(x.id) === ctx.otherStudentUploadId)).toBe(false);
 
     const parentList = await request(app)
       .get("/api/uploads")
@@ -369,6 +514,17 @@ describe("Announcements and uploads permissions", () => {
     expect(studentRows.some((x) => String(x.id) === ctx.adminUploadId)).toBe(true);
     expect(studentRows.some((x) => String(x.id) === ctx.studentUploadId)).toBe(true);
     expect(studentRows.some((x) => String(x.id) === ctx.adminStudentUploadId)).toBe(true);
+    expect(studentRows.some((x) => String(x.id) === ctx.otherStudentUploadId)).toBe(false);
+
+    const lecturerBlockedModuleList = await request(app)
+      .get(`/api/uploads?moduleId=${ctx.otherModuleId}`)
+      .set(auth(ctx.lecturerToken));
+    expect(lecturerBlockedModuleList.status).toBe(403);
+
+    const studentBlockedModuleList = await request(app)
+      .get(`/api/uploads?moduleId=${ctx.otherModuleId}`)
+      .set(auth(ctx.studentToken));
+    expect(studentBlockedModuleList.status).toBe(403);
 
     const parentDownload = await request(app)
       .get(`/api/uploads/${ctx.uploadId}/download`)
@@ -438,7 +594,7 @@ describe("Announcements and uploads permissions", () => {
     const lecturerDeleteOtherStudentUpload = await request(app)
       .delete(`/api/uploads/${ctx.otherStudentUploadId}`)
       .set(auth(ctx.lecturerToken));
-    expect(lecturerDeleteOtherStudentUpload.status).toBe(200);
+    expect(lecturerDeleteOtherStudentUpload.status).toBe(403);
   });
 
   test("Uploads: missing files are pruned from staff lists", async () => {
@@ -446,20 +602,17 @@ describe("Announcements and uploads permissions", () => {
       .post("/api/uploads")
       .set(auth(ctx.lecturerToken))
       .field("kind", "LECTURER_MATERIAL")
+      .field("courseId", ctx.courseId)
+      .field("moduleId", ctx.moduleId)
       .attach("file", Buffer.from("temporary upload"), "transient.txt");
     expect(created.status).toBe(201);
 
     const uploadId = String(created.body?.id ?? "");
-    const storagePath = String(created.body?.storagePath ?? "");
     expect(uploadId).toBeTruthy();
-    expect(storagePath).toBeTruthy();
-
-    const projectRoot = path.resolve(__dirname, "../..");
-    const uploadDir = path.resolve(projectRoot, String(process.env.UPLOAD_DIR ?? "").trim() || "uploads");
-    const relativeUploadPath = storagePath.replace(/^uploads[\\/]/, "");
-    const absPath = path.resolve(uploadDir, relativeUploadPath);
-
-    await fs.promises.unlink(absPath);
+    await pool.query(`UPDATE uploads SET storage_path = $2 WHERE id = $1`, [
+      uploadId,
+      "uploads/missing-test-file.txt",
+    ]);
 
     const list = await request(app)
       .get("/api/uploads")

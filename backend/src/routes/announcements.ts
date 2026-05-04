@@ -7,6 +7,8 @@ import { requireAccess } from "../middleware/rbac";
 import { repos } from "../persistence";
 
 export const announcementRouter = Router();
+const DEFAULT_ANNOUNCEMENT_DURATION_DAYS = 30;
+const MAX_ANNOUNCEMENT_DURATION_DAYS = 365;
 
 function err(res: any, status: number, code: string, message: string) {
   return res.status(status).json({ error: { code, message } });
@@ -20,6 +22,97 @@ function cleanOptionalText(v: unknown): string | undefined {
 
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function addDaysToNow(days: number): string {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function normalizeDurationDays(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const value =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string"
+        ? Number(raw.trim())
+        : NaN;
+
+  if (!Number.isFinite(value) || !Number.isInteger(value)) return null;
+  return value;
+}
+
+function resolveAnnouncementExpiry(input: {
+  expiresAt?: unknown;
+  durationDays?: unknown;
+  defaultDays?: number;
+  allowDefault?: boolean;
+}):
+  | { ok: true; expiresAt: string }
+  | { ok: false; status: number; code: string; message: string } {
+  const expiresAtWasProvided = input.expiresAt !== undefined;
+  const durationDaysWasProvided = input.durationDays !== undefined;
+  const expiresAtText = typeof input.expiresAt === "string" ? input.expiresAt.trim() : "";
+  if (expiresAtWasProvided && expiresAtText) {
+    const parsed = Date.parse(expiresAtText);
+    if (!Number.isFinite(parsed)) {
+      return {
+        ok: false,
+        status: 400,
+        code: "VALIDATION",
+        message: "expiresAt must be a valid ISO date/time",
+      };
+    }
+    if (parsed <= Date.now()) {
+      return {
+        ok: false,
+        status: 400,
+        code: "VALIDATION",
+        message: "expiresAt must be in the future",
+      };
+    }
+    return { ok: true, expiresAt: new Date(parsed).toISOString() };
+  }
+
+  if (durationDaysWasProvided) {
+    const durationDays = normalizeDurationDays(input.durationDays);
+    if (durationDays == null) {
+      return {
+        ok: false,
+        status: 400,
+        code: "VALIDATION",
+        message: "durationDays must be a whole number",
+      };
+    }
+    if (durationDays <= 0 || durationDays > MAX_ANNOUNCEMENT_DURATION_DAYS) {
+      return {
+        ok: false,
+        status: 400,
+        code: "VALIDATION",
+        message: `durationDays must be between 1 and ${MAX_ANNOUNCEMENT_DURATION_DAYS}`,
+      };
+    }
+    return { ok: true, expiresAt: addDaysToNow(durationDays) };
+  }
+
+  if (expiresAtWasProvided && !input.allowDefault) {
+    return {
+      ok: false,
+      status: 400,
+      code: "VALIDATION",
+      message: "expiresAt must be a valid ISO date/time",
+    };
+  }
+
+  if (!input.allowDefault) {
+    return {
+      ok: false,
+      status: 400,
+      code: "VALIDATION",
+      message: "expiresAt or durationDays is required",
+    };
+  }
+
+  return { ok: true, expiresAt: addDaysToNow(input.defaultDays ?? DEFAULT_ANNOUNCEMENT_DURATION_DAYS) };
 }
 
 type ChannelAccess = {
@@ -220,9 +313,10 @@ async function filterAnnouncementsForChannel(
   user: NonNullable<Express.Request["user"]>,
   access: ChannelAccess,
   requestedModuleId: string | null,
-  channelId: string
+  channelId: string,
+  includeExpired = false
 ) {
-  const list = await repos.announcements.listByChannel(channelId);
+  const list = await repos.announcements.listByChannel(channelId, { includeExpired });
   if (!isModulesChannel(access)) return list;
 
   if (requestedModuleId) {
@@ -251,6 +345,10 @@ async function listAnnouncementsForChannel(req: any, res: any, channelId: string
   }
 
   const requestedModuleId = cleanOptionalText(req.query?.moduleId) ?? null;
+  const includeExpiredRequested =
+    String(req.query?.includeExpired ?? "").trim().toLowerCase() === "true";
+  const includeExpired =
+    includeExpiredRequested && (user.role === "ADMIN" || user.role === "LECTURER");
   if (requestedModuleId) {
     if (!isModulesChannel(access)) {
       return err(res, 400, "VALIDATION", "moduleId can only be used on the Modules channel");
@@ -265,7 +363,13 @@ async function listAnnouncementsForChannel(req: any, res: any, channelId: string
     }
   }
 
-  const list = await filterAnnouncementsForChannel(user, access, requestedModuleId, channelId);
+  const list = await filterAnnouncementsForChannel(
+    user,
+    access,
+    requestedModuleId,
+    channelId,
+    includeExpired
+  );
   return res.json(list);
 }
 
@@ -312,10 +416,12 @@ announcementRouter.post(
   async (req, res) => {
     try {
       const { channelId } = req.params as { channelId: string };
-      const { title, body, pinned } = req.body as {
+      const { title, body, pinned, expiresAt, durationDays } = req.body as {
         title?: string;
         body?: string;
         pinned?: boolean;
+        expiresAt?: string;
+        durationDays?: number | string;
       };
       const rawModuleId = cleanOptionalText(req.body?.moduleId) ?? null;
 
@@ -348,6 +454,15 @@ announcementRouter.post(
         return err(res, 400, "VALIDATION", "moduleId can only be used on the Modules channel");
       }
 
+      const expiry = resolveAnnouncementExpiry({
+        expiresAt,
+        durationDays,
+        allowDefault: true,
+      });
+      if (!expiry.ok) {
+        return err(res, expiry.status, expiry.code, expiry.message);
+      }
+
       const created = await repos.announcements.create({
         channelId,
         moduleId: moduleRow?.id ?? null,
@@ -355,6 +470,7 @@ announcementRouter.post(
         body: body.trim(),
         pinned: Boolean(pinned),
         createdBy: req.user!.id,
+        expiresAt: expiry.expiresAt,
       });
 
       await createAnnouncementNotifications({
@@ -393,22 +509,37 @@ announcementRouter.patch(
       const titleRaw = cleanOptionalText(req.body?.title);
       const bodyRaw = cleanOptionalText(req.body?.body);
       const pinnedRaw = req.body?.pinned;
+      const expiresAtProvided =
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, "expiresAt") ||
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, "durationDays");
 
       const hasTitle = typeof titleRaw === "string";
       const hasBody = typeof bodyRaw === "string";
       const hasPinned = typeof pinnedRaw === "boolean";
+      let nextExpiresAt: string | undefined;
 
-      if (!hasTitle && !hasBody && !hasPinned) {
+      if (!hasTitle && !hasBody && !hasPinned && !expiresAtProvided) {
         return err(
           res,
           400,
           "VALIDATION",
-          "Provide at least one of: title, body, pinned"
+          "Provide at least one of: title, body, pinned, expiresAt"
         );
       }
 
       if (titleRaw === "") return err(res, 400, "VALIDATION", "title cannot be empty");
       if (bodyRaw === "") return err(res, 400, "VALIDATION", "body cannot be empty");
+      if (expiresAtProvided) {
+        const expiry = resolveAnnouncementExpiry({
+          expiresAt: req.body?.expiresAt,
+          durationDays: req.body?.durationDays,
+          allowDefault: false,
+        });
+        if (!expiry.ok) {
+          return err(res, expiry.status, expiry.code, expiry.message);
+        }
+        nextExpiresAt = expiry.expiresAt;
+      }
 
       const updated = await repos.announcements.update({
         id: announcementId,
@@ -416,6 +547,7 @@ announcementRouter.patch(
         title: hasTitle ? titleRaw : undefined,
         body: hasBody ? bodyRaw : undefined,
         pinned: hasPinned ? Boolean(pinnedRaw) : undefined,
+        expiresAt: nextExpiresAt,
       });
 
       if (!updated) return err(res, 404, "NOT_FOUND", "Announcement not found");

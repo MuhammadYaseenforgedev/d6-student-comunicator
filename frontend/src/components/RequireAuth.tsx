@@ -1,10 +1,16 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { isAuthed } from "../lib/auth";
+import InactivityWarningModal from "./InactivityWarningModal";
+import useInactivityLogout from "../hooks/useInactivityLogout";
 
 export default function RequireAuth() {
   const location = useLocation();
+  const authed = isAuthed();
 
-  if (!isAuthed()) {
+  const { isWarningOpen, remainingSeconds, stayLoggedIn, logOutNow } =
+    useInactivityLogout({ enabled: authed });
+
+  if (!authed) {
     return (
       <Navigate
         to="/login"
@@ -14,5 +20,15 @@ export default function RequireAuth() {
     );
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <InactivityWarningModal
+        open={isWarningOpen}
+        remainingSeconds={remainingSeconds}
+        onStayLoggedIn={stayLoggedIn}
+        onLogOutNow={logOutNow}
+      />
+    </>
+  );
 }

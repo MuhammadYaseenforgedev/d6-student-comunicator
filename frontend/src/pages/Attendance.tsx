@@ -3,20 +3,15 @@ import { Navigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
 import {
-  assignLecturerToAttendanceModule,
   checkInToAttendanceSession,
-  createAttendanceModule,
   createAttendanceSession,
-  enrollStudentInAttendanceModule,
+  downloadAttendanceExport,
   getMyAttendance,
   listAttendanceDirectoryUsers,
-  listAttendanceModuleStudents,
   listAttendanceModules,
   listAttendanceSessionRoster,
   listAttendanceSessions,
   markAttendanceSession,
-  removeLecturerFromAttendanceModule,
-  removeStudentFromAttendanceModule,
   type AttendanceDirectoryUser,
   type AttendanceMeResponse,
   type AttendanceModule,
@@ -25,7 +20,6 @@ import {
   type AttendanceSessionRosterStudent,
   type AttendanceStatus,
 } from "../lib/attendanceApi";
-import { listCourses, type CourseRecord } from "../lib/courseApi";
 
 type MarkMap = Record<string, AttendanceStatus>;
 
@@ -86,6 +80,25 @@ function formatDateTime(raw: string | null): string {
   return new Date(ms).toLocaleString();
 }
 
+async function triggerAttendanceExport(input: {
+  from: string;
+  to: string;
+  moduleId?: string;
+}) {
+  const { blob, fileName } = await downloadAttendanceExport(input);
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName || `attendance-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export default function AttendancePage() {
   const user = getUser();
   const role = roleLabel(user?.role ?? "");
@@ -106,11 +119,7 @@ function LecturerAttendanceView({
   currentUserId: string;
 }) {
   const [modules, setModules] = useState<AttendanceModule[]>([]);
-  const [courses, setCourses] = useState<CourseRecord[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
-  const [moduleStudents, setModuleStudents] = useState<AttendanceModuleStudent[]>(
-    []
-  );
   const [rosterStudents, setRosterStudents] = useState<
     AttendanceSessionRosterStudent[]
   >([]);
@@ -118,21 +127,14 @@ function LecturerAttendanceView({
   const [moduleId, setModuleId] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [date, setDate] = useState(todayDate());
+  const [exportFrom, setExportFrom] = useState(defaultFromDate(30));
+  const [exportTo, setExportTo] = useState(todayDate());
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [lecturerId, setLecturerId] = useState("");
-  const [candidateStudents, setCandidateStudents] = useState<
-    AttendanceDirectoryUser[]
-  >([]);
   const [candidateLecturers, setCandidateLecturers] = useState<
     AttendanceDirectoryUser[]
   >([]);
-  const [selectedStudentId, setSelectedStudentId] = useState("");
-  const [selectedLecturerId, setSelectedLecturerId] = useState("");
-  const [newModuleCode, setNewModuleCode] = useState("");
-  const [newModuleName, setNewModuleName] = useState("");
-  const [newFacultyName, setNewFacultyName] = useState("");
-  const [newCourseId, setNewCourseId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -141,20 +143,6 @@ function LecturerAttendanceView({
     () => modules.find((m) => m.id === moduleId) ?? null,
     [modules, moduleId]
   );
-
-  const availableStudents = useMemo(() => {
-    const enrolledIds = new Set(moduleStudents.map((student) => student.id));
-    return candidateStudents.filter((student) => !enrolledIds.has(student.id));
-  }, [candidateStudents, moduleStudents]);
-
-  const availableLecturers = useMemo(() => {
-    const assignedIds = new Set(
-      (selectedModule?.lecturers ?? []).map((lecturer) => lecturer.id)
-    );
-    return candidateLecturers.filter(
-      (lecturer) => !assignedIds.has(lecturer.id)
-    );
-  }, [candidateLecturers, selectedModule]);
 
   const assignedLecturerIds = useMemo(
     () => new Set((selectedModule?.lecturers ?? []).map((lecturer) => lecturer.id)),
@@ -180,16 +168,6 @@ function LecturerAttendanceView({
     );
   }
 
-  async function loadModuleStudents(currentModuleId: string) {
-    if (!currentModuleId) {
-      setModuleStudents([]);
-      return;
-    }
-    setModuleStudents(
-      sortStudents(await listAttendanceModuleStudents(currentModuleId))
-    );
-  }
-
   async function loadRoster(currentSessionId: string) {
     if (!currentSessionId) {
       setRosterStudents([]);
@@ -206,35 +184,18 @@ function LecturerAttendanceView({
     setMarks(nextMarks);
   }
 
-  async function loadDirectoryUsers() {
-    const [studentsRes, lecturersRes] = await Promise.all([
-      listAttendanceDirectoryUsers({ roles: ["STUDENT"], limit: 500 }),
-      listAttendanceDirectoryUsers({ roles: ["LECTURER"], limit: 500 }),
-    ]);
-    setCandidateStudents(sortDirectoryUsers(studentsRes));
+  async function loadLecturers() {
+    const lecturersRes = await listAttendanceDirectoryUsers({
+      roles: ["LECTURER"],
+      limit: 500,
+    });
     setCandidateLecturers(sortDirectoryUsers(lecturersRes));
-  }
-
-  async function loadCourses() {
-    const rows = (await listCourses()).filter((course) => course.isActive);
-    setCourses(rows);
-    setNewCourseId((current) =>
-      rows.some((course) => course.id === current) ? current : (rows[0]?.id ?? "")
-    );
-  }
-
-  async function refreshCurrentModuleData(currentModuleId: string) {
-    await Promise.all([
-      loadModules(),
-      loadModuleStudents(currentModuleId),
-      loadSessions(currentModuleId),
-    ]);
   }
 
   useEffect(() => {
     void (async () => {
       try {
-        await Promise.all([loadModules(), loadDirectoryUsers(), loadCourses()]);
+        await Promise.all([loadModules(), loadLecturers()]);
       } catch (e) {
         setError(
           e instanceof Error ? e.message : "Failed to load attendance modules"
@@ -251,9 +212,6 @@ function LecturerAttendanceView({
     setSessionId("");
     setRosterStudents([]);
     setMarks({});
-    void loadModuleStudents(moduleId).catch((e: unknown) => {
-      setError(e instanceof Error ? e.message : "Failed to load module students");
-    });
     void loadSessions(moduleId).catch((e: unknown) => {
       setError(
         e instanceof Error ? e.message : "Failed to load attendance sessions"
@@ -288,30 +246,6 @@ function LecturerAttendanceView({
     });
   }, [candidateLecturers, currentUserId, role, selectedModule]);
 
-  useEffect(() => {
-    if (!availableStudents.length) {
-      setSelectedStudentId("");
-      return;
-    }
-    setSelectedStudentId((current) =>
-      availableStudents.some((student) => student.id === current)
-        ? current
-        : availableStudents[0].id
-    );
-  }, [availableStudents]);
-
-  useEffect(() => {
-    if (!availableLecturers.length) {
-      setSelectedLecturerId("");
-      return;
-    }
-    setSelectedLecturerId((current) =>
-      availableLecturers.some((lecturer) => lecturer.id === current)
-        ? current
-        : availableLecturers[0].id
-    );
-  }, [availableLecturers]);
-
   async function createSession() {
     if (!moduleId) return setError("Select a module first.");
     if (!lecturerId) return setError("Select a lecturer for this session.");
@@ -330,45 +264,11 @@ function LecturerAttendanceView({
       });
 
       setInfo(`Session created for ${created.date}.`);
-      await refreshCurrentModuleData(moduleId);
+      await Promise.all([loadModules(), loadSessions(moduleId)]);
       setSessionId(created.id);
       await loadRoster(created.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create session");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function createModule() {
-    const code = newModuleCode.trim().toUpperCase();
-    const name = newModuleName.trim();
-    const facultyName = newFacultyName.trim();
-
-    if (!newCourseId || !code || !name || !facultyName) {
-      setError("Course, faculty name, module code, and module name are required.");
-      return;
-    }
-
-    try {
-      setBusy(true);
-      setError(null);
-      setInfo(null);
-
-      const created = await createAttendanceModule({
-        courseId: newCourseId,
-        code,
-        name,
-        facultyName,
-      });
-      setNewModuleCode("");
-      setNewModuleName("");
-      setNewFacultyName("");
-      await loadModules();
-      setModuleId(created.id);
-      setInfo(`Module ${created.code} created.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create module");
     } finally {
       setBusy(false);
     }
@@ -400,83 +300,24 @@ function LecturerAttendanceView({
     }
   }
 
-  async function addStudentToModule() {
-    if (!moduleId || !selectedStudentId) {
-      return setError("Select a module and student first.");
+  async function exportAttendanceRange() {
+    if (!moduleId) {
+      setError("Select a module before exporting attendance.");
+      return;
     }
-
     try {
       setBusy(true);
       setError(null);
       setInfo(null);
-      await enrollStudentInAttendanceModule(moduleId, selectedStudentId);
-      await refreshCurrentModuleData(moduleId);
-      setInfo("Student linked to module.");
+      await triggerAttendanceExport({ from: exportFrom, to: exportTo, moduleId });
+      setInfo("Attendance export downloaded.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to link student to module");
+      setError(e instanceof Error ? e.message : "Failed to export attendance");
     } finally {
       setBusy(false);
     }
   }
 
-  async function removeStudentFromModule(studentId: string) {
-    if (!moduleId) return;
-
-    try {
-      setBusy(true);
-      setError(null);
-      setInfo(null);
-      await removeStudentFromAttendanceModule(moduleId, studentId);
-      await refreshCurrentModuleData(moduleId);
-      setInfo("Student removed from module.");
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Failed to remove student from module"
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addLecturerToModule() {
-    if (!moduleId || !selectedLecturerId) {
-      return setError("Select a module and lecturer first.");
-    }
-
-    try {
-      setBusy(true);
-      setError(null);
-      setInfo(null);
-      await assignLecturerToAttendanceModule(moduleId, selectedLecturerId);
-      await refreshCurrentModuleData(moduleId);
-      setInfo("Lecturer linked to module.");
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Failed to link lecturer to module"
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeLecturerFromModule(assignedLecturerId: string) {
-    if (!moduleId) return;
-
-    try {
-      setBusy(true);
-      setError(null);
-      setInfo(null);
-      await removeLecturerFromAttendanceModule(moduleId, assignedLecturerId);
-      await refreshCurrentModuleData(moduleId);
-      setInfo("Lecturer removed from module.");
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Failed to remove lecturer from module"
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -492,8 +333,9 @@ function LecturerAttendanceView({
           <div className="text-lg font-semibold text-white">Create Session</div>
           <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-3 text-sm text-white/75">
             Staff module selection is global. If the module you need does not
-            exist yet, create it below and pick any lecturer directly from the
-            full lecturer list. Each module must belong to a course.
+            exist yet, create it from Courses, then return here and pick any
+            lecturer directly from the full lecturer list. Each module belongs to
+            a course, and each course can contain multiple modules.
           </div>
 
           <Field label="Module" htmlFor="attendance-module">
@@ -583,7 +425,7 @@ function LecturerAttendanceView({
             type="button"
             onClick={createSession}
             disabled={busy || !moduleId}
-            className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+            className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
           >
             {busy ? "Creating..." : "Create Session"}
           </button>
@@ -614,7 +456,7 @@ function LecturerAttendanceView({
             </select>
           </Field>
 
-          <div className="max-h-[420px] overflow-auto rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)]">
+          <div className="mobile-table-shell max-h-none overflow-auto rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] lg:max-h-[420px]">
             {!sessionId ? (
               <div className="p-4 text-sm text-white/80">
                 Select a session to load its attendance roster.
@@ -624,7 +466,7 @@ function LecturerAttendanceView({
                 No enrolled students for this session.
               </div>
             ) : (
-              <table className="min-w-full text-sm">
+              <table className="min-w-[44rem] text-sm lg:min-w-full">
                 <thead className="bg-[rgba(140,235,255,0.08)] text-white/85">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Student</th>
@@ -691,237 +533,51 @@ function LecturerAttendanceView({
             type="button"
             onClick={submitMarks}
             disabled={busy || !sessionId || rosterStudents.length === 0}
-            className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+            className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
           >
             {busy ? "Submitting..." : "Submit Attendance"}
           </button>
-        </div>
-      </div>
 
-      <div className="teal-glow-card space-y-4 p-5">
-        <div>
-          <div className="text-lg font-semibold text-white">Module Setup</div>
-          <div className="mt-1 text-sm text-white/72">
-            Create attendance modules here so they appear in the global module
-            picker immediately. Modules must be attached to a course first.
-          </div>
-        </div>
+          <div className="divider-soft" />
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-          <Field label="Course" htmlFor="attendance-course-id">
-            <select
-              id="attendance-course-id"
-              title="Module course"
-              aria-label="Module course"
-              value={newCourseId}
-              onChange={(e) => setNewCourseId(e.target.value)}
-              className="select-glass"
-            >
-              {courses.length === 0 ? (
-                <option value="">No courses available</option>
-              ) : (
-                courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.code} - {course.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </Field>
-
-          <Field label="Faculty name" htmlFor="attendance-faculty-name">
-            <input
-              id="attendance-faculty-name"
-              title="Faculty name"
-              aria-label="Faculty name"
-              value={newFacultyName}
-              onChange={(e) => setNewFacultyName(e.target.value)}
-              placeholder="Faculty of Science"
-              className="input-glass"
-            />
-          </Field>
-
-          <Field label="Module code" htmlFor="attendance-module-code">
-            <input
-              id="attendance-module-code"
-              title="Module code"
-              aria-label="Module code"
-              value={newModuleCode}
-              onChange={(e) => setNewModuleCode(e.target.value.toUpperCase())}
-              placeholder="CS102"
-              className="input-glass"
-            />
-          </Field>
-
-          <Field label="Module name" htmlFor="attendance-module-name">
-            <input
-              id="attendance-module-name"
-              title="Module name"
-              aria-label="Module name"
-              value={newModuleName}
-              onChange={(e) => setNewModuleName(e.target.value)}
-              placeholder="Data Structures"
-              className="input-glass"
-            />
-          </Field>
-        </div>
-
-        <button
-          type="button"
-          onClick={createModule}
-          disabled={busy}
-          className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
-        >
-          {busy ? "Saving..." : "Create module"}
-        </button>
-      </div>
-
-      <div className="teal-glow-card space-y-4 p-5">
-        <div>
-          <div className="text-lg font-semibold text-white">
-            Module Membership
-          </div>
-          <div className="mt-1 text-sm text-white/72">
-            Students must be linked to a module before they can see or join its
-            attendance sessions, and they must already be enrolled in the
-            module's parent course. Their session check-in time appears in the
-            roster for staff marking.
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4">
-            <div className="text-sm font-semibold text-white">
-              Assigned lecturers
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-              <select
-                id="attendance-assigned-lecturer"
-                title="Select lecturer to add to module"
-                aria-label="Select lecturer to add to module"
-                value={selectedLecturerId}
-                onChange={(e) => setSelectedLecturerId(e.target.value)}
-                disabled={busy || !moduleId || availableLecturers.length === 0}
-                className="select-glass"
-              >
-                {availableLecturers.length === 0 ? (
-                  <option value="">No additional lecturers available</option>
-                ) : (
-                  availableLecturers.map((lecturer) => (
-                    <option key={lecturer.id} value={lecturer.id}>
-                      {lecturer.email}
-                    </option>
-                  ))
-                )}
-              </select>
-
+          <div className="text-sm font-semibold text-white">Export Attendance</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label="Start date" htmlFor="attendance-export-from">
+              <input
+                id="attendance-export-from"
+                title="Attendance export start date"
+                aria-label="Attendance export start date"
+                type="date"
+                value={exportFrom}
+                onChange={(e) => setExportFrom(e.target.value)}
+                className="input-glass"
+              />
+            </Field>
+            <Field label="End date" htmlFor="attendance-export-to">
+              <input
+                id="attendance-export-to"
+                title="Attendance export end date"
+                aria-label="Attendance export end date"
+                type="date"
+                value={exportTo}
+                onChange={(e) => setExportTo(e.target.value)}
+                className="input-glass"
+              />
+            </Field>
+            <div className="sm:self-end">
               <button
                 type="button"
-                onClick={addLecturerToModule}
-                disabled={busy || !moduleId || !selectedLecturerId}
-                className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                onClick={() => void exportAttendanceRange()}
+                disabled={busy || !moduleId || !exportFrom || !exportTo}
+                className="btn-secondary w-full px-4 py-2 text-sm disabled:opacity-60"
               >
-                Add lecturer
+                {busy ? "Working..." : "Download CSV"}
               </button>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {(selectedModule?.lecturers ?? []).length === 0 ? (
-                <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] p-3 text-sm text-white/75">
-                  No lecturers assigned to this module yet.
-                </div>
-              ) : (
-                selectedModule!.lecturers.map((lecturer) => (
-                  <div
-                    key={lecturer.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] p-3"
-                  >
-                    <div className="text-sm text-white">{lecturer.email}</div>
-                    <button
-                      type="button"
-                      onClick={() => void removeLecturerFromModule(lecturer.id)}
-                      disabled={busy}
-                      className="btn-danger px-3 py-1 text-xs disabled:opacity-60"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4">
-            <div className="text-sm font-semibold text-white">
-              Enrolled students
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-              <select
-                id="attendance-enrolled-student"
-                title="Select student to add to module"
-                aria-label="Select student to add to module"
-                value={selectedStudentId}
-                onChange={(e) => setSelectedStudentId(e.target.value)}
-                disabled={busy || !moduleId || availableStudents.length === 0}
-                className="select-glass"
-              >
-                {availableStudents.length === 0 ? (
-                  <option value="">No additional students available</option>
-                ) : (
-                  availableStudents.map((student) => (
-                    <option key={student.id} value={student.id}>
-                      {student.email}
-                    </option>
-                  ))
-                )}
-              </select>
-
-              <button
-                type="button"
-                onClick={addStudentToModule}
-                disabled={busy || !moduleId || !selectedStudentId}
-                className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
-              >
-                Add student
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {moduleStudents.length === 0 ? (
-                <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] p-3 text-sm text-white/75">
-                  No students linked to this module yet.
-                </div>
-              ) : (
-                moduleStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] p-3"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-white">
-                        {studentDisplayName(student)}
-                      </div>
-                      <div className="text-xs text-white/60">
-                        {studentMeta(student)}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void removeStudentFromModule(student.id)}
-                      disabled={busy}
-                      className="btn-danger px-3 py-1 text-xs disabled:opacity-60"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))
-              )}
             </div>
           </div>
         </div>
       </div>
+
     </div>
   );
 }
@@ -1004,6 +660,20 @@ function StudentAttendanceView() {
     }
   }
 
+  async function onExport() {
+    try {
+      setLoading(true);
+      setError(null);
+      setInfo(null);
+      await triggerAttendanceExport({ from, to });
+      setInfo("Attendance export downloaded.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to export attendance");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadAttendanceView();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1054,9 +724,19 @@ function StudentAttendanceView() {
             type="button"
             onClick={() => void loadAttendanceView()}
             disabled={loading}
-            className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+            className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
           >
             {loading ? "Loading..." : "Refresh"}
+          </button>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => void onExport()}
+            disabled={loading || !from || !to}
+            className="btn-secondary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
+          >
+            {loading ? "Working..." : "Download CSV"}
           </button>
         </div>
       </div>
@@ -1181,7 +861,7 @@ function StudentAttendanceView() {
                     disabled={
                       busySessionId === session.id || Boolean(session.checkedInAt)
                     }
-                    className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                    className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
                   >
                     {session.checkedInAt
                       ? "Checked in"

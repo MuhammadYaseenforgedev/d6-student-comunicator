@@ -14,8 +14,13 @@
 // - shared neon input/button styling
 
 import { useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { setAuth, type AuthUser, type UserRole } from "../lib/auth";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  consumeLogoutNotice,
+  setAuth,
+  type AuthUser,
+  type UserRole,
+} from "../lib/auth";
 import { type ApiClientError } from "../lib/apiClient";
 import {
   fetchAuthMe,
@@ -25,11 +30,27 @@ import {
 } from "../lib/authService";
 import { isFinanceAdmin } from "../lib/adminAccess";
 import forgeLogo from "../assets/Forge.jpg";
+import AuthAssistant from "../components/AuthAssistant";
+import OTPInput from "../components/OTPInput";
 
 type LocationState = { from?: string };
 type Mode = "login" | "register";
+type OtpPurpose = "LOGIN" | "REGISTER";
+type LoginPage2Props = { onOpenLegal?: () => void };
+const PUBLIC_REGISTRATION_ROLES: UserRole[] = ["STUDENT", "PARENT"];
+const LOGIN_QUICK_ACCESS_LINKS = [
+  {
+    label: "Clock In",
+    href: "https://pulse.forgetalent.co.za/",
+  },
+  {
+    label: "Send a Ticket",
+    href: "https://pulse.forgetalent.co.za/ticket.php",
+  },
+] as const;
 
 function landingFor(user: Pick<AuthUser, "role" | "adminScope">) {
+  if (user.role === "STUDENT") return "/app/personal-details";
   if (user.role === "PARENT") return "/app/parent";
   if (isFinanceAdmin(user)) return "/app/admin/finance";
   return "/app";
@@ -123,11 +144,15 @@ function normalizeStudentNumber(v: string): string {
   return v.trim().toUpperCase();
 }
 
+function normalizeEmail(v: string): string {
+  return v.trim().toLowerCase();
+}
+
 function normalizeSouthAfricanId(v: string): string {
   return v.replace(/\D+/g, "");
 }
 
-export default function LoginPage2() {
+export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as LocationState | null)?.from;
@@ -142,9 +167,14 @@ export default function LoginPage2() {
   const [staffRegisterPassword, setStaffRegisterPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedLegalTerms, setAcceptedLegalTerms] = useState(false);
+  const [lastOtpRequest, setLastOtpRequest] = useState<{
+    email: string;
+    purpose: OtpPurpose;
+  } | null>(null);
 
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(() => consumeLogoutNotice() ?? null);
   const [busy, setBusy] = useState(false);
 
   const title = useMemo(
@@ -157,12 +187,25 @@ export default function LoginPage2() {
   const roleNeedsStudentIdentity =
     mode === "register" && role === "STUDENT";
 
+  function changeMode(nextMode: Mode) {
+    setMode(nextMode);
+    setError(null);
+    setInfo(null);
+    setOtp("");
+    setStaffRegisterPassword("");
+    setSouthAfricanId("");
+    setAcceptedLegalTerms(false);
+    if (nextMode === "register" && !PUBLIC_REGISTRATION_ROLES.includes(role)) {
+      setRole("STUDENT");
+    }
+  }
+
   async function fetchMe(token: string) {
     return fetchAuthMe(token);
   }
 
-  async function requestOtp(purpose: "LOGIN" | "REGISTER") {
-    const eNorm = email.trim().toLowerCase();
+  async function requestOtp(purpose: OtpPurpose) {
+    const eNorm = normalizeEmail(email);
     if (!eNorm) throw new Error("Please enter an email first.");
 
     setError(null);
@@ -170,15 +213,25 @@ export default function LoginPage2() {
 
     const data = await requestOtpApi({ email: eNorm, purpose });
     const devOtp = String(data?.devOtp ?? data?.devCode ?? "").trim();
+    const emailDeliveryEnabled = data?.emailDeliveryEnabled;
+    const purposeLabel = purpose === "REGISTER" ? "Registration" : "Sign-in";
+
+    setLastOtpRequest({ email: eNorm, purpose });
 
     if (devOtp) {
       setOtp(devOtp);
       setInfo(
-        `OTP generated and auto-filled. Expires: ${data.expiresAt ?? "soon"}`
+        `${purposeLabel} OTP generated and auto-filled. Expires: ${data.expiresAt ?? "soon"}`
+      );
+    } else if (emailDeliveryEnabled === false) {
+      setInfo(
+        `${purposeLabel} OTP created, but email delivery is not configured on this server.`
       );
     } else {
       setInfo(
-        "OTP requested. Check backend terminal in dev or email in production."
+        purpose === "LOGIN"
+          ? `${purposeLabel} OTP requested. If an account exists for this email, check your inbox and spam folder.`
+          : `${purposeLabel} OTP request sent. Please check email.`
       );
     }
   }
@@ -228,13 +281,15 @@ export default function LoginPage2() {
     selectedRole: UserRole,
     staffPassword: string,
     studentNumberInput: string,
-    southAfricanIdInput: string
+    southAfricanIdInput: string,
+    legalTermsAccepted: boolean
   ) {
     const payload: {
       email: string;
       password: string;
       role: UserRole;
       otp: string;
+      acceptedLegalTerms: boolean;
       staffRegisterPassword?: string;
       studentNumber?: string;
       southAfricanId?: string;
@@ -243,6 +298,7 @@ export default function LoginPage2() {
       password: pw,
       role: selectedRole,
       otp: otpCode,
+      acceptedLegalTerms: legalTermsAccepted,
     };
 
     if (selectedRole === "ADMIN" || selectedRole === "LECTURER") {
@@ -275,7 +331,7 @@ export default function LoginPage2() {
     setError(null);
     setInfo(null);
 
-    const eNorm = email.trim().toLowerCase();
+    const eNorm = normalizeEmail(email);
     const studentNumberNorm = normalizeStudentNumber(studentNumber);
     const southAfricanIdNorm = normalizeSouthAfricanId(southAfricanId);
 
@@ -287,6 +343,12 @@ export default function LoginPage2() {
 
     if (mode === "register" && password !== confirmPassword) {
       return setError("Passwords do not match.");
+    }
+
+    if (mode === "register" && !acceptedLegalTerms) {
+      return setError(
+        "You must accept the POPIA Disclosure and IT Terms of Use before registering."
+      );
     }
 
     if (roleNeedsStaffPassword && !staffRegisterPassword.trim()) {
@@ -307,15 +369,31 @@ export default function LoginPage2() {
       }
     }
 
-    if (mode === "register" && !otp.trim()) {
+    if (mode === "register" && otp.trim().length !== 6) {
       return setError(
         "OTP is required for registration. Request OTP first, then enter the code."
       );
     }
-    if (mode === "login" && LOGIN_REQUIRES_OTP && !otp.trim()) {
+    if (mode === "login" && LOGIN_REQUIRES_OTP && otp.trim().length !== 6) {
       return setError(
-        "OTP is required for production login. Click 'Request OTP' first, then enter the code."
+        "Please enter the full 6-digit OTP"
       );
+    }
+
+    if (otp.trim().length === 6 && lastOtpRequest) {
+      const expectedPurpose: OtpPurpose =
+        mode === "register" ? "REGISTER" : "LOGIN";
+
+      if (
+        lastOtpRequest.email !== eNorm ||
+        lastOtpRequest.purpose !== expectedPurpose
+      ) {
+        return setError(
+          expectedPurpose === "REGISTER"
+            ? "Request a registration OTP for this email before creating your account."
+            : "Request a sign-in OTP for this email before signing in."
+        );
+      }
     }
 
     try {
@@ -331,7 +409,8 @@ export default function LoginPage2() {
           role,
           staffRegisterPassword.trim(),
           studentNumberNorm,
-          southAfricanIdNorm
+          southAfricanIdNorm,
+          acceptedLegalTerms
         );
       }
     } catch (err) {
@@ -359,12 +438,13 @@ export default function LoginPage2() {
   }
 
   const canRequestOtp = !ENV_CONFIG_ERROR && !!email.trim() && !busy;
-  const hasOtp = !!otp.trim();
+  const hasOtp = otp.trim().length === 6;
   const canSubmit =
     !ENV_CONFIG_ERROR &&
     ((mode === "login" && (!LOGIN_REQUIRES_OTP || hasOtp)) ||
       (mode === "register" && hasOtp)) &&
     !busy &&
+    (mode !== "register" || acceptedLegalTerms) &&
     (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
     (!roleNeedsStudentIdentity ||
       (!!normalizeStudentNumber(studentNumber) &&
@@ -380,7 +460,8 @@ export default function LoginPage2() {
       </div>
 
       <div className="relative mx-auto w-full max-w-md">
-        <div className="glass-panel-strong relative overflow-hidden p-8 md:p-9">
+        <div className="auth-gradient-shell p-8 md:p-9">
+          <div className="sidebar-gradient-border-overlay absolute inset-0" />
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/40 to-transparent" />
             <div className="absolute -left-8 top-0 h-28 w-28 rounded-full bg-[#8CEBFF]/10 blur-2xl" />
@@ -396,25 +477,21 @@ export default function LoginPage2() {
               />
             </div>
 
-            <div className="mt-6 grid grid-cols-2 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.58)] p-1 backdrop-blur-xl">
+            <div className="auth-nav-shell mt-6">
               <button
                 type="button"
                 onClick={() => {
-                  setMode("login");
-                  setError(null);
-                  setInfo(null);
-                  setOtp("");
-                  setStaffRegisterPassword("");
-                  setSouthAfricanId("");
+                  changeMode("login");
                 }}
                 className={[
-                  "rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200",
+                  "auth-nav-tab",
                   mode === "login"
-                    ? "border border-[rgba(140,235,255,0.22)] bg-[rgba(14,42,99,0.82)] text-white shadow-[0_0_14px_rgba(140,235,255,0.08)]"
-                    : "text-white/65 hover:bg-[rgba(140,235,255,0.08)] hover:text-white",
+                    ? "auth-nav-tab-active"
+                    : "auth-nav-tab-idle",
                 ].join(" ")}
                 title="Switch to login mode"
                 aria-label="Switch to login mode"
+                aria-pressed={mode === "login"}
               >
                 Login
               </button>
@@ -422,21 +499,17 @@ export default function LoginPage2() {
               <button
                 type="button"
                 onClick={() => {
-                  setMode("register");
-                  setError(null);
-                  setInfo(null);
-                  setOtp("");
-                  setStaffRegisterPassword("");
-                  setSouthAfricanId("");
+                  changeMode("register");
                 }}
                 className={[
-                  "rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200",
+                  "auth-nav-tab",
                   mode === "register"
-                    ? "border border-[rgba(140,235,255,0.22)] bg-[rgba(14,42,99,0.82)] text-white shadow-[0_0_14px_rgba(140,235,255,0.08)]"
-                    : "text-white/65 hover:bg-[rgba(140,235,255,0.08)] hover:text-white",
+                    ? "auth-nav-tab-active"
+                    : "auth-nav-tab-idle",
                 ].join(" ")}
                 title="Switch to register mode"
                 aria-label="Switch to register mode"
+                aria-pressed={mode === "register"}
               >
                 Register
               </button>
@@ -457,44 +530,63 @@ export default function LoginPage2() {
               className="mt-5 space-y-4"
               autoComplete="on"
             >
-              <div>
-                <label htmlFor="email" className="block text-sm text-white/80">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  name="username"
-                  type="email"
-                  className="input-glass mt-2"
-                  placeholder="name@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="username"
-                  disabled={busy}
-                />
-              </div>
+              {mode === "register" && (
+                <div>
+                  <label htmlFor="role" className="block text-sm text-white/80">
+                    Role
+                  </label>
+                  <select
+                    id="role"
+                    name="role"
+                    className="select-glass mt-2"
+                    value={role}
+                    onChange={(e) => {
+                      const nextRole = e.target.value as UserRole;
+                      setRole(nextRole);
+                      if (nextRole !== "ADMIN" && nextRole !== "LECTURER") {
+                        setStaffRegisterPassword("");
+                      }
+                      if (nextRole !== "STUDENT") {
+                        setSouthAfricanId("");
+                      }
+                    }}
+                    disabled={busy}
+                  >
+                    {PUBLIC_REGISTRATION_ROLES.map((allowedRole) => (
+                      <option key={allowedRole} value={allowedRole}>
+                        {allowedRole === "STUDENT" ? "Student" : "Parent"}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-white/55">
+                    Staff and admin accounts are created from the protected admin account flow.
+                  </p>
+                </div>
+              )}
 
-              <div>
-                <label htmlFor="password" className="block text-sm text-white/80">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  name={mode === "login" ? "current-password" : "new-password"}
-                  type="password"
-                  className="input-glass mt-2"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  autoComplete={
-                    mode === "login" ? "current-password" : "new-password"
-                  }
-                  disabled={busy}
-                />
-              </div>
+              {roleNeedsStudentIdentity && (
+                <div>
+                  <label
+                    htmlFor="southAfricanId"
+                    className="block text-sm text-white/80"
+                  >
+                    South African ID
+                  </label>
+                  <input
+                    id="southAfricanId"
+                    name="southAfricanId"
+                    type="text"
+                    inputMode="numeric"
+                    className="input-glass mt-2"
+                    placeholder="13-digit ID number"
+                    value={southAfricanId}
+                    onChange={(e) => setSouthAfricanId(e.target.value)}
+                    autoComplete="off"
+                    required
+                    disabled={busy}
+                  />
+                </div>
+              )}
 
               {(mode === "login" || roleNeedsStudentIdentity) && (
                 <div>
@@ -524,84 +616,54 @@ export default function LoginPage2() {
                 </div>
               )}
 
-              {roleNeedsStudentIdentity && (
-                <div>
-                  <label
-                    htmlFor="southAfricanId"
-                    className="block text-sm text-white/80"
-                  >
-                    South African ID
-                  </label>
-                  <input
-                    id="southAfricanId"
-                    name="southAfricanId"
-                    type="text"
-                    inputMode="numeric"
-                    className="input-glass mt-2"
-                    placeholder="13-digit ID number"
-                    value={southAfricanId}
-                    onChange={(e) => setSouthAfricanId(e.target.value)}
-                    autoComplete="off"
-                    required
-                    disabled={busy}
-                  />
-                </div>
-              )}
+              <div>
+                <label htmlFor="email" className="block text-sm text-white/80">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  name="username"
+                  type="email"
+                  className="input-glass mt-2"
+                  placeholder="name@example.com"
+                  value={email}
+                      onChange={(e) => {
+                        const nextEmail = e.target.value;
+                        const nextEmailNorm = normalizeEmail(nextEmail);
+                        setEmail(nextEmail);
 
-              {mode === "register" && (
-                <div>
-                  <label htmlFor="role" className="block text-sm text-white/80">
-                    Role
-                  </label>
-                  <select
-                    id="role"
-                    name="role"
-                    className="select-glass mt-2"
-                    value={role}
-                    onChange={(e) => {
-                      const nextRole = e.target.value as UserRole;
-                      setRole(nextRole);
-                      if (nextRole !== "ADMIN" && nextRole !== "LECTURER") {
-                        setStaffRegisterPassword("");
-                      }
-                      if (nextRole !== "STUDENT") {
-                        setSouthAfricanId("");
-                      }
-                    }}
-                    disabled={busy}
-                  >
-                    <option value="STUDENT">Student</option>
-                    <option value="PARENT">Parent</option>
-                    <option value="LECTURER">Lecturer</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-                  <p className="mt-2 text-xs text-white/55">
-                    Student and Parent can self-register. Admin and Lecturer require a staff registration password.
-                  </p>
-                </div>
-              )}
+                        if (lastOtpRequest && lastOtpRequest.email !== nextEmailNorm) {
+                          setLastOtpRequest(null);
+                          setOtp("");
+                          setInfo(null);
+                        }
+                      }}
+                  required
+                  autoComplete="username"
+                  disabled={busy}
+                />
+              </div>
 
-              {mode === "register" && roleNeedsStaffPassword && (
-                <div>
-                  <label
-                    htmlFor="staffRegisterPassword"
-                    className="block text-sm text-white/80"
-                  >
-                    Staff Registration Password
-                  </label>
-                  <input
-                    id="staffRegisterPassword"
-                    name="staffRegisterPassword"
-                    type="password"
-                    className="input-glass mt-2"
-                    placeholder="Enter staff password"
-                    value={staffRegisterPassword}
-                    onChange={(e) => setStaffRegisterPassword(e.target.value)}
-                    autoComplete="off"
-                    disabled={busy}
-                  />
-                </div>
-              )}
+              <div>
+                <label htmlFor="password" className="block text-sm text-white/80">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  name={mode === "login" ? "current-password" : "new-password"}
+                  type="password"
+                  className="input-glass mt-2"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete={
+                    mode === "login" ? "current-password" : "new-password"
+                  }
+                  disabled={busy}
+                />
+              </div>
 
               {mode === "register" && (
                 <div>
@@ -628,33 +690,32 @@ export default function LoginPage2() {
               )}
 
               <div>
-                <label htmlFor="otp" className="block text-sm text-white/80">
-                  OTP Code
-                </label>
-                <div className="mt-2 flex gap-2">
-                  <input
-                    id="otp"
-                    name="otp"
-                    type="text"
-                    inputMode="numeric"
-                    className="input-glass w-full"
-                    placeholder="6-digit code"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    disabled={busy}
-                  />
+                <div className="mt-2 flex flex-col items-center gap-3">
                   <button
                     type="button"
                     disabled={!canRequestOtp}
                     onClick={() => {
                       void onRequestOtpClick();
                     }}
-                    className="btn-secondary shrink-0"
+                    className="btn-secondary shrink-0 px-4 py-2.5"
                     title="Request one-time password"
                     aria-label="Request one-time password"
                   >
                     Request OTP
                   </button>
+
+                  <div className="w-full overflow-x-auto">
+                    <div className="flex min-w-max justify-center">
+                      <OTPInput
+                        id="otp"
+                        name="otp"
+                        value={otp}
+                        onChange={setOtp}
+                        length={6}
+                        disabled={busy}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {mode === "login" ? (
@@ -670,6 +731,66 @@ export default function LoginPage2() {
                 )}
               </div>
 
+              {mode === "register" && roleNeedsStaffPassword && (
+                <div>
+                  <label
+                    htmlFor="staffRegisterPassword"
+                    className="block text-sm text-white/80"
+                  >
+                    Staff Registration Password
+                  </label>
+                  <input
+                    id="staffRegisterPassword"
+                    name="staffRegisterPassword"
+                    type="password"
+                    className="input-glass mt-2"
+                    placeholder="Enter staff password"
+                    value={staffRegisterPassword}
+                    onChange={(e) => setStaffRegisterPassword(e.target.value)}
+                    autoComplete="off"
+                    disabled={busy}
+                  />
+                </div>
+              )}
+
+              {mode === "register" && (
+                <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.52)] px-4 py-3">
+                  <label
+                    htmlFor="acceptedLegalTerms"
+                    className="flex cursor-pointer items-start gap-3 text-sm text-white/82"
+                  >
+                    <input
+                      id="acceptedLegalTerms"
+                      name="acceptedLegalTerms"
+                      type="checkbox"
+                      checked={acceptedLegalTerms}
+                      onChange={(e) => setAcceptedLegalTerms(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-[rgba(140,235,255,0.28)] bg-[rgba(8,18,48,0.84)] text-[#8CEBFF] focus:ring-[#8CEBFF]/40"
+                      disabled={busy}
+                    />
+                    <span>
+                      I have read and agree to the{" "}
+                      <button
+                        type="button"
+                        onClick={onOpenLegal}
+                        className="font-medium text-[#8CEBFF] transition hover:text-white focus:outline-none focus:text-white"
+                      >
+                        POPIA Disclosure
+                      </button>{" "}
+                      and{" "}
+                      <button
+                        type="button"
+                        onClick={onOpenLegal}
+                        className="font-medium text-[#8CEBFF] transition hover:text-white focus:outline-none focus:text-white"
+                      >
+                        IT Terms of Use
+                      </button>
+                      .
+                    </span>
+                  </label>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={!canSubmit}
@@ -684,18 +805,46 @@ export default function LoginPage2() {
                   : "Create account"}
               </button>
 
-              <div className="flex items-center justify-center">
-                <Link
-                  to="/support"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] px-4 py-2 text-sm font-semibold text-[#8CEBFF] transition hover:border-[rgba(140,235,255,0.34)] hover:text-white"
-                >
-                  Send a ticket
-                </Link>
-              </div>
+              {mode === "login" && (
+                <p className="text-center text-xs text-white/55">
+                  By logging in, you agree to the Forge Communicator{" "}
+                  <button
+                    type="button"
+                    onClick={onOpenLegal}
+                    className="text-[#8CEBFF] transition hover:text-white focus:outline-none focus:text-white"
+                  >
+                    IT Terms of Use
+                  </button>
+                  .
+                </p>
+              )}
+
             </form>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {LOGIN_QUICK_ACCESS_LINKS.map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-[rgba(140,235,255,0.28)] bg-[rgba(9,19,50,0.78)] px-4 py-3 text-sm font-semibold text-[#8CEBFF] shadow-[0_8px_18px_rgba(3,10,28,0.28)] [text-shadow:0_0_14px_rgba(140,235,255,0.45)] transition-all duration-200 hover:-translate-y-px hover:border-[rgba(140,235,255,0.42)] hover:bg-[rgba(15,31,78,0.88)] hover:text-[#BDF5FF] hover:[text-shadow:0_0_18px_rgba(140,235,255,0.6)] hover:shadow-[0_10px_22px_rgba(3,10,28,0.34)]"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+            </div>
           </div>
         </div>
       </div>
+
+      <AuthAssistant
+        mode={mode}
+        role={role}
+        canRequestOtp={canRequestOtp}
+        onSwitchMode={changeMode}
+        onRequestOtp={onRequestOtpClick}
+      />
     </div>
   );
 }

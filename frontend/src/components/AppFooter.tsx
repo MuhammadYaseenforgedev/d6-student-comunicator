@@ -18,6 +18,10 @@ import nokiaBellLabsLogo from "../assets/NokiaBellLabs.png";
 import nokiaLogo from "../assets/Nokia.png";
 import uxDesignInstituteLogo from "../assets/UXDesignInstitue.png";
 
+type AppFooterProps = {
+  onOpenLegal?: () => void;
+};
+
 const partnerLogos = [
   {
     name: "AWS",
@@ -57,142 +61,157 @@ const partnerLogos = [
   },
 ];
 
-export default function AppFooter() {
+export default function AppFooter({ onOpenLegal }: AppFooterProps) {
   return (
     <footer className="bg-transparent">
-      <div className="mx-auto max-w-7xl px-4">
-        {/* 5cm height */}
-        <div className="glass-panel p-0 min-h-[189px] flex flex-col justify-between">
-
-          {/* TOP SECTION */}
-          <div className="px-8 pt-6">
-            <div className="grid gap-10 lg:grid-cols-[1fr_1.6fr_1fr] items-center">
-
-              {/* Contact */}
-              <div className="space-y-3 text-sm text-white/82">
-                <h3 className="text-lg font-semibold text-white">
-                  Contact Details
-                </h3>
-
-                <a
-                  href="https://maps.app.goo.gl/pxxgunzzqpLs7N1j8?g_st=aw"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-start gap-2"
-                >
-                  <MapPin size={16} className="mt-0.5 text-[#8C5BFF]" />
-                  <span>
-                    Building 6, Clearwater Office Park
-                    <br />
-                    Millenium Blvd, Strubens Valley
-                    <br />
-                    Roodepoort, 1735
-                  </span>
-                </a>
-
-                <div className="flex items-center gap-2">
-                  <Phone size={16} className="text-[#8CEBFF]" />
-                  <a href="tel:+27108803795">+27 10 880 3795</a>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Mail size={16} className="text-[#8CEBFF]" />
-                  <a href="mailto:hello@forgeacademy.co.za">
-                    hello@forgeacademy.co.za
-                  </a>
-                </div>
-              </div>
-
-              {/* CENTER BRANDING */}
-              <div className="flex flex-col items-center justify-center text-center">
-                <img
-                  src={forgeLogo}
-                  alt="Forge Academy"
-                  className="h-16 w-auto object-contain"
-                />
-
-                <div className="mt-2 text-sm font-medium text-white/75">
-                  Powered by Ozone Connect
-                </div>
-              </div>
-
-              {/* SOCIALS */}
-              <div className="flex flex-col items-start lg:items-end">
-                <div className="text-sm uppercase tracking-[0.25em] text-white/75">
-                  Join Us on the Journey
-                </div>
-
-                <div className="mt-4 flex gap-2">
-                  <a
-                    href="https://www.facebook.com/ForgeAcademySA"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="icon-button"
-                    aria-label="Forge Academy Facebook"
-                  >
-                    <Facebook size={18} />
-                  </a>
+      <div className="w-full px-3 sm:px-4 lg:px-6 xl:px-8 2xl:px-10">
+        <div className="app-footer-shell glass-panel relative min-h-[189px] overflow-hidden p-0">
+          <div className="sidebar-gradient-border-overlay absolute inset-0" />
+          <div className="flex h-full flex-col justify-between">
+            <div className="px-5 pt-5 sm:px-8 sm:pt-6">
+              <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.6fr_1fr]">
+                <div className="space-y-3 text-center text-sm text-white/82 lg:text-left">
+                  <h3 className="text-lg font-semibold text-white">
+                    Contact Details
+                  </h3>
 
                   <a
-                    href="https://www.instagram.com/forge_academy/"
+                    href="https://maps.app.goo.gl/pxxgunzzqpLs7N1j8?g_st=aw"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="icon-button"
-                    aria-label="Forge Academy Instagram"
+                    className="flex items-start justify-center gap-2 lg:justify-start"
                   >
-                    <Instagram size={18} />
+                    <MapPin
+                      size={16}
+                      aria-hidden="true"
+                      className="mt-0.5 text-[#8C5BFF]"
+                    />
+                    <span>
+                      Building 6, Clearwater Office Park
+                      <br />
+                      Millenium Blvd, Strubens Valley
+                      <br />
+                      Roodepoort, 1735
+                    </span>
                   </a>
 
-                  <a
-                    href="https://www.linkedin.com/company/forgeacademy"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="icon-button"
-                    aria-label="Forge Academy LinkedIn"
-                  >
-                    <Linkedin size={18} />
-                  </a>
+                  <div className="flex items-center justify-center gap-2 lg:justify-start">
+                    <Phone
+                      size={16}
+                      aria-hidden="true"
+                      className="text-[#8CEBFF]"
+                    />
+                    <a href="tel:+27108803795">+27 10 880 3795</a>
+                  </div>
 
-                  <a
-                    href="https://x.com/forgeacademyza"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="icon-button"
-                    aria-label="Forge Academy Twitter"
-                  >
-                    <Twitter size={18} />
-                  </a>
+                  <div className="flex items-center justify-center gap-2 lg:justify-start">
+                    <Mail
+                      size={16}
+                      aria-hidden="true"
+                      className="text-[#8CEBFF]"
+                    />
+                    <a href="mailto:hello@forgeacademy.co.za">
+                      hello@forgeacademy.co.za
+                    </a>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
 
-          {/* PARTNER LOGOS */}
-          <div className="flex flex-col items-center pb-1">
-            <div className="flex flex-wrap items-center justify-center gap-x-10">
-              {partnerLogos.map((logo) => (
-                <a
-                  key={logo.name}
-                  href={logo.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={logo.name}
-                  title={logo.name}
-                >
+                <div className="flex flex-col items-center justify-center text-center">
                   <img
-                    src={logo.src}
-                    alt={logo.name}
-                    className={`${logo.size} w-auto object-contain transition duration-200 hover:scale-105`}
+                    src={forgeLogo}
+                    alt="Forge Academy"
+                    className="h-20 w-auto object-contain sm:h-28 lg:h-32"
                   />
-                </a>
-              ))}
+
+                  <div className="mt-2 text-sm font-medium text-white/75">
+                    Powered by Ozone Connect
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center lg:items-end">
+                  <div className="text-sm uppercase tracking-[0.25em] text-white/75">
+                    Join Us on the Journey
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap justify-center gap-2">
+                    <a
+                      href="https://www.facebook.com/ForgeAcademySA"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Visit Forge Academy on Facebook"
+                      className="icon-button"
+                    >
+                      <Facebook size={18} aria-hidden="true" />
+                    </a>
+
+                    <a
+                      href="https://www.instagram.com/forge_academy/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Visit Forge Academy on Instagram"
+                      className="icon-button"
+                    >
+                      <Instagram size={18} aria-hidden="true" />
+                    </a>
+
+                    <a
+                      href="https://www.linkedin.com/company/forgeacademy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Visit Forge Academy on LinkedIn"
+                      className="icon-button"
+                    >
+                      <Linkedin size={18} aria-hidden="true" />
+                    </a>
+
+                    <a
+                      href="https://x.com/forgeacademyza"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Visit Forge Academy on X"
+                      className="icon-button"
+                    >
+                      <Twitter size={18} aria-hidden="true" />
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-4 text-xs text-white/70">
-              © {new Date().getFullYear()} Forge Academy
+            <div className="flex flex-col items-center px-4 pb-4 pt-2 sm:px-6">
+              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:gap-x-10">
+                {partnerLogos.map((logo) => (
+                  <a
+                    key={logo.name}
+                    href={logo.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Visit ${logo.name}`}
+                  >
+                    <img
+                      src={logo.src}
+                      alt={logo.name}
+                      className={`${logo.size} max-h-12 w-auto object-contain transition duration-200 hover:scale-105 sm:max-h-16 lg:max-h-none`}
+                    />
+                  </a>
+                ))}
+              </div>
+
+              <div className="mt-4 text-xs text-white/70">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+                  <span>&copy; {new Date().getFullYear()} Forge Academy</span>
+                  <span className="hidden text-white/35 sm:inline">|</span>
+                  <button
+                    type="button"
+                    onClick={onOpenLegal}
+                    className="text-[#8CEBFF] transition hover:text-white focus:outline-none focus:text-white"
+                  >
+                    Legal &amp; Privacy
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-
         </div>
       </div>
     </footer>

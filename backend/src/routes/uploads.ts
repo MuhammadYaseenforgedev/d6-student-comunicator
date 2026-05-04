@@ -8,6 +8,17 @@ import { requireRole } from "../middleware/rbac";
 import { uploadLimiter } from "../middleware/rateLimit";
 import { repos } from "../persistence";
 import type { UploadKind } from "../persistence/types";
+import { isLecturerAssignedToModule, isStudentAllowedForModule } from "../lib/courseAccess";
+import {
+  buildStoredUploadFileName,
+  buildSupabaseUploadStoragePath,
+  deleteFromSupabaseStorage,
+  downloadFromSupabaseStorage,
+  hasPartialSupabaseUploadStorageConfig,
+  isSupabaseUploadStorageConfigured,
+  isSupabaseUploadStoragePath,
+  uploadBufferToSupabaseStorage,
+} from "../lib/uploadStorage";
 
 export const uploadRouter = Router();
 
@@ -23,17 +34,22 @@ const PROJECT_ROOT = path.resolve(__dirname, "../..");
 const RAW_UPLOAD_DIR = String(process.env.UPLOAD_DIR ?? "").trim();
 const UPLOAD_DIR = path.resolve(PROJECT_ROOT, RAW_UPLOAD_DIR || "uploads");
 const IS_PRODUCTION = String(process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
+const USE_SUPABASE_UPLOAD_STORAGE = isSupabaseUploadStorageConfigured();
 
-try {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  fs.accessSync(UPLOAD_DIR, fs.constants.R_OK | fs.constants.W_OK);
-} catch (e: unknown) {
-  const message = e instanceof Error ? e.message : String(e);
-  throw new Error(`[uploads] UPLOAD_DIR is not writable: ${UPLOAD_DIR}. ${message}`);
+if (!USE_SUPABASE_UPLOAD_STORAGE) {
+  try {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    fs.accessSync(UPLOAD_DIR, fs.constants.R_OK | fs.constants.W_OK);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    throw new Error(`[uploads] UPLOAD_DIR is not writable: ${UPLOAD_DIR}. ${message}`);
+  }
 }
 
 if (IS_PRODUCTION) {
-  if (!RAW_UPLOAD_DIR) {
+  if (USE_SUPABASE_UPLOAD_STORAGE) {
+    console.info("[uploads] Using Supabase Storage for upload persistence.");
+  } else if (!RAW_UPLOAD_DIR) {
     console.warn(
       `[uploads] UPLOAD_DIR is not set. Files are being stored on local application disk at ${UPLOAD_DIR} and may be lost on restart. Point UPLOAD_DIR to a persistent mounted path in production.`
     );
@@ -42,24 +58,28 @@ if (IS_PRODUCTION) {
       `[uploads] UPLOAD_DIR is relative (${RAW_UPLOAD_DIR}). In production, prefer an absolute persistent mounted path. Resolved path: ${UPLOAD_DIR}`
     );
   }
+
+  if (hasPartialSupabaseUploadStorageConfig()) {
+    console.warn(
+      "[uploads] Supabase Storage config is incomplete. Falling back to local disk uploads until SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are both set."
+    );
+  }
 }
 
-const storage = multer.diskStorage({
-  destination: (
-    _req: Request,
-    _file: Express.Multer.File,
-    cb: (error: Error | null, destination: string) => void
-  ) => cb(null, UPLOAD_DIR),
-  filename: (
-    _req: Request,
-    file: Express.Multer.File,
-    cb: (error: Error | null, filename: string) => void
-  ) => {
-    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const unique = `${Date.now()}_${Math.random().toString(16).slice(2)}_${safe}`;
-    cb(null, unique);
-  },
-});
+const storage = USE_SUPABASE_UPLOAD_STORAGE
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (
+        _req: Request,
+        _file: Express.Multer.File,
+        cb: (error: Error | null, destination: string) => void
+      ) => cb(null, UPLOAD_DIR),
+      filename: (
+        _req: Request,
+        file: Express.Multer.File,
+        cb: (error: Error | null, filename: string) => void
+      ) => cb(null, buildStoredUploadFileName(file.originalname)),
+    });
 
 const upload = multer({
   storage,
@@ -98,15 +118,33 @@ async function canParentAccessUpload(
 
 async function canAccessUpload(
   user: { id: string; role: string },
-  u: { kind: UploadKind; uploadedBy: string; uploadedByRole?: string | null; targetUserId?: string | null }
+  u: {
+    kind: UploadKind;
+    uploadedBy: string;
+    uploadedByRole?: string | null;
+    targetUserId?: string | null;
+    moduleId?: string | null;
+  }
 ) {
   const uploaderRole = String(u.uploadedByRole ?? "").toUpperCase();
   const isStaffMaterial = u.kind === "LECTURER_MATERIAL" && (uploaderRole === "ADMIN" || uploaderRole === "LECTURER");
 
-  if (user.role === "ADMIN" || user.role === "LECTURER") return true;
+  if (user.role === "ADMIN") return true;
+  if (user.role === "LECTURER") {
+    if (!u.moduleId) return u.uploadedBy === user.id;
+    return isLecturerAssignedToModule(pool, user.id, u.moduleId);
+  }
   if (user.role === "PARENT") return canParentAccessUpload(user.id, u);
   // STUDENT
-  return isStaffMaterial || (u.kind === "STUDENT_SUBMISSION" && (u.uploadedBy === user.id || u.targetUserId === user.id));
+  if (isStaffMaterial) {
+    if (!u.moduleId) return true;
+    return isStudentAllowedForModule(pool, user.id, u.moduleId);
+  }
+  const isOwnSubmission =
+    u.kind === "STUDENT_SUBMISSION" && (u.uploadedBy === user.id || u.targetUserId === user.id);
+  if (!isOwnSubmission) return false;
+  if (!u.moduleId) return true;
+  return isStudentAllowedForModule(pool, user.id, u.moduleId);
 }
 
 function isUploadKind(value: string): value is UploadKind {
@@ -121,7 +159,7 @@ async function resolveUploadTarget(
   user: { id: string; role: string },
   kind: UploadKind,
   rawTargetUserId: unknown
-): Promise<{ ok: true; targetUserId: string } | { ok: false; status: number; code: string; message: string }> {
+): Promise<{ ok: true; targetUserId: string | null } | { ok: false; status: number; code: string; message: string }> {
   if (user.role === "STUDENT") {
     return kind === "STUDENT_SUBMISSION"
       ? { ok: true, targetUserId: user.id }
@@ -140,11 +178,14 @@ async function resolveUploadTarget(
 
   const targetUserId = String(rawTargetUserId ?? "").trim();
   if (!targetUserId) {
+    if (kind === "LECTURER_MATERIAL") {
+      return { ok: true, targetUserId: null };
+    }
     return {
       ok: false,
       status: 400,
       code: "VALIDATION",
-      message: kind === "STUDENT_SUBMISSION" ? "Select a student for this submission." : "Select a lecturer for this material.",
+      message: "Select a student for this submission.",
     };
   }
 
@@ -175,6 +216,105 @@ async function resolveUploadTarget(
   }
 
   return { ok: true, targetUserId };
+}
+
+async function resolveUploadModule(
+  user: { id: string; role: string },
+  kind: UploadKind,
+  targetUserId: string | null,
+  rawCourseId: unknown,
+  rawModuleId: unknown
+): Promise<{ ok: true; moduleId: string } | { ok: false; status: number; code: string; message: string }> {
+  const courseId = String(rawCourseId ?? "").trim();
+  const moduleId = String(rawModuleId ?? "").trim();
+  if (!moduleId) {
+    return {
+      ok: false,
+      status: 400,
+      code: "VALIDATION",
+      message: "Select a module for this upload.",
+    };
+  }
+
+  if (courseId && !isUuid(courseId)) {
+    return { ok: false, status: 400, code: "VALIDATION", message: "courseId must be a UUID" };
+  }
+
+  if (!isUuid(moduleId)) {
+    return { ok: false, status: 400, code: "VALIDATION", message: "moduleId must be a UUID" };
+  }
+
+  const moduleResult = await pool.query<{ id: string; course_id: string }>(
+    `
+      SELECT id, course_id
+      FROM faculty_modules
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [moduleId]
+  );
+  if ((moduleResult.rowCount ?? 0) === 0) {
+    return { ok: false, status: 404, code: "NOT_FOUND", message: "Module not found" };
+  }
+
+  if (courseId && String(moduleResult.rows[0]?.course_id ?? "") !== courseId) {
+    return {
+      ok: false,
+      status: 400,
+      code: "VALIDATION",
+      message: "Selected module does not belong to the selected course.",
+    };
+  }
+
+  if (user.role === "LECTURER") {
+    const allowed = await isLecturerAssignedToModule(pool, user.id, moduleId);
+    if (!allowed) {
+        return {
+          ok: false,
+          status: 403,
+          code: "FORBIDDEN",
+          message: "Lecturer can only upload materials for assigned modules.",
+        };
+      }
+    }
+
+  if (user.role === "STUDENT") {
+    const allowed = await isStudentAllowedForModule(pool, user.id, moduleId);
+    if (!allowed) {
+      return {
+        ok: false,
+        status: 403,
+        code: "FORBIDDEN",
+        message: "Student can only upload submissions for enrolled modules.",
+      };
+    }
+  }
+
+  if (user.role === "ADMIN" && targetUserId) {
+    if (kind === "LECTURER_MATERIAL") {
+      const allowed = await isLecturerAssignedToModule(pool, targetUserId, moduleId);
+      if (!allowed) {
+        return {
+          ok: false,
+          status: 400,
+          code: "VALIDATION",
+          message: "Selected lecturer is not assigned to this module.",
+        };
+      }
+    } else {
+      const allowed = await isStudentAllowedForModule(pool, targetUserId, moduleId);
+      if (!allowed) {
+        return {
+          ok: false,
+          status: 400,
+          code: "VALIDATION",
+          message: "Selected student is not linked to this module.",
+        };
+      }
+    }
+  }
+
+  return { ok: true, moduleId };
 }
 
 /**
@@ -261,6 +401,26 @@ async function cleanupUploadedFile(filePath: string | null | undefined, context:
   }
 }
 
+async function cleanupStoredUpload(storagePath: string | null | undefined, context: string): Promise<void> {
+  const normalized = String(storagePath ?? "").trim();
+  if (!normalized) return;
+
+  if (isSupabaseUploadStoragePath(normalized)) {
+    try {
+      await deleteFromSupabaseStorage(normalized);
+    } catch (e: unknown) {
+      console.error("[uploads] remote cleanup warning", {
+        context,
+        storagePath: normalized,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+    return;
+  }
+
+  await cleanupUploadedFile(resolveUploadPath(normalized), context);
+}
+
 function requestOrigin(req: Request): string {
   const proto = String(req.headers["x-forwarded-proto"] ?? req.protocol)
     .split(",")[0]
@@ -284,6 +444,7 @@ function getExistingUploadPath(storagePath: string): string | null {
 }
 
 async function pruneUnavailableUpload(item: { id: string; storagePath: string }) {
+  if (isSupabaseUploadStoragePath(item.storagePath)) return false;
   if (getExistingUploadPath(item.storagePath)) return false;
   try {
     await repos.uploads.delete(item.id);
@@ -302,6 +463,8 @@ async function pruneUnavailableUpload(item: { id: string; storagePath: string })
  * fields:
  * - file: File
  * - kind: "LECTURER_MATERIAL" (ADMIN/LECTURER) or "STUDENT_SUBMISSION" (STUDENT)
+ * - courseId: UUID for the selected course (validated against module when provided)
+ * - moduleId: UUID for the selected module
  */
 uploadRouter.post(
   "/",
@@ -309,6 +472,7 @@ uploadRouter.post(
   uploadLimiter,
   uploadSingle("file"),
   async (req: Request, res: Response) => {
+    let createdStoragePath: string | null = null;
     try {
       const user = req.user!;
       const kindRaw = String(req.body?.kind ?? "").trim().toUpperCase();
@@ -333,8 +497,38 @@ uploadRouter.post(
         return err(res, target.status, target.code, target.message);
       }
 
-      // Store as a relative path in DB (matches your existing schema style)
-      const storagePath = path.join("uploads", req.file.filename).replaceAll("\\", "/");
+      const moduleSelection = await resolveUploadModule(
+        user,
+        kind,
+        target.targetUserId,
+        req.body?.courseId,
+        req.body?.moduleId
+      );
+      if (!moduleSelection.ok) {
+        await cleanupUploadedFile(req.file?.path, "POST / invalid module");
+        return err(res, moduleSelection.status, moduleSelection.code, moduleSelection.message);
+      }
+
+      const storedFileName = buildStoredUploadFileName(req.file.originalname);
+      const storagePath = USE_SUPABASE_UPLOAD_STORAGE
+        ? buildSupabaseUploadStoragePath(storedFileName)
+        : path.join("uploads", req.file.filename || storedFileName).replaceAll("\\", "/");
+      createdStoragePath = storagePath;
+
+      if (USE_SUPABASE_UPLOAD_STORAGE) {
+        const fileBuffer =
+          req.file.buffer ??
+          (req.file.path ? await fs.promises.readFile(req.file.path) : null);
+        if (!fileBuffer) {
+          return err(res, 500, "INTERNAL", "Upload buffer missing");
+        }
+
+        await uploadBufferToSupabaseStorage({
+          storagePath,
+          file: fileBuffer,
+          contentType: req.file.mimetype || "application/octet-stream",
+        });
+      }
 
       const created = await repos.uploads.create({
         kind,
@@ -344,12 +538,18 @@ uploadRouter.post(
         storagePath,
         uploadedBy: user.id,
         targetUserId: target.targetUserId,
+        moduleId: moduleSelection.moduleId,
       });
 
       return res.status(201).json(withDownloadUrl(req, created));
     } catch (e: unknown) {
       console.error("[uploads] POST / error", e);
-      await cleanupUploadedFile(req.file?.path, "POST / error");
+      if (req.file?.path) {
+        await cleanupUploadedFile(req.file.path, "POST / error");
+      }
+      if (USE_SUPABASE_UPLOAD_STORAGE && createdStoragePath) {
+        await cleanupStoredUpload(createdStoragePath, "POST / error");
+      }
       return err(res, 500, "INTERNAL", "Upload failed");
     }
   }
@@ -361,10 +561,39 @@ uploadRouter.post(
 uploadRouter.get("/", requireRole("ADMIN", "LECTURER", "STUDENT", "PARENT"), async (req: Request, res: Response) => {
   try {
     const user = req.user!;
+    const moduleId = String(req.query.moduleId ?? "").trim();
+    const kind = String(req.query.kind ?? "").trim().toUpperCase();
+    if (moduleId && !isUuid(moduleId)) {
+      return err(res, 400, "VALIDATION", "moduleId must be a UUID");
+    }
+    if (kind && !isUploadKind(kind)) {
+      return err(res, 400, "VALIDATION", "kind must be LECTURER_MATERIAL or STUDENT_SUBMISSION");
+    }
+
+    if (moduleId) {
+      if (user.role === "LECTURER") {
+        const allowed = await isLecturerAssignedToModule(pool, user.id, moduleId);
+        if (!allowed) {
+          return err(res, 403, "FORBIDDEN", "Lecturer can only access uploads for assigned modules");
+        }
+      }
+      if (user.role === "STUDENT") {
+        const allowed = await isStudentAllowedForModule(pool, user.id, moduleId);
+        if (!allowed) {
+          return err(res, 403, "FORBIDDEN", "Student is not enrolled in this module");
+        }
+      }
+      if (user.role === "PARENT") {
+        return err(res, 403, "FORBIDDEN", "Parents cannot access module assessment files");
+      }
+    }
+
     const items = await repos.uploads.listForUser({ id: user.id, role: user.role });
     const available: typeof items = [];
 
     for (const item of items) {
+      if (moduleId && item.moduleId !== moduleId) continue;
+      if (kind && item.kind !== kind) continue;
       if (await pruneUnavailableUpload(item)) continue;
       available.push(item);
     }
@@ -396,6 +625,18 @@ uploadRouter.get(
         return err(res, 403, "FORBIDDEN", "You do not have permission to download this file.");
       }
 
+      if (isSupabaseUploadStoragePath(u.storagePath)) {
+        const remoteFile = await downloadFromSupabaseStorage(u.storagePath);
+        if (!remoteFile) {
+          await repos.uploads.delete(u.id);
+          return err(res, 404, "NOT_FOUND", "File missing in storage");
+        }
+
+        res.setHeader("Content-Type", remoteFile.contentType || u.mimeType || "application/octet-stream");
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(u.originalName)}"`);
+        return res.send(remoteFile.buffer);
+      }
+
       const absPath = resolveUploadPath(u.storagePath);
       if (!absPath) {
         return err(res, 400, "VALIDATION", "Invalid storage path");
@@ -419,21 +660,30 @@ uploadRouter.get(
 
 /**
  * DELETE /api/uploads/:id
- * ADMIN/LECTURER can delete any upload metadata and best-effort remove file from disk.
+ * ADMIN/LECTURER can delete any upload metadata and best-effort remove the backing file.
  */
 uploadRouter.delete("/:id", requireRole("ADMIN", "LECTURER"), async (req: Request, res: Response) => {
   try {
+    const user = req.user!;
     const id = String(req.params.id || "").trim();
     if (!id) return err(res, 400, "VALIDATION", "Invalid upload id");
 
     const existing = await repos.uploads.getById(id);
     if (!existing) return err(res, 404, "NOT_FOUND", "Not found");
 
+    if (user.role === "LECTURER") {
+      const allowed = existing.moduleId
+        ? await isLecturerAssignedToModule(pool, user.id, existing.moduleId)
+        : existing.uploadedBy === user.id;
+      if (!allowed) {
+        return err(res, 403, "FORBIDDEN", "Lecturer cannot delete this file");
+      }
+    }
+
     const deleted = await repos.uploads.delete(id);
     if (!deleted) return err(res, 404, "NOT_FOUND", "Not found");
 
-    const absPath = resolveUploadPath(existing.storagePath);
-    await cleanupUploadedFile(absPath, "DELETE /:id");
+    await cleanupStoredUpload(existing.storagePath, "DELETE /:id");
 
     return res.json({ ok: true });
   } catch (e: unknown) {

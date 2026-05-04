@@ -84,11 +84,31 @@ export async function updateCourse(
   }>(`/courses/${encodeURIComponent(courseId)}`, input);
 }
 
+export async function deleteCourse(courseId: string) {
+  return apiClient.delete<{
+    ok: boolean;
+    courseId: string;
+    code: string;
+    name: string;
+    removedActiveStudentCount: number;
+    removedCalendarEntryCount: number;
+  }>(`/courses/${encodeURIComponent(courseId)}`);
+}
+
 export async function assignModuleToCourse(courseId: string, moduleId: string) {
   return apiClient.post<{ ok: boolean }>(
     `/courses/${encodeURIComponent(courseId)}/modules`,
     { moduleId }
   );
+}
+
+export async function removeCourseModule(courseId: string, moduleId: string) {
+  return apiClient.delete<{
+    ok: boolean;
+    moduleId: string;
+    code: string;
+    name: string;
+  }>(`/courses/${encodeURIComponent(courseId)}/modules/${encodeURIComponent(moduleId)}`);
 }
 
 export async function enrollStudentInCourse(

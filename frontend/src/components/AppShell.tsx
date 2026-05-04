@@ -8,18 +8,25 @@
 // - Keep visual styling consistent with the app-wide neon glass theme
 
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Link,
   NavLink,
-  Outlet,
   useNavigate,
+  useLocation,
+  useOutlet,
 } from "react-router-dom";
-import { clearAuth, getUser, setDevBypass } from "../lib/auth";
-import { adminScopeLabel, isAcademicOrSuperAdmin, isFinanceAdmin, isSuperAdmin } from "../lib/adminAccess";
+import { getUser, logout as logoutUser } from "../lib/auth";
+import {
+  adminScopeLabel,
+  isAcademicOrSuperAdmin,
+  isFinanceAdmin,
+} from "../lib/adminAccess";
 import AppErrorBoundary from "./AppErrorBoundary";
 import { fetchMeProfile, type MeProfile } from "../lib/authService";
 import AnimatedForgeLogo from "./AnimatedForgeLogo";
 import { useNotificationSummary } from "../hooks/useNotificationSummary";
+import RoleAssistant from "./RoleAssistant";
 
 function formatBadgeCount(value: number): string {
   if (value > 99) return "99+";
@@ -39,7 +46,7 @@ function BurgerButton({
       onClick={onClick}
       aria-label={open ? "Close navigation menu" : "Open navigation menu"}
       aria-expanded={open}
-      className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#8CEBFF]/20 bg-[rgba(9,23,54,0.72)] text-white/90 backdrop-blur-xl transition hover:border-[#8CEBFF]/40 hover:text-[#8CEBFF]"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-[1.15rem] border border-[#8CEBFF]/20 bg-[rgba(9,23,54,0.72)] text-white/90 backdrop-blur-xl transition hover:border-[#8CEBFF]/40 hover:text-[#8CEBFF]"
     >
       <span className="relative block h-4 w-5">
         <span
@@ -101,17 +108,22 @@ function Item({
 
 export default function AppShell() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const outlet = useOutlet();
   const user = getUser();
 
   const isParent = user?.role === "PARENT";
   const isStudent = user?.role === "STUDENT";
   const financeAdmin = isFinanceAdmin(user);
   const academicOrSuperAdmin = isAcademicOrSuperAdmin(user);
-  const superAdmin = isSuperAdmin(user);
 
   const calendarTo =
     user?.role === "PARENT" ? "/app/parent/calendar" : "/app/calendar";
-  const homeTo = isParent ? "/app/parent" : financeAdmin ? "/app/admin/finance" : "/app";
+  const homeTo = isParent
+    ? "/app/parent"
+    : financeAdmin
+      ? "/app/admin/finance"
+      : "/app";
   const homeLabel = isParent ? "Parent Portal" : "Home";
 
   const userId = user?.id ?? "";
@@ -126,16 +138,27 @@ export default function AppShell() {
 
     let cancelled = false;
 
-    void fetchMeProfile()
-      .then((p) => {
-        if (!cancelled) setProfile(p);
-      })
-      .catch(() => {
-        if (!cancelled) setProfile(null);
-      });
+    const loadProfile = () => {
+      void fetchMeProfile()
+        .then((p) => {
+          if (!cancelled) setProfile(p);
+        })
+        .catch(() => {
+          if (!cancelled) setProfile(null);
+        });
+    };
+
+    loadProfile();
+
+    const handleStudentProfileUpdated = () => {
+      loadProfile();
+    };
+
+    window.addEventListener("student-profile-updated", handleStudentProfileUpdated);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("student-profile-updated", handleStudentProfileUpdated);
     };
   }, [userId, userRole]);
 
@@ -191,15 +214,14 @@ export default function AppShell() {
   const financeBadge = Number(counts.FINANCE ?? 0);
   const parentLinkBadge = Number(counts.PARENT_LINK ?? 0);
 
-  function logout() {
-    clearAuth();
-    setDevBypass(false);
-    closeMobileMenu();
-    navigate("/login", { replace: true });
-  }
-
   function closeMobileMenu() {
     setMobileMenuOpen(false);
+  }
+
+  function logout() {
+    logoutUser();
+    closeMobileMenu();
+    navigate("/login", { replace: true });
   }
 
   const sidebarContent = (
@@ -210,21 +232,41 @@ export default function AppShell() {
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/50 to-transparent" />
       </div>
 
-      <div className="relative">
-        <Link to={homeTo} className="block" onClick={closeMobileMenu}>
-          <AnimatedForgeLogo />
-        </Link>
+      <div className="relative flex min-h-full flex-col">
+        <div className="flex items-center justify-between gap-3">
+          <Link to={homeTo} className="block min-w-0 flex-1" onClick={closeMobileMenu}>
+            <div className="max-w-[182px] sm:max-w-none">
+              <AnimatedForgeLogo />
+            </div>
+          </Link>
 
-        <div className="mt-6 space-y-1.5">
+          <div className="lg:hidden">
+            <BurgerButton open={mobileMenuOpen} onClick={closeMobileMenu} />
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-1.5">
           {!financeAdmin && (
             <>
-              <Item to={homeTo} label={homeLabel} onNavigate={closeMobileMenu} end />
+              <Item
+                to={homeTo}
+                label={homeLabel}
+                onNavigate={closeMobileMenu}
+                end
+              />
               <Item
                 to="/app/notifications"
                 label="Notifications"
                 badge={totalUnread}
                 onNavigate={closeMobileMenu}
               />
+              {user?.role === "STUDENT" && (
+                <Item
+                  to="/app/personal-details"
+                  label="Personal Details"
+                  onNavigate={closeMobileMenu}
+                />
+              )}
             </>
           )}
 
@@ -271,12 +313,12 @@ export default function AppShell() {
                 badge={attendanceBadge}
                 onNavigate={closeMobileMenu}
               />
-                <Item
-                  to="/app/parent/children"
-                  label="Children"
-                  badge={parentLinkBadge}
-                  onNavigate={closeMobileMenu}
-                />
+              <Item
+                to="/app/parent/children"
+                label="Children"
+                badge={parentLinkBadge}
+                onNavigate={closeMobileMenu}
+              />
               <Item
                 to="/app/uploads"
                 label="Uploads"
@@ -377,13 +419,6 @@ export default function AppShell() {
                 />
               )}
 
-              {superAdmin && (
-                <Item
-                  to="/app/admin/tickets"
-                  label="Tickets"
-                  onNavigate={closeMobileMenu}
-                />
-              )}
             </>
           ) : null}
         </div>
@@ -431,10 +466,10 @@ export default function AppShell() {
   );
 
   return (
-    <div className="min-h-[calc(100dvh-220px)]">
-      <div className="mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4 lg:px-4 lg:py-6">
+    <div className="flex min-h-full min-w-0 flex-col overflow-visible lg:h-full lg:min-h-0 lg:overflow-hidden">
+      <div className="flex min-w-0 w-full flex-col px-3 py-3 sm:px-4 sm:py-4 lg:min-h-0 lg:flex-1 lg:px-6 lg:py-6 xl:px-8 2xl:px-10">
         <div className="mb-3 lg:hidden">
-          <div className="glass-panel-premium relative overflow-hidden px-3 py-3">
+          <div className="glass-panel-premium relative overflow-hidden px-3.5 py-3.5">
             <div className="pointer-events-none absolute inset-0 opacity-100">
               <div className="absolute -left-10 -top-10 h-28 w-28 rounded-full bg-[#8CEBFF]/12 blur-3xl" />
               <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-[#8C5BFF]/12 blur-3xl" />
@@ -460,45 +495,80 @@ export default function AppShell() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[290px_minmax(0,1fr)] lg:gap-5">
-          <aside className="glass-panel-premium relative hidden overflow-hidden p-4 lg:block">
-            {sidebarContent}
+        <div className="desktop-app-frame grid grid-cols-1 gap-4 lg:h-full lg:min-h-0 lg:flex-1 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="glass-panel-premium relative hidden h-full min-h-0 overflow-hidden p-4 lg:block">
+            <div className="sidebar-gradient-border-overlay absolute inset-0" />
+            <div className="relative h-full min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+              {sidebarContent}
+            </div>
           </aside>
 
-          <main className="glass-panel relative min-w-0 overflow-x-hidden">
+          <main className="glass-panel relative flex min-w-0 flex-col overflow-visible lg:min-h-0 lg:overflow-hidden">
+            <div className="sidebar-gradient-border-overlay absolute inset-0" />
             <div className="pointer-events-none absolute inset-0 opacity-100">
               <div className="absolute left-0 top-0 h-36 w-36 rounded-full bg-[#8CEBFF]/10 blur-3xl" />
               <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-[#8C5BFF]/10 blur-3xl" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#8CEBFF]/40 to-transparent" />
             </div>
 
-            <div className="relative min-w-0 p-3 sm:p-4 lg:p-6">
+            <div className="relative flex flex-1 flex-col p-3 sm:p-4 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden lg:p-6 xl:p-7">
               <AppErrorBoundary>
-                <Outlet />
+                <div className="relative flex min-w-0 flex-1 flex-col overflow-visible">
+                  <div className="app-page-scroll relative min-w-0 flex-1 overflow-visible pr-0">
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.div
+                        key={location.pathname}
+                        initial={{ opacity: 0, x: 30 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -30 }}
+                        transition={{ duration: 0.25, ease: "easeInOut" }}
+                        className="flex min-w-0 flex-col lg:min-h-full"
+                      >
+                        {outlet}
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
+                </div>
               </AppErrorBoundary>
             </div>
           </main>
         </div>
       </div>
 
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-[rgba(2,6,23,0.7)] backdrop-blur-sm lg:hidden"
-          onClick={closeMobileMenu}
-        />
-      )}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            <motion.button
+              type="button"
+              aria-label="Close navigation drawer"
+              className="fixed inset-0 z-40 bg-[rgba(2,6,23,0.7)] backdrop-blur-sm lg:hidden"
+              onClick={closeMobileMenu}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+            />
 
-      <aside
-        className={[
-          "fixed inset-y-0 left-0 z-50 h-dvh w-[88vw] max-w-[340px] border-r border-[#8CEBFF]/10 bg-[rgba(5,12,30,0.96)] p-4 shadow-2xl backdrop-blur-2xl transition-transform duration-300 lg:hidden",
-          mobileMenuOpen ? "translate-x-0" : "-translate-x-full",
-        ].join(" ")}
-        aria-hidden={!mobileMenuOpen}
-      >
-        <div className="glass-panel-premium relative h-full overflow-y-auto overflow-x-hidden p-4">
-          {sidebarContent}
-        </div>
-      </aside>
+            <motion.aside
+              className="fixed inset-y-0 left-0 z-50 w-[82vw] max-w-[22rem] p-3 pr-0 lg:hidden"
+              aria-hidden={!mobileMenuOpen}
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", stiffness: 320, damping: 32 }}
+            >
+              <div className="glass-panel-premium relative h-full overflow-hidden rounded-[2rem] p-3.5 shadow-[0_24px_60px_rgba(3,10,28,0.48)]">
+                <div className="sidebar-gradient-border-overlay absolute inset-0" />
+                <div className="mobile-drawer-scroll relative h-full overflow-y-auto overflow-x-hidden pr-1">
+                  {sidebarContent}
+                </div>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {user && <RoleAssistant user={user} />}
     </div>
   );
 }

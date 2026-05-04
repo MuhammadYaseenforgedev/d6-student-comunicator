@@ -16,6 +16,23 @@ type ModuleOption = {
   label: string;
 };
 
+type DurationValue = "1" | "3" | "7" | "14" | "30" | "custom";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const durationOptions: Array<{ value: DurationValue; label: string; days?: number }> = [
+  { value: "1", label: "1 day", days: 1 },
+  { value: "3", label: "3 days", days: 3 },
+  { value: "7", label: "7 days", days: 7 },
+  { value: "14", label: "14 days", days: 14 },
+  { value: "30", label: "30 days", days: 30 },
+  { value: "custom", label: "Custom date/time" },
+];
+
+function toLocalDateTimeValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -54,6 +71,8 @@ export default function NewAnnouncementModal({
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [pinned, setPinned] = useState(false);
+  const [duration, setDuration] = useState<DurationValue>("7");
+  const [customExpiresAt, setCustomExpiresAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -63,6 +82,8 @@ export default function NewAnnouncementModal({
     setTitle("");
     setBody("");
     setPinned(false);
+    setDuration("7");
+    setCustomExpiresAt(toLocalDateTimeValue(new Date(Date.now() + 7 * DAY_MS)));
     setSubmitting(false);
   }, [open, defaultChannel, defaultModuleId]);
 
@@ -83,16 +104,60 @@ export default function NewAnnouncementModal({
     }
   }, [channel, defaultModuleId, moduleId, moduleOptions]);
 
-  // Do not render anything if the modal is closed
-  if (!open) return null;
-
   // Lightweight form validation
   const titleOk = title.trim().length >= 3;
   const bodyOk = body.trim().length >= 5;
   const needsModule =
     channel === "modules" && (requireModuleSelection || moduleOptions.length > 0);
   const moduleOk = !needsModule || Boolean(moduleId);
-  const canSubmit = titleOk && bodyOk && moduleOk && !submitting;
+  const resolvedExpiry = useMemo(() => {
+    if (duration === "custom") {
+      if (!customExpiresAt.trim()) {
+        return {
+          iso: "",
+          label: "",
+          error: "Choose when this announcement should expire.",
+        };
+      }
+
+      const parsed = new Date(customExpiresAt);
+      const parsedTime = parsed.getTime();
+      if (!Number.isFinite(parsedTime)) {
+        return {
+          iso: "",
+          label: "",
+          error: "Enter a valid custom expiry date and time.",
+        };
+      }
+      if (parsedTime <= Date.now()) {
+        return {
+          iso: "",
+          label: "",
+          error: "Expiry must be in the future.",
+        };
+      }
+
+      return {
+        iso: parsed.toISOString(),
+        label: parsed.toLocaleString(),
+        error: "",
+      };
+    }
+
+    const selectedOption = durationOptions.find((option) => option.value === duration);
+    const days = selectedOption?.days ?? 7;
+    const expiresAt = new Date(Date.now() + days * DAY_MS);
+    return {
+      iso: expiresAt.toISOString(),
+      label: expiresAt.toLocaleString(),
+      error: "",
+    };
+  }, [customExpiresAt, duration]);
+  const expiryOk = Boolean(resolvedExpiry.iso);
+  const canSubmit = titleOk && bodyOk && moduleOk && expiryOk && !submitting;
+
+  // Do not render anything if the modal is closed
+  if (!open) return null;
 
   /**
    * Submit the form to create a new announcement.
@@ -111,6 +176,7 @@ export default function NewAnnouncementModal({
         body: body.trim(),
         pinned,
         author: "Dev User",
+        expiresAt: resolvedExpiry.iso,
         ...(channel === "modules" && moduleId ? { moduleId } : {}),
       });
 
@@ -118,6 +184,8 @@ export default function NewAnnouncementModal({
       setTitle("");
       setBody("");
       setPinned(false);
+      setDuration("7");
+      setCustomExpiresAt(toLocalDateTimeValue(new Date(Date.now() + 7 * DAY_MS)));
       setModuleId(defaultModuleId ?? "");
       onClose();
     } finally {
@@ -209,6 +277,71 @@ export default function NewAnnouncementModal({
               Pin announcement
             </label>
           </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="announcement-duration"
+                className="text-sm text-white/78"
+              >
+                Duration
+              </label>
+              <select
+                id="announcement-duration"
+                name="duration"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value as DurationValue)}
+                className="select-glass mt-1"
+                aria-label="Announcement duration"
+                title="Announcement duration"
+              >
+                {durationOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm text-white/78">Expires on</label>
+              <div className="input-glass mt-1 flex min-h-[44px] items-center text-sm text-white/88">
+                {resolvedExpiry.label || "Select a duration first"}
+              </div>
+            </div>
+          </div>
+
+          {duration === "custom" && (
+            <div>
+              <label
+                htmlFor="announcement-custom-expires"
+                className="text-sm text-white/78"
+              >
+                Custom expiry
+              </label>
+              <input
+                id="announcement-custom-expires"
+                name="customExpiresAt"
+                type="datetime-local"
+                value={customExpiresAt}
+                onChange={(e) => setCustomExpiresAt(e.target.value)}
+                min={toLocalDateTimeValue(new Date())}
+                className="input-glass mt-1"
+                aria-label="Announcement custom expiry"
+                title="Announcement custom expiry"
+              />
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-4 py-3 text-sm text-white/74">
+            Announcements go live as soon as they are posted and automatically stop showing after the expiry time.
+          </div>
+
+          {duration === "custom" && resolvedExpiry.error ? (
+            <div className="mt-1 text-xs text-white/55">
+              {resolvedExpiry.error}
+            </div>
+          ) : null}
 
           {channel === "modules" && moduleOptions.length > 0 && (
             <div>

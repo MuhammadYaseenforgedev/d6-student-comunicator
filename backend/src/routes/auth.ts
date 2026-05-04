@@ -10,6 +10,11 @@ import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
 import { isSmtpConfigured, sendOtpEmail as sendOtpEmailViaSmtp } from "../lib/mailer";
 import { validatePassword } from "../lib/passwordPolicy";
 import { getEffectiveAdminScope, normalizeAdminScope, type AdminScope } from "../lib/adminAccess";
+import {
+  completeLearnerActivation,
+  LearnerActivationError,
+  validateLearnerActivationToken,
+} from "../lib/learnerActivation";
 
 export const authRouter = Router();
 
@@ -136,6 +141,33 @@ function otpConfig() {
   };
 }
 
+function buildOtpSuccessResponse(
+  expiresAt: string,
+  options?: { devCode?: string; emailDeliveryEnabled?: boolean }
+) {
+  const emailDeliveryEnabled =
+    typeof options?.emailDeliveryEnabled === "boolean"
+      ? options.emailDeliveryEnabled
+      : isSmtpConfigured();
+
+  return options?.devCode
+    ? {
+        ok: true as const,
+        expiresAt,
+        devOtp: options.devCode,
+        emailDeliveryEnabled,
+      }
+    : {
+        ok: true as const,
+        expiresAt,
+        emailDeliveryEnabled,
+      };
+}
+
+function fallbackOtpExpiresAt(): string {
+  return new Date(Date.now() + otpConfig().ttlMinutes * 60_000).toISOString();
+}
+
 function normalizeIp(ip: string): string {
   const s = String(ip ?? "").trim();
   if (!s) return "unknown";
@@ -190,6 +222,10 @@ function normalizeSouthAfricanId(v: unknown): string {
   return String(v ?? "").replace(/\D+/g, "");
 }
 
+function hasAcceptedLegalTerms(value: unknown): value is true {
+  return value === true;
+}
+
 function isValidSouthAfricanId(v: string): boolean {
   return /^\d{13}$/.test(v);
 }
@@ -203,6 +239,15 @@ function timingSafeEquals(a: string, b: string): boolean {
   const bb = Buffer.from(b, "utf8");
   if (aa.length !== bb.length) return false;
   return crypto.timingSafeEqual(aa, bb);
+}
+
+function activationErr(res: any, error: LearnerActivationError) {
+  return res.status(error.status).json({
+    error: {
+      code: error.code,
+      message: error.message,
+    },
+  });
 }
 
 /**
@@ -308,38 +353,50 @@ async function createOtp(
   const skipEmailDelivery = Boolean(options?.skipEmailDelivery);
 
   if (skipEmailDelivery) {
-    // Demo bypass intentionally suppresses email delivery and never logs OTP values.
-  } else if (isProduction()) {
+    // Demo bypass and unknown-login parity intentionally suppress delivery.
+  } else {
     const smtpConfigured = isSmtpConfigured();
 
-    try {
-      if (!smtpConfigured) {
+    if (!smtpConfigured) {
+      if (isProduction()) {
+        await pool.query(
+          `
+            DELETE FROM email_otps
+            WHERE lower(email) = lower($1)
+              AND purpose = $2
+              AND code_hash = $3
+          `,
+          [email, purpose, codeHash]
+        );
         throw new OtpDeliveryError(503, "OTP email service is not configured");
       }
-      await sendOtpEmailViaSmtp({ to: email, code, expiresAt });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const stack = err instanceof Error ? err.stack : undefined;
-      console.error("[otp][request-otp] SMTP send failed", {
-        email,
-        purpose,
-        message,
-        stack,
-      });
-      let error = err;
-      if (!(error instanceof OtpDeliveryError)) {
-        error = new OtpDeliveryError(503, "Failed to send OTP email");
+    } else {
+      try {
+        await sendOtpEmailViaSmtp({ to: email, code, expiresAt });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        console.error("[otp][request-otp] SMTP send failed", {
+          email,
+          purpose,
+          message,
+          stack,
+        });
+        let error = err;
+        if (!(error instanceof OtpDeliveryError)) {
+          error = new OtpDeliveryError(503, "Failed to send OTP email");
+        }
+        await pool.query(
+          `
+            DELETE FROM email_otps
+            WHERE lower(email) = lower($1)
+              AND purpose = $2
+              AND code_hash = $3
+          `,
+          [email, purpose, codeHash]
+        );
+        throw error;
       }
-      await pool.query(
-        `
-          DELETE FROM email_otps
-          WHERE lower(email) = lower($1)
-            AND purpose = $2
-            AND code_hash = $3
-        `,
-        [email, purpose, codeHash]
-      );
-      throw error;
     }
   }
 
@@ -418,6 +475,46 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
 }
 
 /* ===============================
+   IMPORTED LEARNER ACTIVATION
+=================================*/
+authRouter.get("/activate/validate", async (req, res) => {
+  try {
+    const activation = await validateLearnerActivationToken(pool, req.query.token);
+    return res.json({
+      ok: true,
+      activation,
+    });
+  } catch (e) {
+    if (e instanceof LearnerActivationError) {
+      return activationErr(res, e);
+    }
+    console.error("[auth] GET /activate/validate error", e);
+    return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to validate activation token" } });
+  }
+});
+
+authRouter.post("/activate", async (req, res) => {
+  try {
+    const activation = await completeLearnerActivation(pool, {
+      token: req.body?.token,
+      password: req.body?.password,
+      acceptedLegalTerms: req.body?.acceptedLegalTerms,
+    });
+
+    return res.json({
+      ok: true,
+      activation,
+    });
+  } catch (e) {
+    if (e instanceof LearnerActivationError) {
+      return activationErr(res, e);
+    }
+    console.error("[auth] POST /activate error", e);
+    return res.status(500).json({ error: { code: "INTERNAL", message: "Failed to activate learner account" } });
+  }
+});
+
+/* ===============================
    REQUEST OTP
    POST /request-otp
    Body: { email, purpose: "LOGIN" | "REGISTER" }
@@ -425,6 +522,7 @@ async function verifyAndConsumeOtp(email: string, purpose: "LOGIN" | "REGISTER",
 authRouter.post("/request-otp", async (req, res) => {
   const email = normEmail(req.body?.email);
   const purpose = parsePurpose(req.body?.purpose);
+  const emailDeliveryEnabled = isSmtpConfigured();
 
   if (!email || !purpose) {
     return res.status(400).json({
@@ -450,37 +548,41 @@ authRouter.post("/request-otp", async (req, res) => {
     });
   }
 
-  // Neutral response to avoid email enumeration on LOGIN
+  const includeDevOtp = shouldUseDemoOtpBypass(email);
+  let loginAccountExists = true;
+
   if (purpose === "LOGIN") {
     const r = await pool.query(`SELECT 1 FROM users WHERE lower(email)=lower($1) LIMIT 1`, [email]);
-    if ((r.rowCount ?? 0) === 0) {
-      return res.json({ ok: true });
-    }
+    loginAccountExists = (r.rowCount ?? 0) > 0;
   }
 
   try {
-    const includeDevOtp = shouldUseDemoOtpBypass(email);
     if (includeDevOtp) {
       logDemoBypassUsage("request-otp", email);
     }
+
     const out = await createOtp(email, purpose, ip, {
-      skipEmailDelivery: includeDevOtp,
+      skipEmailDelivery: includeDevOtp || (purpose === "LOGIN" && !loginAccountExists),
       forceDevCode: includeDevOtp,
     });
 
-    if (includeDevOtp) {
-      return res.json({
-        ok: true,
-        expiresAt: out.expiresAt,
-        devOtp: out.devCode,
-      });
-    }
-
-    return res.json({
-      ok: true,
-      expiresAt: out.expiresAt,
-    });
+    return res.json(
+      buildOtpSuccessResponse(out.expiresAt, {
+        devCode: includeDevOtp ? out.devCode : undefined,
+        emailDeliveryEnabled,
+      })
+    );
   } catch (e: any) {
+    if (purpose === "LOGIN" && e instanceof OtpDeliveryError) {
+      return res.json(
+        buildOtpSuccessResponse(fallbackOtpExpiresAt(), {
+          emailDeliveryEnabled:
+            e.message === "OTP email service is not configured"
+              ? false
+              : emailDeliveryEnabled,
+        })
+      );
+    }
     if (e instanceof OtpDeliveryError) {
       return res.status(e.status).json({
         error: { code: "EMAIL_PROVIDER", message: e.message },
@@ -502,6 +604,7 @@ authRouter.post("/request-otp", async (req, res) => {
        password,
        role,
        otp,
+       acceptedLegalTerms,              // required for self-registration
        staffRegisterPassword?,          // required for ADMIN/LECTURER
        studentNumber?, southAfricanId?  // required for STUDENT
      }
@@ -518,9 +621,19 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
   const otp = String(req.body?.otp ?? "").trim();
   const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
   const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
+  const acceptedLegalTerms = req.body?.acceptedLegalTerms;
 
   if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
+  }
+
+  if (!hasAcceptedLegalTerms(acceptedLegalTerms)) {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION",
+        message: "You must accept the POPIA Disclosure and IT Terms of Use before registering.",
+      },
+    });
   }
 
   const passwordError = validatePassword(password);
@@ -600,8 +713,16 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
 
     const result = await pool.query(
       `
-        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id, admin_scope)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (
+          email,
+          password_hash,
+          role,
+          public_student_id,
+          south_african_id,
+          admin_scope,
+          accepted_legal_terms_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, now())
         RETURNING id, email, role, admin_scope
       `,
       [

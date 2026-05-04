@@ -19,6 +19,7 @@ export type OtpResponse = {
   devOtp?: string;
   devCode?: string;
   debugOtp?: string;
+  emailDeliveryEnabled?: boolean;
 };
 
 export type MeProfile = {
@@ -38,6 +39,7 @@ type RegisterInput = {
   password: string;
   role: UserRole;
   otp: string;
+  acceptedLegalTerms: boolean;
   staffRegisterPassword?: string;
   studentNumber?: string;
   southAfricanId?: string;

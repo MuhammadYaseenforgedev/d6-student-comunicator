@@ -19,6 +19,10 @@ export type SupportTicketPublic = {
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
+  externalSystem?: string | null;
+  externalReference?: string | null;
+  pulseSyncStatus?: "PENDING" | "SYNCED" | "FAILED" | "SKIPPED";
+  pulseSyncedAt?: string | null;
 };
 
 export type SupportTicketAdmin = SupportTicketPublic & {
@@ -35,7 +39,12 @@ export async function submitSupportTicket(input: {
   issueType: SupportTicketIssueType;
   message: string;
 }) {
-  return apiClient.post<{ ok: boolean; ticket: SupportTicketPublic }>("/support/tickets", input, { auth: false });
+  return apiClient.post<{
+    ok: boolean;
+    ticket: SupportTicketPublic;
+    message?: string;
+    pulseSyncStatus?: "PENDING" | "SYNCED" | "FAILED" | "SKIPPED";
+  }>("/support/tickets", input, { auth: false });
 }
 
 export async function listSupportTicketsByEmail(email: string) {

@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { apiDownload } from "./api";
 
 export type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE";
 
@@ -225,4 +226,20 @@ export async function getMyAttendance(params?: { from?: string; to?: string; chi
   if (params?.childId) qs.set("childId", params.childId);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return apiClient.get<AttendanceMeResponse>(`/attendance/me${suffix}`);
+}
+
+export async function downloadAttendanceExport(params: {
+  from: string;
+  to: string;
+  moduleId?: string;
+  childId?: string;
+  studentId?: string;
+}) {
+  const qs = new URLSearchParams();
+  qs.set("from", params.from);
+  qs.set("to", params.to);
+  if (params.moduleId?.trim()) qs.set("moduleId", params.moduleId.trim());
+  if (params.childId?.trim()) qs.set("childId", params.childId.trim());
+  if (params.studentId?.trim()) qs.set("studentId", params.studentId.trim());
+  return apiDownload(`/api/attendance/export?${qs.toString()}`);
 }

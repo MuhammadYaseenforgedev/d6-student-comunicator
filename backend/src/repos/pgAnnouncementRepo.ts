@@ -8,12 +8,12 @@ import type { Announcement } from "../models/announcement";
 
 export const pgAnnouncementRepo: AnnouncementRepo = {
   async create(input: CreateAnnouncementInput): Promise<Announcement> {
-    const { channelId, moduleId, title, body, createdBy, pinned } = input;
+    const { channelId, moduleId, title, body, createdBy, pinned, expiresAt } = input;
 
     const result = await pool.query(
       `
-      insert into announcements (channel_id, module_id, title, body, pinned, created_by)
-      values ($1, $2, $3, $4, $5, $6)
+      insert into announcements (channel_id, module_id, title, body, pinned, created_by, expires_at)
+      values ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, now() + interval '30 days'))
       returning
         id,
         channel_id as "channelId",
@@ -24,15 +24,21 @@ export const pgAnnouncementRepo: AnnouncementRepo = {
         body,
         pinned,
         created_by as "createdBy",
-        created_at as "createdAt"
+        created_at as "createdAt",
+        expires_at as "expiresAt"
       `,
-      [channelId, moduleId ?? null, title, body, Boolean(pinned), createdBy]
+      [channelId, moduleId ?? null, title, body, Boolean(pinned), createdBy, expiresAt ?? null]
     );
 
     return result.rows[0];
   },
 
-  async listByChannel(channelId: string): Promise<Announcement[]> {
+  async listByChannel(
+    channelId: string,
+    opts?: {
+      includeExpired?: boolean;
+    }
+  ): Promise<Announcement[]> {
     const result = await pool.query(
       `
       select
@@ -45,13 +51,15 @@ export const pgAnnouncementRepo: AnnouncementRepo = {
         a.body,
         a.pinned,
         a.created_by as "createdBy",
-        a.created_at as "createdAt"
+        a.created_at as "createdAt",
+        a.expires_at as "expiresAt"
       from announcements a
       left join faculty_modules fm on fm.id = a.module_id
       where a.channel_id = $1
+        and ($2::boolean = true or a.expires_at is null or a.expires_at > now())
       order by a.pinned desc, a.created_at desc
       `,
-      [channelId]
+      [channelId, Boolean(opts?.includeExpired)]
     );
 
     return result.rows;
@@ -61,6 +69,7 @@ export const pgAnnouncementRepo: AnnouncementRepo = {
     const title = input.title ?? null;
     const body = input.body ?? null;
     const pinned = typeof input.pinned === "boolean" ? input.pinned : null;
+    const expiresAt = input.expiresAt ?? null;
 
     const result = await pool.query<Announcement>(
       `
@@ -68,7 +77,8 @@ export const pgAnnouncementRepo: AnnouncementRepo = {
       SET
         title = COALESCE($3, title),
         body = COALESCE($4, body),
-        pinned = COALESCE($5, pinned)
+        pinned = COALESCE($5, pinned),
+        expires_at = COALESCE($6::timestamptz, expires_at)
       WHERE id = $1
         AND channel_id = $2
       RETURNING
@@ -81,9 +91,10 @@ export const pgAnnouncementRepo: AnnouncementRepo = {
         body,
         pinned,
         created_by as "createdBy",
-        created_at as "createdAt"
+        created_at as "createdAt",
+        expires_at as "expiresAt"
       `,
-      [input.id, input.channelId, title, body, pinned]
+      [input.id, input.channelId, title, body, pinned, expiresAt]
     );
 
     if ((result.rowCount ?? 0) === 0) return null;

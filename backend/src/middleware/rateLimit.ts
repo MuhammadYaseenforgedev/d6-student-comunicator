@@ -48,3 +48,4 @@ export const loginLimiter = createLimiter(15 * 60 * 1000, 10);
 export const registerLimiter = createLimiter(15 * 60 * 1000, 10);
 export const uploadLimiter = createLimiter(10 * 60 * 1000, 20);
 export const messageLimiter = createLimiter(60 * 1000, 60);
+export const assistantLimiter = createLimiter(60 * 1000, 20);

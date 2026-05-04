@@ -39,6 +39,7 @@ async function pruneStaleAnnouncementNotifications(userId: string): Promise<void
           SELECT 1
           FROM announcements a
           WHERE a.id::text = split_part(un.source_key, ':', 2)
+            AND (a.expires_at IS NULL OR a.expires_at > now())
         )
     `,
     [userId]

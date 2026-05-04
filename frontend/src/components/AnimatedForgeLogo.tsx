@@ -1,26 +1,97 @@
-import { useCallback, useId, useState } from "react";
-import { motion } from "framer-motion";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { motion, useAnimationControls } from "framer-motion";
+import { useLocation } from "react-router-dom";
+import forgeMark from "../assets/forge-mark.png";
 
 export default function AnimatedForgeLogo() {
-  const [isAnimating, setIsAnimating] = useState(false);
-  const gradientSeed = useId().replace(/[:]/g, "");
-  const purpleGradientId = `forge-purple-gradient-small-${gradientSeed}`;
-  const cyanGradientId = `forge-cyan-gradient-small-${gradientSeed}`;
+  const [isClickAnimating, setIsClickAnimating] = useState(false);
 
-  const triggerAnimation = useCallback(() => {
-    if (isAnimating) return;
+  const clickControls = useAnimationControls();
+  const pageSpinControls = useAnimationControls();
 
-    setIsAnimating(true);
+  const textRef = useRef<HTMLDivElement | null>(null);
+  const firstRenderRef = useRef(true);
+  const clickTimeoutRef = useRef<number | null>(null);
+  const location = useLocation();
+
+  const runClickAnimation = useCallback(() => {
+    if (isClickAnimating) return;
+
+    const textWidth = textRef.current?.offsetWidth ?? 180;
+    const travelX = Math.max(140, textWidth);
+
+    setIsClickAnimating(true);
+
+    if (clickTimeoutRef.current) {
+      window.clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+
+    void clickControls.start({
+      x: [0, 40, travelX * 0.35, travelX * 0.72, travelX * 0.42, 0],
+      y: [0, -28, -42, 0, 28, 0],
+      rotate: [0, 180, 360, 540, 720, 720],
+      scale: [1, 1.03, 1.05, 1.05, 1.03, 1],
+      transition: {
+        duration: 2.2,
+        ease: "easeInOut",
+        times: [0, 0.14, 0.34, 0.58, 0.82, 1],
+      },
+    });
+
+    clickTimeoutRef.current = window.setTimeout(() => {
+      void clickControls.set({
+        x: 0,
+        y: 0,
+        rotate: 0,
+        scale: 1,
+      });
+      setIsClickAnimating(false);
+      clickTimeoutRef.current = null;
+    }, 2200);
+  }, [clickControls, isClickAnimating]);
+
+  const runPageSpinAnimation = useCallback(() => {
+    if (isClickAnimating) return;
+
+    void pageSpinControls.start({
+      rotate: [0, 360],
+      scale: [1, 1.04, 1],
+      transition: {
+        duration: 0.7,
+        ease: "easeInOut",
+      },
+    });
 
     window.setTimeout(() => {
-      setIsAnimating(false);
-    }, 1800);
-  }, [isAnimating]);
+      void pageSpinControls.set({
+        rotate: 0,
+        scale: 1,
+      });
+    }, 700);
+  }, [isClickAnimating, pageSpinControls]);
+
+  useEffect(() => {
+    if (firstRenderRef.current) {
+      firstRenderRef.current = false;
+      return;
+    }
+
+    runPageSpinAnimation();
+  }, [location.pathname, runPageSpinAnimation]);
+
+  useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current) {
+        window.clearTimeout(clickTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div
-      onClick={triggerAnimation}
-      className="flex w-full min-w-0 items-center gap-3 cursor-pointer select-none"
+      onClick={runClickAnimation}
+      className="relative flex w-full min-w-0 items-center gap-3 cursor-pointer select-none overflow-visible"
       title="Animate logo"
       aria-label="Animate logo"
       role="button"
@@ -28,11 +99,11 @@ export default function AnimatedForgeLogo() {
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          triggerAnimation();
+          runClickAnimation();
         }
       }}
     >
-      <div className="relative h-[52px] w-[52px] shrink-0">
+      <div className="relative h-[52px] w-[52px] shrink-0 overflow-visible">
         <svg
           viewBox="0 0 140 140"
           className="absolute inset-0 h-full w-full"
@@ -42,98 +113,28 @@ export default function AnimatedForgeLogo() {
           <circle cx="70" cy="70" r="48" fill="#FFFFFF" />
         </svg>
 
-        <motion.svg
-          viewBox="0 0 60 60"
-          className="absolute left-[13px] top-[15px] h-[18px] w-[18px] overflow-visible"
-          animate={
-            isAnimating
-              ? {
-                  x: [0, 10, 34, 10, 0],
-                  y: [0, -10, 0, 10, 0],
-                  rotate: [0, 90, 280, 360, 0],
-                  scale: [1, 1.05, 1.1, 1.05, 1],
-                }
-              : {
-                  x: 0,
-                  y: 0,
-                  rotate: 0,
-                  scale: 1,
-                }
-          }
-          transition={{
-            duration: 1.8,
-            ease: "easeInOut",
-            times: [0, 0.22, 0.5, 0.78, 1],
-          }}
+        {/* Page-change spin wrapper */}
+        <motion.div
+          className="absolute inset-0 flex items-center justify-center"
+          animate={pageSpinControls}
+          initial={{ rotate: 0, scale: 1 }}
           style={{ transformOrigin: "50% 50%" }}
         >
-          <defs>
-            <linearGradient
-              id={purpleGradientId}
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#A855F7" />
-              <stop offset="100%" stopColor="#7C3AED" />
-            </linearGradient>
-          </defs>
-
-          <path
-            d="M14 6C10.6863 6 8 8.68629 8 12V48C8 51.3137 10.6863 54 14 54C15.3031 54 16.5717 53.5758 17.614 52.791L42.014 34.791C43.5489 33.6568 44.4552 31.8656 44.4552 30C44.4552 28.1344 43.5489 26.3432 42.014 25.209L17.614 7.20903C16.5717 6.4242 15.3031 6 14 6Z"
-            fill={`url(#${purpleGradientId})`}
+          {/* Click animation mark */}
+          <motion.img
+            src={forgeMark}
+            alt=""
+            className="h-[60px] w-[60px] object-contain pointer-events-none"
+            animate={clickControls}
+            initial={{ x: 0, y: 0, rotate: 0, scale: 1 }}
+            style={{ transformOrigin: "50% 50%" }}
+            draggable={false}
           />
-        </motion.svg>
-
-        <motion.svg
-          viewBox="0 0 60 60"
-          className="absolute left-[24px] top-[15px] h-[18px] w-[18px] overflow-visible"
-          animate={
-            isAnimating
-              ? {
-                  x: [0, 14, 42, 14, 0],
-                  y: [0, -6, 0, 6, 0],
-                  rotate: [0, -90, -280, -360, 0],
-                  scale: [1, 1.05, 1.1, 1.05, 1],
-                }
-              : {
-                  x: 0,
-                  y: 0,
-                  rotate: 0,
-                  scale: 1,
-                }
-          }
-          transition={{
-            duration: 1.8,
-            ease: "easeInOut",
-            times: [0, 0.22, 0.5, 0.78, 1],
-            delay: 0.05,
-          }}
-          style={{ transformOrigin: "50% 50%" }}
-        >
-          <defs>
-            <linearGradient
-              id={cyanGradientId}
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#67E8F9" />
-              <stop offset="100%" stopColor="#4DDDE0" />
-            </linearGradient>
-          </defs>
-
-          <path
-            d="M14 6C10.6863 6 8 8.68629 8 12V48C8 51.3137 10.6863 54 14 54C15.3031 54 16.5717 53.5758 17.614 52.791L42.014 34.791C43.5489 33.6568 44.4552 31.8656 44.4552 30C44.4552 28.1344 43.5489 26.3432 42.014 25.209L17.614 7.20903C16.5717 6.4242 15.3031 6 14 6Z"
-            fill={`url(#${cyanGradientId})`}
-          />
-        </motion.svg>
+        </motion.div>
       </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="app-title-gradient text-[1rem] font-extrabold leading-[1.05] tracking-[-0.03em] md:text-[1.15rem]">
+      <div ref={textRef} className="min-w-0 flex-1">
+        <div className="app-title-gradient text-[1rem] font-extrabold leading-[1.3] tracking-[-0.03em] md:text-[1.60rem]">
           Forge Communicator
         </div>
       </div>

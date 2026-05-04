@@ -68,6 +68,34 @@ export type Result = {
   score: number;
   outOf: number;
   date: string;
+  moduleId?: string | null;
+  moduleCode?: string | null;
+  moduleName?: string | null;
+};
+
+export type ModuleMarksheetStudent = {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  studentNumber: string | null;
+  resultId: string | null;
+  score: number | null;
+  outOf: number | null;
+  assessedAt: string | null;
+};
+
+export type ModuleMarksheet = {
+  module: {
+    id: string;
+    code: string;
+    name: string;
+    courseName: string;
+  };
+  subject: string;
+  date: string;
+  value: ModuleMarksheetStudent[];
+  count: number;
 };
 
 export type StaffResultInput = {
@@ -263,8 +291,11 @@ function normalizeResult(row: unknown, index: number): Result {
   const score = toNumberValue(row.score, 0);
   const outOf = toNumberValue(row.outOf ?? row.out_of, 100);
   const date = toStringValue(row.date ?? row.assessedAt ?? row.assessed_at, "");
+  const moduleId = toStringValue(row.moduleId ?? row.module_id, "").trim() || null;
+  const moduleCode = toStringValue(row.moduleCode ?? row.module_code, "").trim() || null;
+  const moduleName = toStringValue(row.moduleName ?? row.module_name, "").trim() || null;
 
-  return { id, subject, score, outOf, date };
+  return { id, subject, score, outOf, date, moduleId, moduleCode, moduleName };
 }
 
 function normalizeFinanceNotification(row: unknown, index: number): FinanceNotification | null {
@@ -504,6 +535,51 @@ export async function updateResultForStaff(id: string, input: StaffResultUpdateI
 
 export async function deleteResultForStaff(id: string): Promise<void> {
   await apiDelete<void>(`/api/parent/admin/results/${encodeURIComponent(id)}`);
+}
+
+export async function getModuleMarksheet(input: {
+  moduleId: string;
+  subject?: string;
+  date?: string;
+}): Promise<ModuleMarksheet> {
+  const qs = new URLSearchParams();
+  if (input.subject?.trim()) qs.set("subject", input.subject.trim());
+  if (input.date?.trim()) qs.set("date", input.date.trim());
+  return apiGet<ModuleMarksheet>(
+    `/api/parent/admin/results/module/${encodeURIComponent(input.moduleId)}/marksheet${
+      qs.toString() ? `?${qs.toString()}` : ""
+    }`
+  );
+}
+
+export async function saveBulkModuleMarksheet(input: {
+  moduleId: string;
+  subject: string;
+  outOf: number;
+  date?: string;
+  rows: Array<{ studentId: string; score: number }>;
+}) {
+  return apiPost<{ ok: boolean; count: number; value: Result[] }>(
+    `/api/parent/admin/results/module/${encodeURIComponent(input.moduleId)}/bulk`,
+    input
+  );
+}
+
+export async function saveSingleModuleMark(input: {
+  moduleId: string;
+  studentId: string;
+  subject: string;
+  score: number;
+  outOf: number;
+  date?: string;
+}): Promise<Result> {
+  const data = await apiPost<unknown>(
+    `/api/parent/admin/results/module/${encodeURIComponent(input.moduleId)}/students/${encodeURIComponent(
+      input.studentId
+    )}`,
+    input
+  );
+  return normalizeResult(data, 0);
 }
 
 export async function getFinance(childId: string): Promise<FinanceSummary> {

@@ -14,6 +14,12 @@ type UploadRow = {
   target_user_id: string | null;
   target_user_email: string | null;
   target_user_role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null;
+  module_id: string | null;
+  module_code: string | null;
+  module_name: string | null;
+  course_id: string | null;
+  course_code: string | null;
+  course_name: string | null;
   created_at: string;
 };
 
@@ -31,6 +37,12 @@ function mapRow(row: UploadRow): Upload {
     targetUserId: row.target_user_id,
     targetUserEmail: row.target_user_email,
     targetUserRole: row.target_user_role,
+    moduleId: row.module_id,
+    moduleCode: row.module_code,
+    moduleName: row.module_name,
+    courseId: row.course_id,
+    courseCode: row.course_code,
+    courseName: row.course_name,
     createdAt: row.created_at,
   };
 }
@@ -41,8 +53,17 @@ export const pgUploadRepo: UploadRepo = {
     const result = await pool.query<UploadRow>(
       `
       WITH ins AS (
-        INSERT INTO uploads (kind, original_name, mime_type, size_bytes, storage_path, uploaded_by, target_user_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        INSERT INTO uploads (
+          kind,
+          original_name,
+          mime_type,
+          size_bytes,
+          storage_path,
+          uploaded_by,
+          target_user_id,
+          module_id
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         RETURNING *
       )
       SELECT
@@ -50,10 +71,18 @@ export const pgUploadRepo: UploadRepo = {
         uploader.email AS uploaded_by_email,
         uploader.role AS uploaded_by_role,
         target_user.email AS target_user_email,
-        target_user.role AS target_user_role
+        target_user.role AS target_user_role,
+        fm.id AS module_id,
+        fm.code AS module_code,
+        fm.name AS module_name,
+        c.id AS course_id,
+        c.code AS course_code,
+        c.name AS course_name
       FROM ins
       LEFT JOIN users uploader ON uploader.id = ins.uploaded_by
       LEFT JOIN users target_user ON target_user.id = ins.target_user_id
+      LEFT JOIN faculty_modules fm ON fm.id = ins.module_id
+      LEFT JOIN courses c ON c.id = fm.course_id
       `,
       [
         input.kind,
@@ -63,6 +92,7 @@ export const pgUploadRepo: UploadRepo = {
         input.storagePath,
         input.uploadedBy,
         input.targetUserId ?? null,
+        input.moduleId ?? null,
       ]
     );
 
@@ -70,7 +100,7 @@ export const pgUploadRepo: UploadRepo = {
   },
 
   async listForUser(user: { id: string; role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" }): Promise<Upload[]> {
-    if (user.role === "ADMIN" || user.role === "LECTURER") {
+    if (user.role === "ADMIN") {
       const result = await pool.query<UploadRow>(
         `
         SELECT
@@ -78,12 +108,60 @@ export const pgUploadRepo: UploadRepo = {
           uploader.email AS uploaded_by_email,
           uploader.role AS uploaded_by_role,
           target_user.email AS target_user_email,
-          target_user.role AS target_user_role
+          target_user.role AS target_user_role,
+          fm.id AS module_id,
+          fm.code AS module_code,
+          fm.name AS module_name,
+          c.id AS course_id,
+          c.code AS course_code,
+          c.name AS course_name
         FROM uploads up
         LEFT JOIN users uploader ON uploader.id = up.uploaded_by
         LEFT JOIN users target_user ON target_user.id = up.target_user_id
+        LEFT JOIN faculty_modules fm ON fm.id = up.module_id
+        LEFT JOIN courses c ON c.id = fm.course_id
         ORDER BY up.created_at DESC
         `
+      );
+      return result.rows.map(mapRow);
+    }
+
+    if (user.role === "LECTURER") {
+      const result = await pool.query<UploadRow>(
+        `
+        SELECT
+          up.*,
+          uploader.email AS uploaded_by_email,
+          uploader.role AS uploaded_by_role,
+          target_user.email AS target_user_email,
+          target_user.role AS target_user_role,
+          fm.id AS module_id,
+          fm.code AS module_code,
+          fm.name AS module_name,
+          c.id AS course_id,
+          c.code AS course_code,
+          c.name AS course_name
+        FROM uploads up
+        LEFT JOIN users uploader ON uploader.id = up.uploaded_by
+        LEFT JOIN users target_user ON target_user.id = up.target_user_id
+        LEFT JOIN faculty_modules fm ON fm.id = up.module_id
+        LEFT JOIN courses c ON c.id = fm.course_id
+        WHERE (
+              up.module_id IS NOT NULL
+          AND EXISTS (
+                SELECT 1
+                FROM lecturer_module_assignments lma
+                WHERE lma.lecturer_id = $1
+                  AND lma.module_id = up.module_id
+          )
+        )
+           OR (
+                up.module_id IS NULL
+            AND up.uploaded_by = $1
+           )
+        ORDER BY up.created_at DESC
+        `,
+        [user.id]
       );
       return result.rows.map(mapRow);
     }
@@ -96,10 +174,18 @@ export const pgUploadRepo: UploadRepo = {
           uploader.email AS uploaded_by_email,
           uploader.role AS uploaded_by_role,
           target_user.email AS target_user_email,
-          target_user.role AS target_user_role
+          target_user.role AS target_user_role,
+          fm.id AS module_id,
+          fm.code AS module_code,
+          fm.name AS module_name,
+          c.id AS course_id,
+          c.code AS course_code,
+          c.name AS course_name
         FROM uploads up
         JOIN users uploader ON uploader.id = up.uploaded_by
         LEFT JOIN users target_user ON target_user.id = up.target_user_id
+        LEFT JOIN faculty_modules fm ON fm.id = up.module_id
+        LEFT JOIN courses c ON c.id = fm.course_id
         WHERE up.kind = 'STUDENT_SUBMISSION'
           AND EXISTS (
             SELECT 1
@@ -124,12 +210,54 @@ export const pgUploadRepo: UploadRepo = {
         uploader.email AS uploaded_by_email,
         uploader.role AS uploaded_by_role,
         target_user.email AS target_user_email,
-        target_user.role AS target_user_role
+        target_user.role AS target_user_role,
+        fm.id AS module_id,
+        fm.code AS module_code,
+        fm.name AS module_name,
+        c.id AS course_id,
+        c.code AS course_code,
+        c.name AS course_name
       FROM uploads up
       LEFT JOIN users uploader ON uploader.id = up.uploaded_by
       LEFT JOIN users target_user ON target_user.id = up.target_user_id
-      WHERE (up.kind = 'LECTURER_MATERIAL' AND uploader.role IN ('ADMIN', 'LECTURER'))
-         OR (up.kind = 'STUDENT_SUBMISSION' AND (up.uploaded_by = $1 OR up.target_user_id = $1))
+      LEFT JOIN faculty_modules fm ON fm.id = up.module_id
+      LEFT JOIN courses c ON c.id = fm.course_id
+      WHERE (
+            up.kind = 'LECTURER_MATERIAL'
+        AND uploader.role IN ('ADMIN', 'LECTURER')
+        AND (
+              up.module_id IS NULL
+           OR EXISTS (
+                SELECT 1
+                FROM student_module_enrollments sme
+                JOIN student_courses sc
+                  ON sc.student_user_id = sme.student_id
+                 AND sc.course_id = fm.course_id
+                 AND sc.status = 'ACTIVE'
+                WHERE sme.module_id = up.module_id
+                  AND sme.student_id = $1
+           )
+        )
+      )
+         OR (
+              up.kind = 'STUDENT_SUBMISSION'
+          AND (up.uploaded_by = $1 OR up.target_user_id = $1)
+          AND (
+                up.module_id IS NULL
+             OR EXISTS (
+                  SELECT 1
+                  FROM faculty_modules fm_scope
+                  JOIN student_module_enrollments sme
+                    ON sme.module_id = fm_scope.id
+                   AND sme.student_id = $1
+                  JOIN student_courses sc
+                    ON sc.course_id = fm_scope.course_id
+                   AND sc.student_user_id = $1
+                   AND sc.status = 'ACTIVE'
+                  WHERE fm_scope.id = up.module_id
+             )
+          )
+         )
       ORDER BY up.created_at DESC
       `,
       [user.id]
@@ -146,10 +274,18 @@ export const pgUploadRepo: UploadRepo = {
         uploader.email AS uploaded_by_email,
         uploader.role AS uploaded_by_role,
         target_user.email AS target_user_email,
-        target_user.role AS target_user_role
+        target_user.role AS target_user_role,
+        fm.id AS module_id,
+        fm.code AS module_code,
+        fm.name AS module_name,
+        c.id AS course_id,
+        c.code AS course_code,
+        c.name AS course_name
       FROM uploads up
       LEFT JOIN users uploader ON uploader.id = up.uploaded_by
       LEFT JOIN users target_user ON target_user.id = up.target_user_id
+      LEFT JOIN faculty_modules fm ON fm.id = up.module_id
+      LEFT JOIN courses c ON c.id = fm.course_id
       WHERE up.id = $1
       `,
       [id]

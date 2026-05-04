@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
+import { getUser } from "../lib/auth";
 import {
   listNotifications,
   markAllNotificationsRead,
@@ -23,6 +24,13 @@ const CATEGORY_OPTIONS: Array<{
   { value: "FINANCE", label: "Finance" },
   { value: "PARENT_LINK", label: "Parent Links" },
 ];
+
+const ROLE_NOTIFICATION_CATEGORIES: Record<string, NotificationCategory[]> = {
+  STUDENT: ["MESSAGE", "ANNOUNCEMENT", "EMERGENCY", "ATTENDANCE", "RESULT"],
+  PARENT: ["MESSAGE", "ANNOUNCEMENT", "EMERGENCY", "ATTENDANCE", "RESULT", "FINANCE", "PARENT_LINK"],
+  LECTURER: ["MESSAGE", "ANNOUNCEMENT", "EMERGENCY", "ATTENDANCE", "RESULT"],
+  ADMIN: ["MESSAGE", "ANNOUNCEMENT", "EMERGENCY", "ATTENDANCE", "RESULT", "FINANCE", "PARENT_LINK"],
+};
 
 function badgeClass(category: NotificationCategory): string {
   if (category === "MESSAGE") {
@@ -59,6 +67,7 @@ function notificationHref(notification: NotificationRecord): string | null {
 }
 
 export default function NotificationsPage() {
+  const user = getUser();
   const [items, setItems] = useState<NotificationRecord[]>([]);
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [category, setCategory] = useState<"ALL" | NotificationCategory>("ALL");
@@ -69,6 +78,19 @@ export default function NotificationsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyAll, setBusyAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const allowedCategories =
+    ROLE_NOTIFICATION_CATEGORIES[String(user?.role ?? "").toUpperCase()] ??
+    ROLE_NOTIFICATION_CATEGORIES.STUDENT;
+  const visibleCategoryOptions = CATEGORY_OPTIONS.filter(
+    (option) => option.value === "ALL" || allowedCategories.includes(option.value)
+  );
+
+  useEffect(() => {
+    if (category === "ALL") return;
+    if (!allowedCategories.includes(category)) {
+      setCategory("ALL");
+    }
+  }, [allowedCategories, category]);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,7 +215,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-full flex-col gap-6">
       <PageHeader
         title="Notifications"
         subtitle="Unread and read activity across messages, emergency alerts, attendance, results, finance, and parent links."
@@ -202,7 +224,7 @@ export default function NotificationsPage() {
             <button
               type="button"
               onClick={() => setRefreshTick((current) => current + 1)}
-              className="btn-secondary min-w-[110px]"
+              className="btn-secondary min-w-[110px] sm:w-auto"
             >
               Refresh
             </button>
@@ -210,7 +232,7 @@ export default function NotificationsPage() {
               type="button"
               onClick={onMarkAllRead}
               disabled={busyAll || items.length === 0}
-              className="btn-primary min-w-[150px]"
+              className="btn-primary min-w-[150px] sm:w-auto"
             >
               {busyAll ? "Updating..." : "Mark all read"}
             </button>
@@ -224,7 +246,7 @@ export default function NotificationsPage() {
             <div>
               <h2 className="text-lg font-semibold text-white">Filters</h2>
               <p className="mt-1 text-sm text-white/72">
-                Narrow notifications by category or unread state.
+                Narrow notifications by category or unread state for this account.
               </p>
             </div>
 
@@ -242,8 +264,8 @@ export default function NotificationsPage() {
 
           <div className="divider-soft" />
 
-          <div className="flex flex-wrap gap-2">
-            {CATEGORY_OPTIONS.map((option) => {
+          <div className="mobile-chip-row sm:flex sm:flex-wrap sm:gap-2">
+            {visibleCategoryOptions.map((option) => {
               const active = category === option.value;
               return (
                 <button
@@ -265,7 +287,7 @@ export default function NotificationsPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <section className="teal-glow-card p-5">
+      <section className="workspace-scroll-panel flex min-h-0 flex-1 flex-col">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-white">Activity Feed</h2>
@@ -276,102 +298,104 @@ export default function NotificationsPage() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.56)] px-3 py-2 text-xs text-white/70">
+          <div className="workspace-meta-pill">
             Live updates enabled
           </div>
         </div>
 
         <div className="divider-soft my-5" />
 
-        <div className="space-y-3">
-          {loading ? (
-            <div className="info-banner">Loading notifications...</div>
-          ) : items.length === 0 ? (
-            <div className="info-banner">
-              No notifications for the current filter.
-            </div>
-          ) : (
-            items.map((item) => {
-              const href = notificationHref(item);
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          <div className="app-page-scroll min-h-0 flex-1 space-y-3 overflow-visible pr-0 md:max-h-[75vh] md:overflow-y-auto md:pr-1 lg:max-h-[calc(100vh-20rem)]">
+            {loading ? (
+              <div className="info-banner">Loading notifications...</div>
+            ) : items.length === 0 ? (
+              <div className="info-banner">
+                No notifications for the current filter.
+              </div>
+            ) : (
+              items.map((item) => {
+                const href = notificationHref(item);
 
-              return (
-                <div
-                  key={item.id}
-                  className={[
-                    "rounded-3xl border p-4 transition-all duration-200",
-                    item.isRead
-                      ? "border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)]"
-                      : "border-[rgba(140,235,255,0.24)] bg-[rgba(14,42,99,0.28)] shadow-[0_0_0_1px_rgba(140,235,255,0.05),0_0_18px_rgba(140,235,255,0.08)]",
-                  ].join(" ")}
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={[
-                            "rounded-full border px-2.5 py-1 text-xs font-semibold",
-                            badgeClass(item.category),
-                          ].join(" ")}
-                        >
-                          {item.category}
-                        </span>
+                return (
+                  <div
+                    key={item.id}
+                    className={[
+                      "rounded-3xl border p-4 transition-all duration-200",
+                      item.isRead
+                        ? "border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)]"
+                        : "border-[rgba(140,235,255,0.24)] bg-[rgba(14,42,99,0.28)] shadow-[0_0_0_1px_rgba(140,235,255,0.05),0_0_18px_rgba(140,235,255,0.08)]",
+                    ].join(" ")}
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={[
+                              "rounded-full border px-2.5 py-1 text-xs font-semibold",
+                              badgeClass(item.category),
+                            ].join(" ")}
+                          >
+                            {item.category}
+                          </span>
 
-                        {!item.isRead && <span className="status-dot" />}
+                          {!item.isRead && <span className="status-dot" />}
 
-                        <span className="text-xs text-white/55">
-                          {formatWhen(item.createdAt)}
-                        </span>
-                      </div>
-
-                      <div className="text-base font-semibold text-white">
-                        {item.title}
-                      </div>
-
-                      {item.body && (
-                        <div className="text-sm leading-6 text-white/72">
-                          {item.body}
+                          <span className="text-xs text-white/55">
+                            {formatWhen(item.createdAt)}
+                          </span>
                         </div>
-                      )}
-                    </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      {href && (
-                        <Link to={href} className="btn-secondary">
-                          Open
-                        </Link>
-                      )}
+                        <div className="text-base font-semibold text-white">
+                          {item.title}
+                        </div>
 
-                      {!item.isRead && (
-                        <button
-                          type="button"
-                          onClick={() => void onMarkRead(item.id)}
-                          disabled={busyId === item.id}
-                          className="btn-primary"
-                        >
-                          {busyId === item.id ? "Saving..." : "Mark read"}
-                        </button>
-                      )}
+                        {item.body && (
+                          <div className="text-sm leading-6 text-white/72">
+                            {item.body}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        {href && (
+                          <Link to={href} className="btn-secondary w-full sm:w-auto">
+                            Open
+                          </Link>
+                        )}
+
+                        {!item.isRead && (
+                          <button
+                            type="button"
+                            onClick={() => void onMarkRead(item.id)}
+                            disabled={busyId === item.id}
+                            className="btn-primary w-full sm:w-auto"
+                          >
+                            {busyId === item.id ? "Saving..." : "Mark read"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })
+            )}
+          </div>
+
+          {nextBefore && items.length > 0 && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                className="btn-secondary min-w-[140px] sm:w-auto"
+              >
+                {loadingMore ? "Loading..." : "Load more"}
+              </button>
+            </div>
           )}
         </div>
       </section>
-
-      {nextBefore && items.length > 0 && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => void loadMore()}
-            disabled={loadingMore}
-            className="btn-secondary min-w-[140px]"
-          >
-            {loadingMore ? "Loading..." : "Load more"}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
