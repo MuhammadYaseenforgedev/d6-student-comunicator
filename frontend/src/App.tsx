@@ -33,6 +33,7 @@ import StudentResults from "./pages/StudentResults";
 import AdminParentLinks from "./pages/AdminParentLinks";
 import AdminFinance from "./pages/AdminFinance";
 import AdminUsers from "./pages/AdminUsers";
+import LearnerOnboarding from "./pages/LearnerOnboarding";
 import Attendance from "./pages/Attendance";
 import Notifications from "./pages/Notifications";
 import SupportDesk from "./pages/SupportDesk";
@@ -201,6 +202,10 @@ export default function App() {
                       <Route
                         path="admin/parent-links"
                         element={<AdminParentLinks />}
+                      />
+                      <Route
+                        path="admin/learner-onboarding"
+                        element={<LearnerOnboarding />}
                       />
                       <Route path="admin/users" element={<AdminUsers />} />
                     </Route>

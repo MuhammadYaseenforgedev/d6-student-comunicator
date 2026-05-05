@@ -412,6 +412,14 @@ export default function AppShell() {
 
               {academicOrSuperAdmin && (
                 <Item
+                  to="/app/admin/learner-onboarding"
+                  label="Learner Onboarding"
+                  onNavigate={closeMobileMenu}
+                />
+              )}
+
+              {academicOrSuperAdmin && (
+                <Item
                   to="/app/admin/parent-links"
                   label="Parent Link Approvals"
                   badge={parentLinkBadge}

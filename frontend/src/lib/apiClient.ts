@@ -1,4 +1,5 @@
 import { getToken } from "./auth";
+import { getMockApiResponse } from "./demoMockApi";
 
 type ApiEnv = {
   VITE_API_URL?: string;
@@ -80,6 +81,13 @@ function extractErrorMessage(payload: unknown, status: number): string {
 }
 
 async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const mock = getMockApiResponse<T>({
+    method: String(options.method ?? "GET").toUpperCase() as "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+    path,
+    body: options.body,
+  });
+  if (mock !== undefined) return mock;
+
   const auth = options.auth !== false;
   const token = auth ? getToken() : null;
   const hasBody = options.body !== undefined && options.body !== null;

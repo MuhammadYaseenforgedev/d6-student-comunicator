@@ -12,6 +12,14 @@ function valueOrFallback(value: string | null | undefined): string {
   return normalized || "Not provided";
 }
 
+function formatMoney(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "Not provided";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "ZAR",
+  }).format(value);
+}
+
 function Field({
   label,
   value,
@@ -57,12 +65,19 @@ export default function StudentProfileDetailPanel({
         <span className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.56)] px-3 py-1 text-xs font-semibold text-white/80">
           {profile.courseCode?.trim() || profile.courseName?.trim() || "Course not assigned"}
         </span>
-        <span className="rounded-full border border-[rgba(52,211,153,0.26)] bg-[rgba(52,211,153,0.14)] px-3 py-1 text-xs font-semibold text-[#d9fff1]">
+        <span
+          className={[
+            "rounded-full border px-3 py-1 text-xs font-semibold",
+            profile.isComplete
+              ? "border-[rgba(52,211,153,0.26)] bg-[rgba(52,211,153,0.14)] text-[#d9fff1]"
+              : "border-amber-400/25 bg-amber-500/12 text-amber-200",
+          ].join(" ")}
+        >
           {profile.isComplete ? "Profile complete" : "Profile incomplete"}
         </span>
       </div>
 
-      <Section title="Personal">
+      <Section title="Personal Details">
         <Field label="Full Name" value={valueOrFallback(profile.fullName)} />
         <Field label="Surname" value={valueOrFallback(profile.surname)} />
         <Field label="Email" value={valueOrFallback(profile.email)} />
@@ -71,12 +86,15 @@ export default function StudentProfileDetailPanel({
         <Field label="Date of Birth" value={formatDate(profile.dateOfBirth)} />
       </Section>
 
-      <Section title="Contact">
+      <Section title="Contact Details">
         <Field label="Mobile Number" value={valueOrFallback(profile.mobileNumber)} />
         <Field
           label="Alternative Contact"
           value={valueOrFallback(profile.alternativeContactNumber)}
         />
+      </Section>
+
+      <Section title="Emergency Contact">
         <Field
           label="Emergency Contact"
           value={valueOrFallback(profile.emergencyContactName)}
@@ -87,16 +105,25 @@ export default function StudentProfileDetailPanel({
         />
       </Section>
 
-      <Section title="Address">
+      <Section title="Address Details">
         <Field label="Street Address" value={valueOrFallback(profile.streetAddress)} />
         <Field label="City" value={valueOrFallback(profile.city)} />
         <Field label="Province" value={valueOrFallback(profile.province)} />
         <Field label="Postal Code" value={valueOrFallback(profile.postalCode)} />
       </Section>
 
-      <Section title="Academic">
+      <Section title="Academic Details">
         <Field label="Course" value={valueOrFallback(profile.courseName)} />
         <Field label="Course Code" value={valueOrFallback(profile.courseCode)} />
+      </Section>
+
+      <Section title="Finance Details">
+        <Field label="Fee Status" value={valueOrFallback(profile.feeStatus)} />
+        <Field label="Payment Method" value={valueOrFallback(profile.paymentMethod)} />
+        <Field label="Amount Due" value={formatMoney(profile.amountDue)} />
+        <Field label="Amount Paid" value={formatMoney(profile.amountPaid)} />
+        <Field label="Last Payment" value={formatDate(profile.lastPaymentDate)} />
+        <Field label="Payment Reference" value={valueOrFallback(profile.paymentReference)} />
       </Section>
     </div>
   );

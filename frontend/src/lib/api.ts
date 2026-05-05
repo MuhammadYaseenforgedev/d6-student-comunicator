@@ -1,6 +1,7 @@
 // frontend/src/lib/api.ts
 
 import { getToken } from "./auth";
+import { getMockApiResponse } from "./demoMockApi";
 
 const API_URL = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
 export const API_CONFIG_ERROR = !API_URL
@@ -93,6 +94,9 @@ async function parseResponse<T>(res: Response): Promise<T> {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
+  const mock = getMockApiResponse<T>({ method: "GET", path });
+  if (mock !== undefined) return mock;
+
   const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
@@ -104,6 +108,9 @@ export async function apiGet<T>(path: string): Promise<T> {
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const mock = getMockApiResponse<T>({ method: "POST", path, body });
+  if (mock !== undefined) return mock;
+
   const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
@@ -116,6 +123,9 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  const mock = getMockApiResponse<T>({ method: "PATCH", path, body });
+  if (mock !== undefined) return mock;
+
   const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
@@ -128,6 +138,9 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
+  const mock = getMockApiResponse<T>({ method: "POST", path, body: form });
+  if (mock !== undefined) return mock;
+
   const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
@@ -142,6 +155,16 @@ export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
 export async function apiDownload(
   path: string
 ): Promise<{ blob: Blob; fileName: string | null; contentType: string | null }> {
+  const mock = getMockApiResponse<unknown>({ method: "GET", path });
+  if (mock !== undefined) {
+    const text = `Forge Communicator local demo download\n${path}\nGenerated: ${new Date().toISOString()}`;
+    return {
+      blob: new Blob([text], { type: "text/plain" }),
+      fileName: "forge-local-demo.txt",
+      contentType: "text/plain",
+    };
+  }
+
   const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {
@@ -162,6 +185,9 @@ export async function apiDownload(
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
+  const mock = getMockApiResponse<T>({ method: "DELETE", path });
+  if (mock !== undefined) return mock;
+
   const url = joinUrl(requireApiUrl(), path);
 
   const res = await fetch(url, {

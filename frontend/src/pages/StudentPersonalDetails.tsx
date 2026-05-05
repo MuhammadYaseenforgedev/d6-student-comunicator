@@ -63,10 +63,12 @@ function toFormState(profile: StudentProfileDetail): FormState {
 function Section({
   title,
   subtitle,
+  columns = "md:grid-cols-2",
   children,
 }: {
   title: string;
   subtitle?: string;
+  columns?: string;
   children: ReactNode;
 }) {
   return (
@@ -75,7 +77,7 @@ function Section({
         <div className="text-lg font-semibold text-white">{title}</div>
         {subtitle ? <div className="mt-1 text-sm text-white/70">{subtitle}</div> : null}
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">{children}</div>
+      <div className={["mt-4 grid grid-cols-1 gap-4", columns].join(" ")}>{children}</div>
     </section>
   );
 }
@@ -83,20 +85,54 @@ function Section({
 function Field({
   label,
   htmlFor,
+  required,
   children,
 }: {
   label: string;
   htmlFor: string;
+  required?: boolean;
   children: ReactNode;
 }) {
   return (
     <label htmlFor={htmlFor} className="block">
       <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/55">
         {label}
+        {required ? <span className="ml-1 text-amber-200">*</span> : null}
       </div>
       {children}
     </label>
   );
+}
+
+function ReadOnlyField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-[rgba(140,235,255,0.12)] bg-[rgba(8,18,48,0.52)] px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">
+        {label}
+      </div>
+      <div className="mt-2 text-sm font-medium text-white/88">{value || "Not provided"}</div>
+    </div>
+  );
+}
+
+function formatMoney(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "Not provided";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "ZAR",
+  }).format(value);
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return "Not provided";
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toLocaleDateString() : value;
 }
 
 export default function StudentPersonalDetails() {
@@ -214,11 +250,41 @@ export default function StudentPersonalDetails() {
         <div className="info-banner">Loading personal details...</div>
       ) : (
         <form onSubmit={onSubmit} className="space-y-6">
+          {profile && (
+            <section className="teal-glow-card p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="text-lg font-semibold text-white">
+                    {[profile.fullName, profile.surname].filter(Boolean).join(" ") || profile.email}
+                  </div>
+                  <div className="mt-1 text-sm text-white/66">
+                    {profile.courseName || "Course not assigned"} | {profile.studentNumber || "Student number pending"}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border border-[rgba(140,235,255,0.22)] bg-[rgba(8,18,48,0.56)] px-3 py-1 text-xs font-semibold text-white/80">
+                    {profile.courseCode || "No course code"}
+                  </span>
+                  <span
+                    className={[
+                      "rounded-full border px-3 py-1 text-xs font-semibold",
+                      profile.isComplete
+                        ? "border-emerald-400/25 bg-emerald-500/12 text-emerald-200"
+                        : "border-amber-400/25 bg-amber-500/12 text-amber-200",
+                    ].join(" ")}
+                  >
+                    {profile.isComplete ? "Profile complete" : "Profile incomplete"}
+                  </span>
+                </div>
+              </div>
+            </section>
+          )}
+
           <Section
-            title="Personal"
+            title="Personal Details"
             subtitle="These details identify your student record and stay linked to your account."
           >
-            <Field label="Full Name" htmlFor="student-full-name">
+            <Field label="Full Name" htmlFor="student-full-name" required>
               <input
                 id="student-full-name"
                 value={form.fullName}
@@ -228,7 +294,7 @@ export default function StudentPersonalDetails() {
               />
             </Field>
 
-            <Field label="Surname" htmlFor="student-surname">
+            <Field label="Surname" htmlFor="student-surname" required>
               <input
                 id="student-surname"
                 value={form.surname}
@@ -238,7 +304,7 @@ export default function StudentPersonalDetails() {
               />
             </Field>
 
-            <Field label="ID Number" htmlFor="student-id-number">
+            <Field label="ID Number" htmlFor="student-id-number" required>
               <input
                 id="student-id-number"
                 inputMode="numeric"
@@ -269,7 +335,7 @@ export default function StudentPersonalDetails() {
               />
             </Field>
 
-            <Field label="Student Number" htmlFor="student-number">
+            <Field label="Student Number" htmlFor="student-number" required>
               <input
                 id="student-number"
                 value={form.studentNumber}
@@ -281,10 +347,10 @@ export default function StudentPersonalDetails() {
           </Section>
 
           <Section
-            title="Contact"
-            subtitle="Use the same contact styles already used across the app for quick edits on mobile and desktop."
+            title="Contact Details"
+            subtitle="Keep your mobile number current so staff can reach you when needed."
           >
-            <Field label="Mobile Number" htmlFor="student-mobile">
+            <Field label="Mobile Number" htmlFor="student-mobile" required>
               <input
                 id="student-mobile"
                 value={form.mobileNumber}
@@ -303,7 +369,12 @@ export default function StudentPersonalDetails() {
                 placeholder="Optional alternative number"
               />
             </Field>
+          </Section>
 
+          <Section
+            title="Emergency Contact"
+            subtitle="This person may be contacted if the campus needs urgent support information."
+          >
             <Field label="Emergency Contact Name" htmlFor="student-emergency-name">
               <input
                 id="student-emergency-name"
@@ -326,10 +397,10 @@ export default function StudentPersonalDetails() {
           </Section>
 
           <Section
-            title="Address"
+            title="Address Details"
             subtitle="Address information is stored with your student profile and can be updated whenever details change."
           >
-            <Field label="Street Address" htmlFor="student-street-address">
+            <Field label="Street Address" htmlFor="student-street-address" required>
               <input
                 id="student-street-address"
                 value={form.streetAddress}
@@ -339,7 +410,7 @@ export default function StudentPersonalDetails() {
               />
             </Field>
 
-            <Field label="City" htmlFor="student-city">
+            <Field label="City" htmlFor="student-city" required>
               <input
                 id="student-city"
                 value={form.city}
@@ -349,7 +420,7 @@ export default function StudentPersonalDetails() {
               />
             </Field>
 
-            <Field label="Province" htmlFor="student-province">
+            <Field label="Province" htmlFor="student-province" required>
               <input
                 id="student-province"
                 value={form.province}
@@ -359,7 +430,7 @@ export default function StudentPersonalDetails() {
               />
             </Field>
 
-            <Field label="Postal Code" htmlFor="student-postal-code">
+            <Field label="Postal Code" htmlFor="student-postal-code" required>
               <input
                 id="student-postal-code"
                 value={form.postalCode}
@@ -371,10 +442,10 @@ export default function StudentPersonalDetails() {
           </Section>
 
           <Section
-            title="Academic"
+            title="Academic Details"
             subtitle="Select your enrolled course so the app can show the right modules, announcements, and academic information."
           >
-            <Field label="Course Of Study" htmlFor="student-course">
+            <Field label="Course Of Study" htmlFor="student-course" required>
               <select
                 id="student-course"
                 value={form.courseId}
@@ -389,6 +460,24 @@ export default function StudentPersonalDetails() {
                 ))}
               </select>
             </Field>
+
+            <ReadOnlyField
+              label="Current Course"
+              value={profile?.courseName || profile?.courseCode || "Not assigned"}
+            />
+          </Section>
+
+          <Section
+            title="Finance Details"
+            subtitle="Finance information is read-only here. Contact the finance office if anything looks incorrect."
+            columns="md:grid-cols-2 xl:grid-cols-3"
+          >
+            <ReadOnlyField label="Fee Status" value={profile?.feeStatus || "Not provided"} />
+            <ReadOnlyField label="Payment Method" value={profile?.paymentMethod || "Not provided"} />
+            <ReadOnlyField label="Amount Due" value={formatMoney(profile?.amountDue ?? null)} />
+            <ReadOnlyField label="Amount Paid" value={formatMoney(profile?.amountPaid ?? null)} />
+            <ReadOnlyField label="Last Payment" value={formatDate(profile?.lastPaymentDate ?? null)} />
+            <ReadOnlyField label="Payment Reference" value={profile?.paymentReference || "Not provided"} />
           </Section>
 
           <div className="flex flex-wrap gap-3">

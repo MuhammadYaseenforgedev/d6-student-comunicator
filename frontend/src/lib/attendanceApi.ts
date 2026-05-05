@@ -35,16 +35,31 @@ export type AttendanceDirectoryUser = {
 export type AttendanceSession = {
   id: string;
   lecturerId: string;
+  lecturer?: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  };
   moduleId: string;
+  courseId?: string | null;
+  courseName?: string | null;
   moduleCode: string;
   moduleName: string;
   facultyName: string;
   date: string;
   startsAt: string | null;
   endsAt: string | null;
+  attendanceOpenAt?: string | null;
+  attendanceCloseAt?: string | null;
+  finalizedAt?: string | null;
   createdAt: string;
   checkedInAt: string | null;
   checkedInCount: number;
+  summary?: AttendanceSummary & {
+    pending?: number;
+    attendancePercentage?: number | null;
+  };
 };
 
 export type AttendanceSessionRosterStudent = AttendanceModuleStudent & {
@@ -158,6 +173,13 @@ export async function listAttendanceSessions(params?: { date?: string; moduleId?
 
   const data = await apiClient.get<{ value: AttendanceSession[] }>(`/attendance/sessions${suffix}`);
   return Array.isArray(data.value) ? data.value : [];
+}
+
+export async function getAttendanceSession(sessionId: string): Promise<AttendanceSession> {
+  const data = await apiClient.get<{ session: AttendanceSession }>(
+    `/attendance/sessions/${encodeURIComponent(sessionId)}`
+  );
+  return data.session;
 }
 
 export async function listAttendanceSessionRoster(sessionId: string): Promise<AttendanceSessionRosterStudent[]> {

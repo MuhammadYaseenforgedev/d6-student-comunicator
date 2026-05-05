@@ -17,6 +17,13 @@ function isJsonResponse(res: Response) {
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const mock = getMockApiResponse<T>({
+    method: String(options.method ?? "GET").toUpperCase() as "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+    path,
+    body: options.body,
+  });
+  if (mock !== undefined) return mock;
+
   const res = await fetch(`${requireApiBase()}${path}`, {
     ...options,
     headers: {
@@ -44,3 +51,4 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   const text = await res.text();
   return text as unknown as T;
 }
+import { getMockApiResponse } from "../lib/demoMockApi";

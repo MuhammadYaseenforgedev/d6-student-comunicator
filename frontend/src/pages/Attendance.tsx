@@ -1,11 +1,13 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
+import AttendanceStatusBadge from "../components/AttendanceStatusBadge";
 import PageHeader from "../components/PageHeader";
 import { getUser } from "../lib/auth";
 import {
   checkInToAttendanceSession,
   createAttendanceSession,
   downloadAttendanceExport,
+  getAttendanceSession,
   getMyAttendance,
   listAttendanceDirectoryUsers,
   listAttendanceModules,
@@ -20,6 +22,10 @@ import {
   type AttendanceSessionRosterStudent,
   type AttendanceStatus,
 } from "../lib/attendanceApi";
+import {
+  attendanceStatusTextClass,
+  normalizeAttendanceStatus,
+} from "../lib/attendanceStatus";
 
 type MarkMap = Record<string, AttendanceStatus>;
 
@@ -31,12 +37,6 @@ function defaultFromDate(daysBack: number): string {
   const d = new Date();
   d.setDate(d.getDate() - daysBack);
   return d.toISOString().slice(0, 10);
-}
-
-function statusClass(status: AttendanceStatus): string {
-  if (status === "PRESENT") return "text-emerald-300";
-  if (status === "LATE") return "text-amber-300";
-  return "text-rose-300";
 }
 
 function roleLabel(role: string): string {
@@ -80,6 +80,210 @@ function formatDateTime(raw: string | null): string {
   return new Date(ms).toLocaleString();
 }
 
+function sessionTitle(session: AttendanceSession): string {
+  return `${session.moduleCode} - ${session.moduleName}`;
+}
+
+function personName(person?: {
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}): string {
+  if (!person) return "Not assigned";
+  return `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim() || person.email || "Not assigned";
+}
+
+function getSessionStatus(session: AttendanceSession): {
+  label: "Upcoming" | "Live" | "Closed";
+  className: string;
+  description: string;
+} {
+  const now = Date.now();
+  const start = session.startsAt ? Date.parse(session.startsAt) : NaN;
+  const end = session.endsAt ? Date.parse(session.endsAt) : NaN;
+  const openAt = session.attendanceOpenAt ? Date.parse(session.attendanceOpenAt) : NaN;
+  const closeAt = session.attendanceCloseAt ? Date.parse(session.attendanceCloseAt) : NaN;
+
+  if (
+    session.finalizedAt ||
+    (Number.isFinite(closeAt) && now > closeAt) ||
+    (Number.isFinite(end) && now > end)
+  ) {
+    return {
+      label: "Closed",
+      className: "border-white/15 bg-white/8 text-white/68",
+      description: "Attendance is closed for this session.",
+    };
+  }
+
+  if (
+    (Number.isFinite(openAt) && now < openAt) ||
+    (Number.isFinite(start) && now < start)
+  ) {
+    return {
+      label: "Upcoming",
+      className: "border-amber-400/25 bg-amber-500/12 text-amber-200",
+      description: "This session has not opened yet.",
+    };
+  }
+
+  const withinOpenWindow =
+    (!Number.isFinite(openAt) || now >= openAt) &&
+    (!Number.isFinite(closeAt) || now <= closeAt);
+
+  if (withinOpenWindow) {
+    return {
+      label: "Live",
+      className: "border-sky-400/25 bg-sky-500/12 text-sky-200",
+      description: "Attendance is open for this session.",
+    };
+  }
+
+  return {
+    label: "Closed",
+    className: "border-white/15 bg-white/8 text-white/68",
+    description: "Attendance is closed for this session.",
+  };
+}
+
+function isSessionLive(session: AttendanceSession): boolean {
+  return getSessionStatus(session).label === "Live";
+}
+
+function SessionStatusBadge({ session }: { session: AttendanceSession }) {
+  const status = getSessionStatus(session);
+  return (
+    <span className={["rounded-full border px-2.5 py-1 text-[11px] font-semibold", status.className].join(" ")}>
+      {status.label}
+    </span>
+  );
+}
+
+function AttendanceSummaryPills({ session }: { session: AttendanceSession }) {
+  const summary = session.summary;
+
+  return (
+    <div className="flex flex-wrap gap-2 text-xs">
+      <span className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.50)] px-2.5 py-1 text-white/72">
+        {session.checkedInCount} checked in
+      </span>
+      {summary && (
+        <>
+          <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
+            {summary.present} present
+          </span>
+          <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-amber-200">
+            {summary.late} late
+          </span>
+          <span className="rounded-full border border-rose-400/20 bg-rose-500/10 px-2.5 py-1 text-rose-200">
+            {summary.absent} absent
+          </span>
+          {typeof summary.pending === "number" && (
+            <span className="rounded-full border border-white/15 bg-white/8 px-2.5 py-1 text-white/70">
+              {summary.pending} pending
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function AttendanceStatusLegend() {
+  return (
+    <div className="teal-glow-card p-4">
+      <div className="text-xs font-semibold uppercase tracking-wide text-white/58">
+        Attendance states
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(["PRESENT", "LATE", "ABSENT", "PENDING"] as const).map((status) => (
+          <AttendanceStatusBadge key={status} status={status} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SessionStateLegend() {
+  const examples = [
+    {
+      label: "Upcoming",
+      className: "border-amber-400/25 bg-amber-500/12 text-amber-200",
+    },
+    {
+      label: "Live",
+      className: "border-sky-400/25 bg-sky-500/12 text-sky-200",
+    },
+    {
+      label: "Closed",
+      className: "border-white/15 bg-white/8 text-white/68",
+    },
+  ];
+
+  return (
+    <div className="teal-glow-card p-4">
+      <div className="text-xs font-semibold uppercase tracking-wide text-white/58">
+        Session states
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {examples.map((example) => (
+          <span
+            key={example.label}
+            className={[
+              "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+              example.className,
+            ].join(" ")}
+          >
+            {example.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LoadingRows({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className="rounded-3xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)] p-4"
+        >
+          <div className="h-4 w-36 rounded-full bg-white/10" />
+          <div className="mt-4 h-3 w-2/3 rounded-full bg-white/8" />
+          <div className="mt-3 h-3 w-4/5 rounded-full bg-white/8" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="rounded-3xl border border-[rgba(140,235,255,0.16)] bg-[rgba(8,18,48,0.52)] p-4 text-sm text-white/78">
+      {message}
+    </div>
+  );
+}
+
+function DetailMeta({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.48)] p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/52">
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
 async function triggerAttendanceExport(input: {
   from: string;
   to: string;
@@ -120,6 +324,7 @@ function LecturerAttendanceView({
 }) {
   const [modules, setModules] = useState<AttendanceModule[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
+  const [sessionDetail, setSessionDetail] = useState<AttendanceSession | null>(null);
   const [rosterStudents, setRosterStudents] = useState<
     AttendanceSessionRosterStudent[]
   >([]);
@@ -136,6 +341,8 @@ function LecturerAttendanceView({
     AttendanceDirectoryUser[]
   >([]);
   const [busy, setBusy] = useState(false);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -149,6 +356,11 @@ function LecturerAttendanceView({
     [selectedModule]
   );
 
+  const selectedSession = useMemo(
+    () => sessionDetail ?? sessions.find((session) => session.id === sessionId) ?? null,
+    [sessionDetail, sessions, sessionId]
+  );
+
   async function loadModules() {
     const rows = await listAttendanceModules();
     setModules(rows);
@@ -159,13 +371,20 @@ function LecturerAttendanceView({
     if (!currentModuleId) {
       setSessions([]);
       setSessionId("");
+      setSessionDetail(null);
+      setSessionsLoading(false);
       return;
     }
-    const rows = await listAttendanceSessions({ moduleId: currentModuleId });
-    setSessions(rows);
-    setSessionId((current) =>
-      rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? "")
-    );
+    try {
+      setSessionsLoading(true);
+      const rows = await listAttendanceSessions({ moduleId: currentModuleId });
+      setSessions(rows);
+      setSessionId((current) =>
+        rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? "")
+      );
+    } finally {
+      setSessionsLoading(false);
+    }
   }
 
   async function loadRoster(currentSessionId: string) {
@@ -182,6 +401,15 @@ function LecturerAttendanceView({
       nextMarks[student.id] = student.currentStatus ?? student.suggestedStatus;
     }
     setMarks(nextMarks);
+  }
+
+  async function loadSessionDetail(currentSessionId: string) {
+    if (!currentSessionId) {
+      setSessionDetail(null);
+      return;
+    }
+    const detail = await getAttendanceSession(currentSessionId);
+    setSessionDetail(detail);
   }
 
   async function loadLecturers() {
@@ -210,6 +438,7 @@ function LecturerAttendanceView({
     setError(null);
     setInfo(null);
     setSessionId("");
+    setSessionDetail(null);
     setRosterStudents([]);
     setMarks({});
     void loadSessions(moduleId).catch((e: unknown) => {
@@ -220,9 +449,18 @@ function LecturerAttendanceView({
   }, [moduleId]);
 
   useEffect(() => {
-    void loadRoster(sessionId).catch((e: unknown) => {
-      setError(e instanceof Error ? e.message : "Failed to load session roster");
-    });
+    if (!sessionId) {
+      setSessionDetail(null);
+      setRosterStudents([]);
+      setMarks({});
+      return;
+    }
+    setDetailLoading(true);
+    void Promise.all([loadSessionDetail(sessionId), loadRoster(sessionId)])
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : "Failed to load session detail");
+      })
+      .finally(() => setDetailLoading(false));
   }, [sessionId]);
 
   useEffect(() => {
@@ -266,7 +504,7 @@ function LecturerAttendanceView({
       setInfo(`Session created for ${created.date}.`);
       await Promise.all([loadModules(), loadSessions(moduleId)]);
       setSessionId(created.id);
-      await loadRoster(created.id);
+      await Promise.all([loadSessionDetail(created.id), loadRoster(created.id)]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create session");
     } finally {
@@ -292,7 +530,7 @@ function LecturerAttendanceView({
 
       const result = await markAttendanceSession(sessionId, payload);
       setInfo(`Attendance submitted (${result.count} record(s)).`);
-      await loadRoster(sessionId);
+      await Promise.all([loadSessionDetail(sessionId), loadRoster(sessionId)]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit attendance");
     } finally {
@@ -327,6 +565,11 @@ function LecturerAttendanceView({
       />
       {error && <Alert tone="error" message={error} />}
       {info && <Alert tone="info" message={info} />}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <AttendanceStatusLegend />
+        <SessionStateLegend />
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="teal-glow-card space-y-4 p-5">
@@ -432,7 +675,15 @@ function LecturerAttendanceView({
         </div>
 
         <div className="teal-glow-card space-y-4 p-5">
-          <div className="text-lg font-semibold text-white">Mark Attendance</div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-lg font-semibold text-white">Session List</div>
+              <div className="mt-1 text-sm text-white/68">
+                Open a session to load its roster and attendance detail.
+              </div>
+            </div>
+            <span className="workspace-meta-pill">{sessions.length} session(s)</span>
+          </div>
 
           <Field label="Session" htmlFor="attendance-session">
             <select
@@ -456,7 +707,161 @@ function LecturerAttendanceView({
             </select>
           </Field>
 
-          <div className="mobile-table-shell max-h-none overflow-auto rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] lg:max-h-[420px]">
+          <div className="space-y-3">
+            {sessionsLoading ? (
+              <LoadingRows />
+            ) : !moduleId ? (
+              <div className="info-banner">Select a module to view sessions.</div>
+            ) : sessions.length === 0 ? (
+              <EmptyState message="No sessions exist for the selected module yet." />
+            ) : (
+              sessions.map((session) => {
+                const isOpen = session.id === sessionId;
+                const status = getSessionStatus(session);
+                return (
+                  <article
+                    key={session.id}
+                    className={[
+                      "rounded-3xl border p-4 transition-all duration-200",
+                      isOpen
+                        ? "border-[rgba(140,235,255,0.36)] bg-[rgba(14,42,99,0.66)] shadow-[0_0_18px_rgba(140,235,255,0.12)]"
+                        : "border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.30)] hover:bg-[rgba(10,27,67,0.70)]",
+                    ].join(" ")}
+                  >
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold text-white">
+                            {sessionTitle(session)}
+                          </h3>
+                          <SessionStatusBadge session={session} />
+                        </div>
+
+                        <div className="text-xs text-white/68">
+                          {session.courseName ? `${session.courseName} | ` : ""}
+                          {session.facultyName}
+                        </div>
+
+                        <div className="text-xs text-white/62">
+                          {session.date}
+                          {session.startsAt ? ` | Starts: ${formatDateTime(session.startsAt)}` : " | Start time not set"}
+                          {session.endsAt ? ` | Ends: ${formatDateTime(session.endsAt)}` : ""}
+                        </div>
+                        <div className="text-xs text-white/58">
+                          {status.description}
+                        </div>
+
+                        <AttendanceSummaryPills session={session} />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setSessionId(session.id)}
+                        className={isOpen ? "btn-primary" : "btn-secondary"}
+                        title="Open session detail"
+                        aria-label="Open session detail"
+                      >
+                        {isOpen ? "Session open" : "Open session"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="teal-glow-card space-y-4 p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-lg font-semibold text-white">Session Detail</div>
+            <div className="mt-1 text-sm text-white/68">
+              View session information and learner attendance records.
+            </div>
+          </div>
+          {selectedSession && <SessionStatusBadge session={selectedSession} />}
+        </div>
+
+        {detailLoading ? (
+          <LoadingRows rows={1} />
+        ) : selectedSession ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <DetailMeta label="Session" value={sessionTitle(selectedSession)} />
+            <DetailMeta
+              label="Course / Faculty"
+              value={
+                <>
+                  {selectedSession.courseName ?? "Course not linked"}
+                  <span className="block text-xs font-normal text-white/58">
+                    {selectedSession.facultyName}
+                  </span>
+                </>
+              }
+            />
+            <DetailMeta
+              label="Date / Time"
+              value={
+                <>
+                  {selectedSession.date}
+                  <span className="block text-xs font-normal text-white/58">
+                    {selectedSession.startsAt
+                      ? `Starts: ${formatDateTime(selectedSession.startsAt)}`
+                      : "Start time not set"}
+                    {selectedSession.endsAt
+                      ? ` | Ends: ${formatDateTime(selectedSession.endsAt)}`
+                      : ""}
+                  </span>
+                </>
+              }
+            />
+            <DetailMeta
+              label="Lecturer / Owner"
+              value={personName(selectedSession.lecturer)}
+            />
+          </div>
+        ) : (
+          <EmptyState message="Select a session to view its detail." />
+        )}
+
+        {selectedSession?.summary && (
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <SummaryCard
+              label="Present"
+              value={selectedSession.summary.present}
+              className={attendanceStatusTextClass("PRESENT")}
+            />
+            <SummaryCard
+              label="Late"
+              value={selectedSession.summary.late}
+              className={attendanceStatusTextClass("LATE")}
+            />
+            <SummaryCard
+              label="Absent"
+              value={selectedSession.summary.absent}
+              className={attendanceStatusTextClass("ABSENT")}
+            />
+            <SummaryCard
+              label="Pending"
+              value={selectedSession.summary.pending ?? 0}
+              className={attendanceStatusTextClass("PENDING")}
+            />
+            <SummaryCard
+              label="Total"
+              value={selectedSession.summary.total}
+              className="text-white"
+            />
+          </div>
+        )}
+
+        <div>
+          <div className="text-sm font-semibold text-white">Student Records</div>
+          <div className="mt-1 text-xs text-white/60">
+            Existing marking controls are kept here for staff who already have permission.
+          </div>
+        </div>
+
+        <div className="mobile-table-shell max-h-none overflow-auto rounded-xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] lg:max-h-[420px]">
             {!sessionId ? (
               <div className="p-4 text-sm text-white/80">
                 Select a session to load its attendance roster.
@@ -471,6 +876,7 @@ function LecturerAttendanceView({
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Student</th>
                     <th className="px-3 py-2 text-left font-medium">Check-in</th>
+                    <th className="px-3 py-2 text-left font-medium">Current</th>
                     <th className="px-3 py-2 text-left font-medium">Suggested</th>
                     <th className="px-3 py-2 text-left font-medium">Status</th>
                   </tr>
@@ -478,6 +884,8 @@ function LecturerAttendanceView({
                 <tbody>
                   {rosterStudents.map((student) => {
                     const name = studentDisplayName(student);
+                    const currentStatus =
+                      normalizeAttendanceStatus(student.currentStatus) ?? "PENDING";
                     return (
                       <tr
                         key={student.id}
@@ -497,9 +905,11 @@ function LecturerAttendanceView({
                         </td>
 
                         <td className="px-3 py-2 text-xs">
-                          <span className={statusClass(student.suggestedStatus)}>
-                            {student.suggestedStatus}
-                          </span>
+                          <AttendanceStatusBadge status={currentStatus} />
+                        </td>
+
+                        <td className="px-3 py-2 text-xs">
+                          <AttendanceStatusBadge status={student.suggestedStatus} />
                         </td>
 
                         <td className="px-3 py-2">
@@ -516,9 +926,9 @@ function LecturerAttendanceView({
                             }
                             className="select-glass px-2 py-1 text-sm"
                           >
-                            <option value="PRESENT">PRESENT</option>
-                            <option value="ABSENT">ABSENT</option>
-                            <option value="LATE">LATE</option>
+                            <option value="PRESENT">Present</option>
+                            <option value="ABSENT">Absent</option>
+                            <option value="LATE">Late</option>
                           </select>
                         </td>
                       </tr>
@@ -575,9 +985,7 @@ function LecturerAttendanceView({
               </button>
             </div>
           </div>
-        </div>
       </div>
-
     </div>
   );
 }
@@ -590,6 +998,7 @@ function StudentAttendanceView() {
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -602,9 +1011,15 @@ function StudentAttendanceView() {
   async function loadModuleSessions(currentModuleId: string) {
     if (!currentModuleId) {
       setSessions([]);
+      setSessionsLoading(false);
       return;
     }
-    setSessions(await listAttendanceSessions({ moduleId: currentModuleId }));
+    try {
+      setSessionsLoading(true);
+      setSessions(await listAttendanceSessions({ moduleId: currentModuleId }));
+    } finally {
+      setSessionsLoading(false);
+    }
   }
 
   async function loadAttendanceView() {
@@ -700,6 +1115,11 @@ function StudentAttendanceView() {
         subtitle="Your attendance summary and session history."
       />
 
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <AttendanceStatusLegend />
+        <SessionStateLegend />
+      </div>
+
       <div className="teal-glow-card p-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <input
@@ -748,17 +1168,17 @@ function StudentAttendanceView() {
         <SummaryCard
           label="Present"
           value={summary.present}
-          className="text-emerald-300"
+          className={attendanceStatusTextClass("PRESENT")}
         />
         <SummaryCard
           label="Late"
           value={summary.late}
-          className="text-amber-300"
+          className={attendanceStatusTextClass("LATE")}
         />
         <SummaryCard
           label="Absent"
           value={summary.absent}
-          className="text-rose-300"
+          className={attendanceStatusTextClass("ABSENT")}
         />
         <SummaryCard label="Total" value={summary.total} className="text-white" />
       </div>
@@ -774,10 +1194,10 @@ function StudentAttendanceView() {
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {modules.length === 0 ? (
-            <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4 text-sm text-white/80">
-              No modules linked to your account yet.
-            </div>
+          {loading && modules.length === 0 ? (
+            <LoadingRows rows={2} />
+          ) : modules.length === 0 ? (
+            <EmptyState message="No modules linked to your account yet." />
           ) : (
             modules.map((module) => {
               const isSelected = module.id === selectedModuleId;
@@ -823,55 +1243,71 @@ function StudentAttendanceView() {
         </div>
 
         <div className="mt-3 space-y-2">
-          {!selectedModule ? (
+          {sessionsLoading ? (
+            <LoadingRows />
+          ) : !selectedModule ? (
             <div className="text-sm text-white/75">No module selected.</div>
           ) : sessions.length === 0 ? (
-            <div className="text-sm text-white/75">
-              No attendance sessions created for this module yet.
-            </div>
+            <EmptyState message="No attendance sessions created for this module yet." />
           ) : (
-            sessions.map((session) => (
-              <div
-                key={session.id}
-                className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)] hover:shadow-[0_0_18px_rgba(140,235,255,0.10)]"
-              >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <div className="font-semibold text-white">
-                      {session.date} | {session.moduleCode} - {session.moduleName}
+            sessions.map((session) => {
+              const status = getSessionStatus(session);
+              const canCheckIn = isSessionLive(session) && !session.checkedInAt;
+              return (
+                <div
+                  key={session.id}
+                  className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.66)] p-4 transition-all duration-200 hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.34)] hover:bg-[rgba(14,42,99,0.62)] hover:shadow-[0_0_18px_rgba(140,235,255,0.10)]"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-semibold text-white">
+                          {sessionTitle(session)}
+                        </div>
+                        <SessionStatusBadge session={session} />
+                      </div>
+                      <div className="mt-1 text-xs text-white/60">
+                        {session.date}
+                        {session.courseName ? ` | ${session.courseName}` : ""}
+                      </div>
+                      <div className="mt-1 text-xs text-white/60">
+                        {session.startsAt
+                          ? `Starts: ${formatDateTime(session.startsAt)}`
+                          : "Start time not set"}
+                        {session.endsAt
+                          ? ` | Ends: ${formatDateTime(session.endsAt)}`
+                          : ""}
+                      </div>
+                      <div className="mt-1 text-xs text-white/70">
+                        {session.checkedInAt
+                          ? `Checked in: ${formatDateTime(session.checkedInAt)}`
+                          : status.description}
+                      </div>
+                      <div className="mt-2">
+                        <AttendanceSummaryPills session={session} />
+                      </div>
                     </div>
-                    <div className="mt-1 text-xs text-white/60">
-                      {session.startsAt
-                        ? `Starts: ${formatDateTime(session.startsAt)}`
-                        : "Start time not set"}
-                      {session.endsAt
-                        ? ` | Ends: ${formatDateTime(session.endsAt)}`
-                        : ""}
-                    </div>
-                    <div className="mt-1 text-xs text-white/70">
-                      {session.checkedInAt
-                        ? `Checked in: ${formatDateTime(session.checkedInAt)}`
-                        : "You have not checked in yet."}
-                    </div>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => void onCheckIn(session.id)}
-                    disabled={
-                      busySessionId === session.id || Boolean(session.checkedInAt)
-                    }
-                    className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
-                  >
-                    {session.checkedInAt
-                      ? "Checked in"
-                      : busySessionId === session.id
-                      ? "Joining..."
-                      : "Join session"}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => void onCheckIn(session.id)}
+                      disabled={busySessionId === session.id || !canCheckIn}
+                      className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
+                    >
+                      {session.checkedInAt
+                        ? "Checked in"
+                        : busySessionId === session.id
+                        ? "Joining..."
+                        : status.label === "Upcoming"
+                        ? "Not open yet"
+                        : status.label === "Closed"
+                        ? "Closed"
+                        : "Join session"}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -879,10 +1315,10 @@ function StudentAttendanceView() {
       <div className="teal-glow-card p-5">
         <div className="text-lg font-semibold text-white">Recent Sessions</div>
         <div className="mt-3 space-y-2">
-          {(data?.value ?? []).length === 0 ? (
-            <div className="text-sm text-white/75">
-              No attendance records in this range.
-            </div>
+          {loading && !data ? (
+            <LoadingRows rows={2} />
+          ) : (data?.value ?? []).length === 0 ? (
+            <EmptyState message="No attendance records in this range." />
           ) : (
             data!.value.map((row) => (
               <div
@@ -899,11 +1335,12 @@ function StudentAttendanceView() {
                     </div>
                   </div>
                   <div
-                    className={["text-sm font-semibold", statusClass(row.status)].join(
-                      " "
-                    )}
+                    className={[
+                      "text-sm font-semibold",
+                      attendanceStatusTextClass(row.status),
+                    ].join(" ")}
                   >
-                    {row.status}
+                    <AttendanceStatusBadge status={row.status} />
                   </div>
                 </div>
               </div>

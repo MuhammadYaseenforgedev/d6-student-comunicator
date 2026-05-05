@@ -72,6 +72,9 @@ type ImportedLearnerListRow = {
   first_name: string | null;
   last_name: string | null;
   public_student_id: string | null;
+  course_id: string | null;
+  course_code: string | null;
+  course_name: string | null;
   external_source: string | null;
   external_source_id: string | null;
   activation_required: boolean | null;
@@ -352,6 +355,9 @@ function mapImportedLearner(row: ImportedLearnerListRow) {
     lastName,
     learnerName,
     studentNumber: row.public_student_id?.trim() ?? null,
+    courseId: row.course_id,
+    courseCode: row.course_code,
+    courseName: row.course_name,
     externalSource: row.external_source?.trim() ?? null,
     externalSourceId: row.external_source_id?.trim() ?? null,
     activationRequired: Boolean(row.activation_required),
@@ -841,6 +847,9 @@ studentRouter.get(
             u.first_name,
             u.last_name,
             u.public_student_id,
+            active_course.id AS course_id,
+            active_course.code AS course_code,
+            active_course.name AS course_name,
             sp.external_source,
             sp.external_source_id,
             sp.activation_required,
@@ -859,6 +868,15 @@ studentRouter.get(
             ) AS has_active_activation_token
           FROM users u
           JOIN student_profiles sp ON sp.user_id = u.id
+          LEFT JOIN LATERAL (
+            SELECT c.id, c.code, c.name
+            FROM student_courses sc
+            JOIN courses c ON c.id = sc.course_id
+            WHERE sc.student_user_id = u.id
+              AND sc.status = 'ACTIVE'
+            ORDER BY sc.enrolled_at DESC, lower(c.name) ASC
+            LIMIT 1
+          ) active_course ON true
           WHERE ${where.join(" AND ")}
           ORDER BY
             CASE sp.onboarding_status

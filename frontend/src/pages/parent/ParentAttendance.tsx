@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AttendanceStatusBadge from "../../components/AttendanceStatusBadge";
 import PageHeader from "../../components/PageHeader";
 import {
   getParentAttendance,
@@ -6,6 +7,10 @@ import {
   type ParentAttendanceRecord,
   type ParentChild,
 } from "../../api/parent";
+import {
+  attendanceStatusTextClass,
+  normalizeAttendanceStatus,
+} from "../../lib/attendanceStatus";
 import { toInlineError } from "./errorText";
 
 function childIdentifier(child: ParentChild): string {
@@ -100,9 +105,10 @@ export default function ParentAttendance() {
   }, [selectedChildId]);
 
   const summary = {
-    present: records.filter((r) => r.status === "PRESENT").length,
-    absent: records.filter((r) => r.status === "ABSENT").length,
-    late: records.filter((r) => r.status === "LATE").length,
+    present: records.filter((r) => normalizeAttendanceStatus(r.status) === "PRESENT").length,
+    absent: records.filter((r) => normalizeAttendanceStatus(r.status) === "ABSENT").length,
+    late: records.filter((r) => normalizeAttendanceStatus(r.status) === "LATE").length,
+    pending: records.filter((r) => normalizeAttendanceStatus(r.status) === "PENDING").length,
     total: records.length,
   };
 
@@ -186,10 +192,11 @@ export default function ParentAttendance() {
         <div className="error-banner p-3 text-sm">{attendanceError}</div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Summary label="Present" value={summary.present} className="text-emerald-200" />
-        <Summary label="Late" value={summary.late} className="text-amber-200" />
-        <Summary label="Absent" value={summary.absent} className="text-rose-200" />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+        <Summary label="Present" value={summary.present} className={attendanceStatusTextClass("PRESENT")} />
+        <Summary label="Late" value={summary.late} className={attendanceStatusTextClass("LATE")} />
+        <Summary label="Absent" value={summary.absent} className={attendanceStatusTextClass("ABSENT")} />
+        <Summary label="Pending" value={summary.pending} className={attendanceStatusTextClass("PENDING")} />
         <Summary label="Total" value={summary.total} className="text-white" />
       </div>
 
@@ -217,9 +224,7 @@ export default function ParentAttendance() {
                       {row.date} | {row.facultyName}
                     </div>
                   </div>
-                  <div className="text-sm font-semibold text-white">
-                    {row.status}
-                  </div>
+                  <AttendanceStatusBadge status={row.status} />
                 </div>
               </div>
             ))

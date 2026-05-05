@@ -29,6 +29,12 @@ import {
   requestOtp as requestOtpApi,
 } from "../lib/authService";
 import { isFinanceAdmin } from "../lib/adminAccess";
+import {
+  DEMO_ACCOUNTS,
+  isDemoLoginEnabled,
+  loginWithDemoAccount,
+  type DemoAccount,
+} from "../lib/demoAuth";
 import forgeLogo from "../assets/Forge.jpg";
 import AuthAssistant from "../components/AuthAssistant";
 import OTPInput from "../components/OTPInput";
@@ -437,7 +443,23 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     }
   }
 
+  function onDemoLogin(account: DemoAccount) {
+    try {
+      setBusy(true);
+      setError(null);
+      setInfo(null);
+      const { user } = loginWithDemoAccount(account);
+      const dest = from ?? landingFor(user);
+      navigate(dest, { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Local demo login failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const canRequestOtp = !ENV_CONFIG_ERROR && !!email.trim() && !busy;
+  const showDemoLogin = isDemoLoginEnabled();
   const hasOtp = otp.trim().length === 6;
   const canSubmit =
     !ENV_CONFIG_ERROR &&
@@ -820,6 +842,40 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
               )}
 
             </form>
+
+            {showDemoLogin && (
+              <section className="mt-6 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.58)] p-4 shadow-[0_12px_28px_rgba(3,10,28,0.26)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">
+                      Local Demo Access
+                    </h3>
+                    <p className="mt-1 text-xs text-white/60">
+                      Demo login is for local development only.
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-[#8CEBFF]/25 bg-[#8CEBFF]/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8CEBFF]">
+                    local/demo only
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-2">
+                  {DEMO_ACCOUNTS.map((account) => (
+                    <button
+                      key={account.key}
+                      type="button"
+                      onClick={() => onDemoLogin(account)}
+                      disabled={busy}
+                      className="btn-secondary w-full justify-center px-4 py-2.5 text-sm"
+                      title={account.label}
+                      aria-label={account.label}
+                    >
+                      {account.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 {LOGIN_QUICK_ACCESS_LINKS.map((link) => (

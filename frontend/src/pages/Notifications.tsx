@@ -55,6 +55,13 @@ function badgeClass(category: NotificationCategory): string {
   return "border-[rgba(148,163,184,0.30)] bg-[rgba(148,163,184,0.14)] text-slate-100";
 }
 
+function categoryLabel(category: NotificationCategory): string {
+  return (
+    CATEGORY_OPTIONS.find((option) => option.value === category)?.label ??
+    category.replace(/_/g, " ")
+  );
+}
+
 function formatWhen(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -64,6 +71,24 @@ function formatWhen(iso: string): string {
 function notificationHref(notification: NotificationRecord): string | null {
   const href = notification.meta?.href;
   return typeof href === "string" && href.trim() ? href : null;
+}
+
+function NotificationLoadingRows() {
+  return (
+    <div className="space-y-3">
+      {[0, 1, 2].map((row) => (
+        <div
+          key={row}
+          className="rounded-3xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.50)] p-4"
+        >
+          <div className="h-4 w-28 rounded-full bg-white/10" />
+          <div className="mt-4 h-4 w-2/3 rounded-full bg-white/10" />
+          <div className="mt-3 h-3 w-full rounded-full bg-white/8" />
+          <div className="mt-2 h-3 w-4/5 rounded-full bg-white/8" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function NotificationsPage() {
@@ -84,6 +109,12 @@ export default function NotificationsPage() {
   const visibleCategoryOptions = CATEGORY_OPTIONS.filter(
     (option) => option.value === "ALL" || allowedCategories.includes(option.value)
   );
+  const hasActiveFilters = category !== "ALL" || unreadOnly;
+
+  function clearFilters() {
+    setCategory("ALL");
+    setUnreadOnly(false);
+  }
 
   useEffect(() => {
     if (category === "ALL") return;
@@ -282,6 +313,18 @@ export default function NotificationsPage() {
               );
             })}
           </div>
+
+          {hasActiveFilters && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="btn-secondary w-full sm:w-auto"
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -308,10 +351,19 @@ export default function NotificationsPage() {
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           <div className="app-page-scroll min-h-0 flex-1 space-y-3 overflow-visible pr-0 md:max-h-[75vh] md:overflow-y-auto md:pr-1 lg:max-h-[calc(100vh-20rem)]">
             {loading ? (
-              <div className="info-banner">Loading notifications...</div>
+              <NotificationLoadingRows />
             ) : items.length === 0 ? (
-              <div className="info-banner">
-                No notifications for the current filter.
+              <div className="info-banner flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <span>No notifications for the current filter.</span>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="btn-secondary w-full sm:w-auto"
+                  >
+                    Clear filters
+                  </button>
+                )}
               </div>
             ) : (
               items.map((item) => {
@@ -336,10 +388,19 @@ export default function NotificationsPage() {
                               badgeClass(item.category),
                             ].join(" ")}
                           >
-                            {item.category}
+                            {categoryLabel(item.category)}
                           </span>
 
-                          {!item.isRead && <span className="status-dot" />}
+                          <span
+                            className={[
+                              "rounded-full border px-2.5 py-1 text-xs font-semibold",
+                              item.isRead
+                                ? "border-white/12 bg-white/8 text-white/55"
+                                : "border-[rgba(140,235,255,0.28)] bg-[rgba(140,235,255,0.12)] text-[#d9fbff]",
+                            ].join(" ")}
+                          >
+                            {item.isRead ? "Read" : "Unread"}
+                          </span>
 
                           <span className="text-xs text-white/55">
                             {formatWhen(item.createdAt)}

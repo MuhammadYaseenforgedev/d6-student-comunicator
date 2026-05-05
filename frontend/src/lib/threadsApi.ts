@@ -7,6 +7,7 @@
 // It only talks to the backend and returns typed data.
 
 import { getToken } from "./auth";
+import { getMockApiResponse } from "./demoMockApi";
 
 // ---------- Types that match backend contract ----------
 
@@ -110,6 +111,13 @@ async function readErrorMessage(res: Response): Promise<string> {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const mock = getMockApiResponse<T>({
+    method: String(init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+    path,
+    body: init?.body,
+  });
+  if (mock !== undefined) return mock;
+
   const token = requireToken();
 
   const res = await fetch(`${requireBaseUrl()}${API_PREFIX}${path}`, {
