@@ -5,6 +5,15 @@
 const TOKEN_KEY = "token";
 const USER_KEY = "user";
 const LOGOUT_NOTICE_KEY = "auth.logout.notice";
+const DEMO_STORAGE_KEYS = [
+  "demo_threads_v1",
+  "demo_messages_v1",
+  "d6_calendar_events_v1",
+  "d6_calendar_notes_v1",
+  "d6_finance_notifications_v1",
+  "d6_finance_documents_v1",
+  "d6_uploads_v1",
+] as const;
 /**
  * Roles used throughout the app.
  * Backend will enforce these, frontend uses them for UI + route guards.
@@ -71,6 +80,16 @@ export function clearAuth(): void {
   storage?.removeItem(USER_KEY);
 }
 
+function clearDemoStorage(): void {
+  const localStorage = getLocalStorage();
+  const sessionStorage = getSessionStorage();
+
+  for (const key of DEMO_STORAGE_KEYS) {
+    localStorage?.removeItem(key);
+    sessionStorage?.removeItem(key);
+  }
+}
+
 function setLogoutNotice(message: string): void {
   const storage = getSessionStorage();
   const nextMessage = message.trim();
@@ -93,6 +112,7 @@ export function consumeLogoutNotice(): string | null {
 
 export function logout(message?: string): void {
   clearAuth();
+  clearDemoStorage();
   setLogoutNotice(message ?? "");
 }
 

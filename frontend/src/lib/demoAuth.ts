@@ -26,7 +26,7 @@ export function isMockDataMode(): boolean {
 export function isDemoLoginEnabled(): boolean {
   return (
     enabledFlag(env?.VITE_ENABLE_DEMO_LOGIN) &&
-    (isMockDataMode() || Boolean(env?.DEV))
+    isMockDataMode()
   );
 }
 
