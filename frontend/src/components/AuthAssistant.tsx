@@ -84,7 +84,7 @@ export default function AuthAssistant({
             label: "Student fields",
             run: () =>
               mode === "login"
-                ? "Students sign in with email, password, student number, and OTP when required. Other roles can leave the student number blank on login."
+                ? "Students sign in with email, password, and OTP when required. Student number remains an internal reference after login."
                 : "Student registration needs South African ID, email, password, confirm password, and OTP. The student number is generated after registration.",
           };
 
@@ -140,7 +140,7 @@ export default function AuthAssistant({
           : "OTP becomes available after the user enters their email address.";
       case "student-fields":
         return mode === "login"
-          ? "Explain the extra student number field during sign-in."
+          ? "Explain student sign-in with email and OTP."
           : "Explain the South African ID field and generated student number during student registration.";
       case "staff-password":
         return "Explain the shared staff registration password for lecturer and admin sign-up.";

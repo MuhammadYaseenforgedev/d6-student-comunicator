@@ -869,7 +869,7 @@ authRouter.post(
    LOGIN
    POST /login
    Supports:
-   - OTP login: { email, password, otp, studentNumber? } // studentNumber required for STUDENT accounts
+   - OTP login: { email, password, otp }
    - Password-only login: { email, password } when allowed (dev speed)
 =================================*/
 authRouter.post("/login", loginLimiter, async (req, res) => {
@@ -878,7 +878,6 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   const email = normEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   const otp = String(req.body?.otp ?? "").trim();
-  const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
 
   if (!email || !password) {
     return res.status(400).json({ error: { code: "VALIDATION", message: "Missing fields" } });
@@ -913,18 +912,6 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
       return res.status(400).json({
         error: { code: "VALIDATION", message: "OTP required for login" },
       });
-    }
-  }
-
-  if (String(userRow.role ?? "").toUpperCase() === "STUDENT") {
-    if (!studentNumber) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "studentNumber is required for student login" },
-      });
-    }
-    const expectedStudentNumber = normalizeStudentNumber(userRow.public_student_id);
-    if (!expectedStudentNumber || studentNumber !== expectedStudentNumber) {
-      return res.status(401).json({ error: { code: "AUTH", message: "Invalid credentials" } });
     }
   }
 

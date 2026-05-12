@@ -320,7 +320,6 @@ describe("imported learner activation foundation", () => {
     const loginRes = await request(app).post("/api/auth/login").send({
       email: imported.email,
       password: nextPassword,
-      studentNumber: imported.studentNumber,
     });
     expect(loginRes.status).toBe(200);
     expect(loginRes.body?.user?.role).toBe("STUDENT");

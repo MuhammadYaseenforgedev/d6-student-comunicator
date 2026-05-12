@@ -389,7 +389,7 @@ export function getAuthContext(mode: AuthMode, role: UserRole) {
     return {
       title: "Login help",
       summary:
-        "Enter email and password first. Student accounts should also enter a student number, and production sign-in requires OTP before submitting the form.",
+        "Enter email and password first. Production sign-in requires OTP before submitting the form.",
     };
   }
 
@@ -423,7 +423,7 @@ export function getDefaultAuthActionIds(
   role: UserRole
 ): AuthActionId[] {
   if (mode === "login") {
-    return ["request-otp", "student-fields", "switch-register", "support"];
+    return ["request-otp", "switch-register", "support"];
   }
 
   if (role === "LECTURER" || role === "ADMIN") {
@@ -474,7 +474,7 @@ export function answerAuthQuestion(
     return {
       text:
         mode === "login"
-          ? "Student sign-in uses email, password, student number, and OTP when required. Other roles can leave the student number blank on login."
+          ? "Student sign-in uses email, password, and OTP when required. Student number stays as an internal reference after login."
           : "Student registration needs a 13-digit South African ID. The student number is generated after the account is created.",
       actionIds: ["student-fields"],
     };
@@ -517,7 +517,7 @@ export function answerAuthQuestion(
   if (includesAny(query, ["login", "sign in"])) {
     return {
       text:
-        "Switch to Login when you already have an account. Enter email and password first, then add student number if you are signing in as a student.",
+        "Switch to Login when you already have an account. Enter email and password first, then use OTP if this environment requires it.",
       actionIds: ["switch-login"],
     };
   }

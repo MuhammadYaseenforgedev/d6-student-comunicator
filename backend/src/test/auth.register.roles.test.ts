@@ -269,7 +269,7 @@ describe("Auth register role policy", () => {
     expect(res.body?.user?.role).toBe("ADMIN");
   });
 
-  test("requires student number during STUDENT login", async () => {
+  test("allows STUDENT login with email without requiring student number", async () => {
     const email = uniqueEmail("student_login");
     const password = "Passw0rd!";
 
@@ -289,28 +289,21 @@ describe("Auth register role policy", () => {
     const studentNumber = String(stored.rows[0]?.public_student_id ?? "");
     expect(studentNumber).toMatch(/^FA-\d{8}$/);
 
-    const missingStudentNumber = await request(app).post("/api/auth/login").send({
-      email,
-      password,
-    });
-    expect(missingStudentNumber.status).toBe(400);
-    expect(String(missingStudentNumber.body?.error?.code ?? "")).toBe("VALIDATION");
-
-    const wrongStudentNumber = await request(app).post("/api/auth/login").send({
-      email,
-      password,
-      studentNumber: "WRONG-123",
-    });
-    expect(wrongStudentNumber.status).toBe(401);
-    expect(String(wrongStudentNumber.body?.error?.code ?? "")).toBe("AUTH");
-
     const loginRes = await request(app).post("/api/auth/login").send({
       email,
       password,
-      studentNumber,
     });
     expect(loginRes.status).toBe(200);
     expect(loginRes.body?.user?.role).toBe("STUDENT");
     expect(typeof loginRes.body?.token).toBe("string");
+
+    const studentNumberIgnored = await request(app).post("/api/auth/login").send({
+      email,
+      password,
+      studentNumber: "WRONG-123",
+    });
+    expect(studentNumberIgnored.status).toBe(200);
+    expect(studentNumberIgnored.body?.user?.role).toBe("STUDENT");
+    expect(typeof studentNumberIgnored.body?.token).toBe("string");
   });
 });

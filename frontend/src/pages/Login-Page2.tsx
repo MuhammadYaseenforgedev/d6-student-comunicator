@@ -5,7 +5,7 @@
 // 2) Register: POST /api/auth/register with otp
 //    - STUDENT requires southAfricanId; studentNumber is generated
 // 3) Login: POST /api/auth/login with password + otp in production
-//    - STUDENT requires studentNumber
+//    - all roles use email as the login identifier
 //
 // Styling updated for the neon glass theme with:
 // - dark glass login card
@@ -134,7 +134,7 @@ function loginErrorBanner(error: HttpError, otpCode: string): string {
 
   const status = Number(error?.status ?? 0);
   if (status === 401) {
-    return "Invalid credentials. Check email/password and student number for student accounts.";
+    return "Invalid credentials. Check your email and password.";
   }
   if (status === 403) {
     return "Access denied for this account in the current environment.";
@@ -144,10 +144,6 @@ function loginErrorBanner(error: HttpError, otpCode: string): string {
   }
 
   return error?.message ?? "Something went wrong.";
-}
-
-function normalizeStudentNumber(v: string): string {
-  return v.trim().toUpperCase();
 }
 
 function normalizeEmail(v: string): string {
@@ -167,7 +163,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [studentNumber, setStudentNumber] = useState("");
   const [southAfricanId, setSouthAfricanId] = useState("");
   const [role, setRole] = useState<UserRole>("STUDENT");
   const [staffRegisterPassword, setStaffRegisterPassword] = useState("");
@@ -245,23 +240,16 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
   async function doLogin(
     eNorm: string,
     pw: string,
-    otpCode: string,
-    studentNumberInput: string
+    otpCode: string
   ) {
     const payload: {
       email: string;
       password: string;
       otp?: string;
-      studentNumber?: string;
     } = {
       email: eNorm,
       password: pw,
     };
-
-    const studentNumberNorm = normalizeStudentNumber(studentNumberInput);
-    if (studentNumberNorm) {
-      payload.studentNumber = studentNumberNorm;
-    }
 
     if (otpCode.trim()) {
       payload.otp = otpCode.trim();
@@ -296,7 +284,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
       otp: string;
       acceptedLegalTerms: boolean;
       staffRegisterPassword?: string;
-      studentNumber?: string;
       southAfricanId?: string;
     } = {
       email: eNorm,
@@ -336,7 +323,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     setInfo(null);
 
     const eNorm = normalizeEmail(email);
-    const studentNumberNorm = normalizeStudentNumber(studentNumber);
     const southAfricanIdNorm = normalizeSouthAfricanId(southAfricanId);
 
     if (ENV_CONFIG_ERROR) return setError(ENV_CONFIG_ERROR);
@@ -401,7 +387,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
       setBusy(true);
 
       if (mode === "login") {
-        await doLogin(eNorm, password, otp.trim(), studentNumberNorm);
+        await doLogin(eNorm, password, otp.trim());
       } else {
         await doRegister(
           eNorm,
@@ -600,31 +586,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                     required
                     disabled={busy}
                   />
-                </div>
-              )}
-
-              {mode === "login" && (
-                <div>
-                  <label
-                    htmlFor="studentNumber"
-                    className="block text-sm text-white/80"
-                  >
-                    Student Number
-                  </label>
-                  <input
-                    id="studentNumber"
-                    name="studentNumber"
-                    type="text"
-                    className="input-glass mt-2"
-                    placeholder="e.g. FA-20260001"
-                    value={studentNumber}
-                    onChange={(e) => setStudentNumber(e.target.value)}
-                    autoComplete="off"
-                    disabled={busy}
-                  />
-                  <p className="mt-2 text-xs text-white/55">
-                    Required for student accounts. Other roles can leave this blank.
-                  </p>
                 </div>
               )}
 
