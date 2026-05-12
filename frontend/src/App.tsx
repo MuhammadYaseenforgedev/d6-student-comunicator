@@ -233,6 +233,16 @@ export default function App() {
                         path="admin/learner-onboarding"
                         element={renderLazyRoute(<LearnerOnboarding />)}
                       />
+                    </Route>
+
+                    <Route
+                      element={
+                        <RequireRole
+                          roles={["ADMIN"]}
+                          adminScopes={["ACADEMIC", "SUPER"]}
+                        />
+                      }
+                    >
                       <Route path="admin/users" element={renderLazyRoute(<AdminUsers />)} />
                     </Route>
 

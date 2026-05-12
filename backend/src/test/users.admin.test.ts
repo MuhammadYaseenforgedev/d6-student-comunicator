@@ -80,19 +80,13 @@ describe("Admin account management", () => {
     expect(String(studentRow?.studentNumber ?? "")).toBe(`${unique.toUpperCase()}_STU`);
   });
 
-  test("lecturer can view student accounts only in the account registry", async () => {
+  test("lecturer cannot view admin account registry", async () => {
     const res = await request(app)
       .get("/api/users/admin/accounts")
       .set(auth(lecturerToken))
       .query({ q: unique, limit: 50 });
 
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body?.value)).toBe(true);
-    expect(res.body.value.length).toBeGreaterThanOrEqual(1);
-    expect(res.body.value.every((row: { role?: string }) => row.role === "STUDENT")).toBe(true);
-    expect(
-      res.body.value.some((row: { email?: string }) => row.email === `${unique}_student@co.za`)
-    ).toBe(true);
+    expect(res.status).toBe(403);
   });
 
   test("finance admin cannot view academic account registry", async () => {

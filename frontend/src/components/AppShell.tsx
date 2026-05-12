@@ -407,7 +407,7 @@ export default function AppShell() {
                 />
               )}
 
-              {(academicOrSuperAdmin || user?.role === "LECTURER") && (
+              {academicOrSuperAdmin && (
                 <Item
                   to="/app/admin/users"
                   label="Accounts"

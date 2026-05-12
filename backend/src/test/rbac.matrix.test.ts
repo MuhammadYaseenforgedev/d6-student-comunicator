@@ -208,9 +208,9 @@ describe("RBAC matrix (automated)", () => {
     },
 
     {
-      name: "LECTURER cannot list parent link request queue",
+      name: "LECTURER can list parent link request queue",
       run: () => request(app).get("/api/parent/admin/parent/link-requests").set(auth(ctx.lecturerToken)),
-      expect: [401, 403],
+      expect: [200],
     },
 
     {

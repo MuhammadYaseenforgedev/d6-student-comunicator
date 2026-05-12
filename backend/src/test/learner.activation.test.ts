@@ -25,6 +25,7 @@ function restoreEnvVar(name: keyof typeof ORIGINAL_ENV) {
 describe("imported learner activation foundation", () => {
   const unique = `test_activation_${Date.now()}`;
   let academicToken = "";
+  let lecturerToken = "";
   let financeToken = "";
   let studentToken = "";
   let parentToken = "";
@@ -33,11 +34,13 @@ describe("imported learner activation foundation", () => {
     process.env.APP_ENV = "test";
 
     const academicAdmin = await createUser("ADMIN", `${unique}_academic@co.za`, "Passw0rd!", "ACADEMIC");
+    const lecturer = await createUser("LECTURER", `${unique}_lecturer@co.za`);
     const financeAdmin = await createUser("ADMIN", `${unique}_finance@co.za`, "Passw0rd!", "FINANCE");
     const student = await createUser("STUDENT", `${unique}_student@co.za`);
     const parent = await createUser("PARENT", `${unique}_parent@co.za`);
 
     academicToken = signJwt(academicAdmin);
+    lecturerToken = signJwt(lecturer);
     financeToken = signJwt(financeAdmin);
     studentToken = signJwt(student);
     parentToken = signJwt(parent);
@@ -271,6 +274,11 @@ describe("imported learner activation foundation", () => {
   });
 
   test("imported learner onboarding list is RBAC protected", async () => {
+    const lecturerAllowed = await request(app)
+      .get("/api/admin/imports/learners")
+      .set(auth(lecturerToken));
+    expect(lecturerAllowed.status).toBe(200);
+
     for (const token of [financeToken, studentToken, parentToken]) {
       const denied = await request(app)
         .get("/api/admin/imports/learners")

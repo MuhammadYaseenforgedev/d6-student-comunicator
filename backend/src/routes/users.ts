@@ -93,18 +93,13 @@ export const userRouter = Router();
 // requireAuth is applied globally in app.ts
 userRouter.get(
   "/admin/accounts",
-  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req: Request, res: Response) => {
     try {
       const limit = parseLimit(req.query.limit, 200, 500);
       const q = String(req.query.q ?? "").trim().toLowerCase();
       const requestedRoles = parseRoleFilters(req.query.role, req.query.roles);
-      const roleFilter =
-        req.user?.role === "LECTURER"
-          ? (["STUDENT"] as Role[])
-          : requestedRoles.length > 0
-            ? requestedRoles
-            : [...VALID_ROLES];
+      const roleFilter = requestedRoles.length > 0 ? requestedRoles : [...VALID_ROLES];
 
       const params: unknown[] = [];
       const where: string[] = [];
@@ -179,7 +174,7 @@ userRouter.get(
 
 userRouter.get(
   "/admin/accounts/students.csv",
-  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (_req: Request, res: Response) => {
     try {
       const result = await pool.query<{
