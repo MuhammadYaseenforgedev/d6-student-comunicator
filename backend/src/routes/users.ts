@@ -54,6 +54,12 @@ function normalizeStudentNumber(v: unknown): string {
   return String(v ?? "").trim().toUpperCase();
 }
 
+function csvCell(v: string | number | null | undefined): string {
+  const raw = v == null ? "" : String(v);
+  if (!/[",\n\r]/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
 function parseRoleFilters(rawRole: unknown, rawRoles: unknown): Role[] {
   const values: string[] = [];
 
@@ -87,13 +93,18 @@ export const userRouter = Router();
 // requireAuth is applied globally in app.ts
 userRouter.get(
   "/admin/accounts",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req: Request, res: Response) => {
     try {
       const limit = parseLimit(req.query.limit, 200, 500);
       const q = String(req.query.q ?? "").trim().toLowerCase();
       const requestedRoles = parseRoleFilters(req.query.role, req.query.roles);
-      const roleFilter = requestedRoles.length > 0 ? requestedRoles : [...VALID_ROLES];
+      const roleFilter =
+        req.user?.role === "LECTURER"
+          ? (["STUDENT"] as Role[])
+          : requestedRoles.length > 0
+            ? requestedRoles
+            : [...VALID_ROLES];
 
       const params: unknown[] = [];
       const where: string[] = [];
@@ -162,6 +173,44 @@ userRouter.get(
     } catch (e: unknown) {
       console.error("[users] GET /users/admin/accounts error", e);
       return err(res, 500, "INTERNAL", "Failed to list admin accounts");
+    }
+  }
+);
+
+userRouter.get(
+  "/admin/accounts/students.csv",
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (_req: Request, res: Response) => {
+    try {
+      const result = await pool.query<{
+        email: string;
+        public_student_id: string | null;
+      }>(
+        `
+          SELECT email, public_student_id
+          FROM users
+          WHERE role = 'STUDENT'
+          ORDER BY lower(COALESCE(public_student_id, email)) ASC, lower(email) ASC
+        `
+      );
+
+      const lines = [
+        "student_number,email",
+        ...result.rows.map((row) =>
+          [csvCell(row.public_student_id), csvCell(row.email)].join(",")
+        ),
+      ];
+      const dateStamp = new Date().toISOString().slice(0, 10);
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="student-numbers-${dateStamp}.csv"`
+      );
+      return res.status(200).send(`\uFEFF${lines.join("\n")}\n`);
+    } catch (e: unknown) {
+      console.error("[users] GET /users/admin/accounts/students.csv error", e);
+      return err(res, 500, "INTERNAL", "Failed to export student numbers");
     }
   }
 );

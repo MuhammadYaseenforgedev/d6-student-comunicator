@@ -17,10 +17,6 @@ function uniqueEmail(tag: string) {
   return `${TEST_EMAIL_PREFIX}${tag}_${Date.now()}_${Math.floor(Math.random() * 10000)}@co.za`;
 }
 
-function uniqueStudentNumber(tag: string) {
-  return `${tag.toUpperCase()}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-}
-
 function uniqueSouthAfricanId() {
   const ts = Date.now().toString();
   const rand = Math.floor(Math.random() * 1_000_000).toString().padStart(6, "0");
@@ -142,22 +138,28 @@ describe("Auth register role policy", () => {
     }
   });
 
-  test("allows STUDENT self-registration with SA ID and student number", async () => {
+  test("allows STUDENT self-registration with SA ID and generates a student number", async () => {
+    const email = uniqueEmail("student");
     const res = await request(app).post("/api/auth/register").send({
-      email: uniqueEmail("student"),
+      email,
       password: "Passw0rd!",
       role: "STUDENT",
       acceptedLegalTerms: true,
       southAfricanId: uniqueSouthAfricanId(),
-      studentNumber: uniqueStudentNumber("STU"),
     });
 
     expect(res.status).toBe(201);
     expect(res.body?.user?.role).toBe("STUDENT");
     expect(typeof res.body?.token).toBe("string");
+
+    const stored = await pool.query<{ public_student_id: string | null }>(
+      `SELECT public_student_id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email]
+    );
+    expect(String(stored.rows[0]?.public_student_id ?? "")).toMatch(/^FA-\d{8}$/);
   });
 
-  test("rejects self-registration with a password shorter than 6 characters", async () => {
+  test("rejects self-registration with a password shorter than 8 characters", async () => {
     const res = await request(app).post("/api/auth/register").send({
       email: uniqueEmail("short_password"),
       password: "12345",
@@ -167,10 +169,10 @@ describe("Auth register role policy", () => {
 
     expect(res.status).toBe(400);
     expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
-    expect(String(res.body?.error?.message ?? "")).toMatch(/at least 6 characters/i);
+    expect(String(res.body?.error?.message ?? "")).toMatch(/at least 8 characters/i);
   });
 
-  test("blocks STUDENT self-registration when SA ID and student number are missing", async () => {
+  test("blocks STUDENT self-registration when SA ID is missing", async () => {
     const res = await request(app).post("/api/auth/register").send({
       email: uniqueEmail("student_missing_identity"),
       password: "Passw0rd!",
@@ -270,7 +272,6 @@ describe("Auth register role policy", () => {
   test("requires student number during STUDENT login", async () => {
     const email = uniqueEmail("student_login");
     const password = "Passw0rd!";
-    const studentNumber = uniqueStudentNumber("LOGIN");
 
     const registerRes = await request(app).post("/api/auth/register").send({
       email,
@@ -278,9 +279,15 @@ describe("Auth register role policy", () => {
       role: "STUDENT",
       acceptedLegalTerms: true,
       southAfricanId: uniqueSouthAfricanId(),
-      studentNumber,
     });
     expect(registerRes.status).toBe(201);
+
+    const stored = await pool.query<{ public_student_id: string | null }>(
+      `SELECT public_student_id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email]
+    );
+    const studentNumber = String(stored.rows[0]?.public_student_id ?? "");
+    expect(studentNumber).toMatch(/^FA-\d{8}$/);
 
     const missingStudentNumber = await request(app).post("/api/auth/login").send({
       email,

@@ -184,6 +184,11 @@ export default function StudentPersonalDetails() {
       setError(null);
       setInfo(null);
 
+      if (form.surname.trim().length < 4) {
+        setError("Surname must be more than 3 characters.");
+        return;
+      }
+
       const result = await saveMyStudentProfile({
         fullName: form.fullName,
         surname: form.surname,

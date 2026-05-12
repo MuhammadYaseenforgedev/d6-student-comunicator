@@ -270,7 +270,7 @@ export default function ManageResults() {
               Select Student
             </div>
             <div className="mt-1 text-sm text-white/72">
-              Enter student public ID such as STU-1001 or a student email.
+              Enter student public ID such as FA-20260001 or a student email.
             </div>
           </div>
 
@@ -287,7 +287,7 @@ export default function ManageResults() {
           <input
             value={childIdInput}
             onChange={(e) => setChildIdInput(e.target.value)}
-            placeholder="STU-1001 or student@email.com"
+            placeholder="FA-20260001 or student@email.com"
             className="input-glass"
             aria-label="Student identifier"
             title="Student identifier"

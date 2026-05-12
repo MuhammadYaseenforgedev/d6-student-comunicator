@@ -377,9 +377,9 @@ export function getAuthAssistantProfile(
         name: "Pulse",
         subtitle: "Student registration guide",
         placeholder:
-          "Ask about student number, South African ID, OTP, or registration...",
+          "Ask about South African ID, OTP, or registration...",
         welcome:
-          "I am Pulse. I can help students register with the correct identity fields, OTP, and the first places to go once they are inside the app.",
+          "I am Pulse. I can help students register with South African ID, OTP, and the first places to go once they are inside the app.",
       };
   }
 }
@@ -413,7 +413,7 @@ export function getAuthContext(mode: AuthMode, role: UserRole) {
       return {
         title: "Student registration",
         summary:
-          "Student registration needs South African ID, student number, email, password, confirm password, and OTP before the account can be created.",
+          "Student registration needs South African ID, email, password, confirm password, and OTP. The student number is generated after registration.",
       };
   }
 }
@@ -475,7 +475,7 @@ export function answerAuthQuestion(
       text:
         mode === "login"
           ? "Student sign-in uses email, password, student number, and OTP when required. Other roles can leave the student number blank on login."
-          : "Student registration needs both identity fields: South African ID must be 13 digits, and student number should match the campus record before you submit the form.",
+          : "Student registration needs a 13-digit South African ID. The student number is generated after the account is created.",
       actionIds: ["student-fields"],
     };
   }

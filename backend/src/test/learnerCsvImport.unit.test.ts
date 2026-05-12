@@ -110,7 +110,7 @@ describe("learner CSV import unit coverage", () => {
       matchedBy: "created",
       userId: "student-1",
       email: "csv@example.com",
-      studentNumber: "STU-2026-0001",
+      studentNumber: "FA-20260001",
       courseLinked: true,
       courseId: "11111111-1111-4111-8111-111111111111",
       warnings: [],
@@ -153,7 +153,7 @@ describe("learner CSV import unit coverage", () => {
     expect(report.results[0]).toMatchObject({
       outcome: "CREATED",
       userId: "student-1",
-      studentNumber: "STU-2026-0001",
+      studentNumber: "FA-20260001",
       courseLinked: true,
     });
     expect(report.results[1]).toMatchObject({

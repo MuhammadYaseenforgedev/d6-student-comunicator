@@ -10,6 +10,7 @@ import {
 import {
   createAdminAccount,
   deleteAdminAccount,
+  downloadStudentNumbersCsv,
   listAdminAccounts,
   updateAdminAccount,
   type AdminAccount,
@@ -33,7 +34,7 @@ const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
   { value: "PARENT", label: "Parents" },
 ];
 
-const MIN_PASSWORD_LENGTH = 6;
+const MIN_PASSWORD_LENGTH = 8;
 const ADMIN_SCOPE_OPTIONS: AdminScope[] = ["FINANCE", "ACADEMIC", "SUPER"];
 const ACCOUNT_TYPE_OPTIONS: Array<{ value: AccountType; label: string }> = [
   { value: "STUDENT", label: "Student" },
@@ -111,6 +112,7 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
 
 export default function AdminUsers() {
   const currentUser = getUser();
+  const isLecturerViewer = currentUser?.role === "LECTURER";
   const [accounts, setAccounts] = useState<AdminAccount[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -119,6 +121,7 @@ export default function AdminUsers() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [downloadingStudentCsv, setDownloadingStudentCsv] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [studentProfileOpenId, setStudentProfileOpenId] = useState<string | null>(null);
   const [studentProfileLoadingId, setStudentProfileLoadingId] = useState<string | null>(null);
@@ -129,7 +132,6 @@ export default function AdminUsers() {
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newAccountType, setNewAccountType] = useState<AccountType>("STUDENT");
-  const [newStudentNumber, setNewStudentNumber] = useState("");
   const [newSouthAfricanId, setNewSouthAfricanId] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +153,11 @@ export default function AdminUsers() {
       setLoading(true);
       setError(null);
       const rows = await listAdminAccounts({
-        roles: roleFilter === "ALL" ? undefined : [roleFilter],
+        roles: isLecturerViewer
+          ? ["STUDENT"]
+          : roleFilter === "ALL"
+            ? undefined
+            : [roleFilter],
         q: search || undefined,
         limit: 500,
       });
@@ -169,9 +175,14 @@ export default function AdminUsers() {
   useEffect(() => {
     void loadAccounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roleFilter, search]);
+  }, [roleFilter, search, isLecturerViewer]);
 
   async function onDelete(account: AdminAccount) {
+    if (isLecturerViewer) {
+      setError("Lecturers cannot delete accounts.");
+      return;
+    }
+
     if (account.id === currentUser?.id) {
       setError("You cannot delete the account you are currently signed in with.");
       return;
@@ -205,6 +216,11 @@ export default function AdminUsers() {
   }
 
   function beginEdit(account: AdminAccount) {
+    if (isLecturerViewer) {
+      setError("Lecturers can view student accounts but cannot edit account records.");
+      return;
+    }
+
     setEditingId(account.id);
     setEditStudentNumber(account.studentNumber ?? "");
     setEditPassword("");
@@ -252,9 +268,13 @@ export default function AdminUsers() {
   async function onCreateAccount(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
+    if (isLecturerViewer) {
+      setError("Lecturers cannot create accounts.");
+      return;
+    }
+
     const email = newEmail.trim().toLowerCase();
     const password = newPassword;
-    const studentNumber = normalizeStudentNumber(newStudentNumber);
     const southAfricanId = String(newSouthAfricanId ?? "").replace(/\D+/g, "");
     const { role: nextRole, adminScope: nextAdminScope } =
       accountTypeToPayload(newAccountType);
@@ -268,10 +288,6 @@ export default function AdminUsers() {
       return;
     }
     if (nextRole === "STUDENT") {
-      if (!studentNumber) {
-        setError("Student number is required for student accounts.");
-        return;
-      }
       if (!/^\d{13}$/.test(southAfricanId)) {
         setError("South African ID must be exactly 13 digits for student accounts.");
         return;
@@ -286,14 +302,12 @@ export default function AdminUsers() {
         email,
         password,
         role: nextRole,
-        studentNumber: nextRole === "STUDENT" ? studentNumber : undefined,
         southAfricanId: nextRole === "STUDENT" ? southAfricanId : undefined,
         adminScope: nextRole === "ADMIN" ? nextAdminScope : undefined,
       });
       setNewEmail("");
       setNewPassword("");
       setNewAccountType("STUDENT");
-      setNewStudentNumber("");
       setNewSouthAfricanId("");
       setInfo(`Created ${email}.`);
       await loadAccounts();
@@ -301,6 +315,27 @@ export default function AdminUsers() {
       setError(e instanceof Error ? e.message : "Failed to create account");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function onDownloadStudentCsv() {
+    try {
+      setDownloadingStudentCsv(true);
+      setError(null);
+      setInfo(null);
+      const { blob, fileName } = await downloadStudentNumbersCsv();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName || `student-numbers-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to download student numbers CSV");
+    } finally {
+      setDownloadingStudentCsv(false);
     }
   }
 
@@ -380,7 +415,11 @@ export default function AdminUsers() {
     <div className="space-y-6">
       <PageHeader
         title="Accounts"
-        subtitle="View all registered accounts, reset passwords, edit student numbers, and remove accounts."
+        subtitle={
+          isLecturerViewer
+            ? "View student accounts and academic profile details."
+            : "View all registered accounts, reset passwords, edit student numbers, and remove accounts."
+        }
         actions={
           <button
             type="button"
@@ -397,15 +436,15 @@ export default function AdminUsers() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      {!isLecturerViewer && <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <SummaryCard label="Total" value={summary.total} />
         <SummaryCard label="Admins" value={summary.ADMIN} />
         <SummaryCard label="Lecturers" value={summary.LECTURER} />
         <SummaryCard label="Students" value={summary.STUDENT} />
         <SummaryCard label="Parents" value={summary.PARENT} />
-      </div>
+      </div>}
 
-      <section className="teal-glow-card p-5 space-y-4">
+      {!isLecturerViewer && <section className="teal-glow-card p-5 space-y-4">
         <div>
           <div className="text-lg font-semibold text-white">Create Account</div>
           <div className="mt-1 text-sm text-white/72">
@@ -449,7 +488,7 @@ export default function AdminUsers() {
           </select>
           <div className="info-banner text-white/70">
             {newAccountType === "STUDENT"
-              ? "Student accounts need a student number and South African ID."
+              ? "Student numbers are generated automatically. Student accounts need a South African ID."
               : newAccountType === "ACADEMIC_ADMIN" ||
                   newAccountType === "SUPER_ADMIN" ||
                   newAccountType === "FINANCE_ADMIN"
@@ -458,14 +497,6 @@ export default function AdminUsers() {
           </div>
           {newAccountType === "STUDENT" && (
             <>
-              <input
-                value={newStudentNumber}
-                onChange={(e) => setNewStudentNumber(e.target.value.toUpperCase())}
-                placeholder="Student number"
-                className="input-glass"
-                title="Student number"
-                aria-label="Student number"
-              />
               <input
                 value={newSouthAfricanId}
                 onChange={(e) => setNewSouthAfricanId(e.target.value)}
@@ -518,7 +549,7 @@ export default function AdminUsers() {
             </button>
           </form>
 
-          <div className="mobile-chip-row sm:flex sm:flex-wrap sm:gap-2">
+          {!isLecturerViewer && <div className="mobile-chip-row sm:flex sm:flex-wrap sm:gap-2">
             {ROLE_FILTERS.map((option) => {
               const active = option.value === roleFilter;
               return (
@@ -535,7 +566,7 @@ export default function AdminUsers() {
                 </button>
               );
             })}
-          </div>
+          </div>}
         </div>
 
         {error && <div className="error-banner">{error}</div>}
@@ -551,7 +582,20 @@ export default function AdminUsers() {
           access the academic/admin tools except Finance. Super Admin can
           access the academic/admin tools except Finance.
         </div>
-      </section>
+      </section>}
+
+      {isLecturerViewer && (
+        <section className="teal-glow-card p-5 space-y-4">
+          <div>
+            <div className="text-lg font-semibold text-white">Student Accounts</div>
+            <div className="mt-1 text-sm text-white/72">
+              Lecturer access is read-only. Account creation, password resets, student number edits, and deletion remain restricted to Academic Admins and Super Admins.
+            </div>
+          </div>
+          {error && <div className="error-banner">{error}</div>}
+          {info && <div className="info-banner">{info}</div>}
+        </section>
+      )}
 
       <section className="workspace-scroll-panel">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -560,7 +604,9 @@ export default function AdminUsers() {
               Registered accounts
             </div>
             <div className="mt-1 text-sm text-white/70">
-              {roleFilter === "ALL"
+              {isLecturerViewer
+                ? "Showing student accounts."
+                : roleFilter === "ALL"
                 ? "Showing every registered role."
                 : `Showing ${roleFilter.toLowerCase()} accounts.`}
             </div>
@@ -569,6 +615,16 @@ export default function AdminUsers() {
           <div className="workspace-meta-pill">
             {accounts.length} account(s)
           </div>
+          {!isLecturerViewer && <button
+            type="button"
+            onClick={() => {
+              void onDownloadStudentCsv();
+            }}
+            disabled={downloadingStudentCsv}
+            className="btn-secondary"
+          >
+            {downloadingStudentCsv ? "Downloading..." : "Download student CSV"}
+          </button>}
         </div>
 
         <div className="divider-soft my-5" />
@@ -663,7 +719,7 @@ export default function AdminUsers() {
                         </button>
                       )}
 
-                      <button
+                      {!isLecturerViewer && <button
                         type="button"
                         onClick={() => {
                           if (editingId === account.id) {
@@ -678,9 +734,9 @@ export default function AdminUsers() {
                         {editingId === account.id
                           ? "Close editor"
                           : "Edit account"}
-                      </button>
+                      </button>}
 
-                      <button
+                      {!isLecturerViewer && <button
                         type="button"
                         onClick={() => {
                           void onDelete(account);
@@ -693,7 +749,7 @@ export default function AdminUsers() {
                         className="btn-danger"
                       >
                         {busyId === account.id ? "Deleting..." : "Delete account"}
-                      </button>
+                      </button>}
                     </div>
                   </div>
 

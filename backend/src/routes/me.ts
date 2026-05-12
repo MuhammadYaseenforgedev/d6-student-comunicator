@@ -41,6 +41,7 @@ meRouter.get("/me", async (req, res) => {
       first_name: string | null;
       last_name: string | null;
       course_name: string | null;
+      public_student_id: string | null;
     }>(
       `
         SELECT
@@ -49,6 +50,7 @@ meRouter.get("/me", async (req, res) => {
           u.role,
           u.first_name,
           u.last_name,
+          u.public_student_id,
           COALESCE(active_course.name, u.course_name) AS course_name
         FROM users u
         LEFT JOIN LATERAL (
@@ -80,6 +82,7 @@ meRouter.get("/me", async (req, res) => {
       firstName: row.first_name?.trim() || fallback.firstName,
       lastName: row.last_name?.trim() || fallback.lastName,
       courseName: row.course_name?.trim() || null,
+      studentNumber: row.public_student_id?.trim() || null,
     });
   } catch (e) {
     console.error("[me] GET /me error", e);

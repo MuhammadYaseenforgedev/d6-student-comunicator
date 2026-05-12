@@ -273,7 +273,7 @@ function buildMissingFields(profile: {
 
   if (!profile.email.trim()) missing.push("email");
   if (!profile.fullName.trim()) missing.push("fullName");
-  if (!profile.surname.trim()) missing.push("surname");
+  if (profile.surname.trim().length < 4) missing.push("surname");
   if (!profile.studentNumber.trim()) missing.push("studentNumber");
   if (!isValidSouthAfricanId(profile.idNumber)) missing.push("idNumber");
   if (!profile.mobileNumber.trim()) missing.push("mobileNumber");
@@ -572,6 +572,10 @@ studentRouter.put(
         return err(res, 400, "VALIDATION", "studentNumber must be 64 characters or fewer");
       }
 
+      if (hasOwn(req.body, "surname") && nextProfile.surname.trim().length < 4) {
+        return err(res, 400, "VALIDATION", "surname must be more than 3 characters");
+      }
+
       if (hasOwn(req.body, "idNumber") && nextProfile.idNumber && !isValidSouthAfricanId(nextProfile.idNumber)) {
         return err(res, 400, "VALIDATION", "idNumber must be exactly 13 digits");
       }
@@ -767,7 +771,7 @@ studentRouter.put(
 
 studentRouter.get(
   "/admin/imports/learners",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
     try {
       const onboardingStatus = parseOnboardingStatus(
@@ -1028,7 +1032,7 @@ studentRouter.post(
 
 studentRouter.post(
   "/admin/imports/:userId/send-activation",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
     try {
       const userId = toTrimmedString(req.params.userId);

@@ -122,7 +122,7 @@ describe("approved learner import foundation", () => {
     expect(String(res.body?.summary?.matchedBy ?? "")).toBe("created");
     expect(Boolean(res.body?.summary?.courseLinked)).toBe(true);
     expect(String(res.body?.summary?.courseId ?? "")).toBe(courseId);
-    expect(String(res.body?.summary?.studentNumber ?? "")).toMatch(/^STU-\d{4}-\d{4}$/);
+    expect(String(res.body?.summary?.studentNumber ?? "")).toMatch(/^FA-\d{8}$/);
 
     const db = await pool.query<{
       id: string;
@@ -163,7 +163,7 @@ describe("approved learner import foundation", () => {
     expect(String(row.role ?? "")).toBe("STUDENT");
     expect(String(row.first_name ?? "")).toBe("Alicia");
     expect(String(row.last_name ?? "")).toBe("Imported");
-    expect(String(row.public_student_id ?? "")).toMatch(/^STU-\d{4}-\d{4}$/);
+    expect(String(row.public_student_id ?? "")).toMatch(/^FA-\d{8}$/);
     expect(String(row.south_african_id ?? "")).toBe("9901011234081");
     expect(Boolean(row.verified_from_talent)).toBe(true);
     expect(String(row.external_source ?? "")).toBe("FORGE_TALENT");
@@ -366,7 +366,7 @@ describe("approved learner import foundation", () => {
     expect(Number(firstRes.body?.summary?.totalRows ?? "0")).toBe(1);
     expect(Number(firstRes.body?.summary?.createdCount ?? "0")).toBe(1);
     expect(String(firstRes.body?.results?.[0]?.outcome ?? "")).toBe("CREATED");
-    expect(String(firstRes.body?.results?.[0]?.studentNumber ?? "")).toMatch(/^STU-\d{4}-\d{4}$/);
+    expect(String(firstRes.body?.results?.[0]?.studentNumber ?? "")).toMatch(/^FA-\d{8}$/);
 
     const firstUserId = String(firstRes.body?.results?.[0]?.userId ?? "");
 

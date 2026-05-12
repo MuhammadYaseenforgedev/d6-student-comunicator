@@ -9,6 +9,7 @@ import { requireAccess } from "../middleware/rbac";
 import { loginLimiter, registerLimiter } from "../middleware/rateLimit";
 import { isSmtpConfigured, sendOtpEmail as sendOtpEmailViaSmtp } from "../lib/mailer";
 import { validatePassword } from "../lib/passwordPolicy";
+import { ensureGeneratedStudentNumber } from "../lib/studentNumbers";
 import { getEffectiveAdminScope, normalizeAdminScope, type AdminScope } from "../lib/adminAccess";
 import {
   completeLearnerActivation,
@@ -609,7 +610,7 @@ authRouter.post("/request-otp", async (req, res) => {
        otp,
        acceptedLegalTerms,              // required for self-registration
        staffRegisterPassword?,          // required for ADMIN/LECTURER
-       studentNumber?, southAfricanId?  // required for STUDENT
+       southAfricanId?                  // required for STUDENT; studentNumber is generated
      }
    - Optional dev register (if enabled): { email, password } when AUTH_ALLOW_PASSWORD_REGISTER=true
 =================================*/
@@ -623,7 +624,6 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
   const staffRegisterPassword = String(req.body?.staffRegisterPassword ?? "").trim();
   const otp = String(req.body?.otp ?? "").trim();
   const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
-  const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
   const acceptedLegalTerms = req.body?.acceptedLegalTerms;
 
   if (!email || !password) {
@@ -661,16 +661,6 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
     if (!isValidSouthAfricanId(southAfricanId)) {
       return res.status(400).json({
         error: { code: "VALIDATION", message: "southAfricanId must be exactly 13 digits" },
-      });
-    }
-    if (!studentNumber) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "studentNumber is required for student registration" },
-      });
-    }
-    if (studentNumber.length > 64) {
-      return res.status(400).json({
-        error: { code: "VALIDATION", message: "studentNumber must be 64 characters or fewer" },
       });
     }
   }
@@ -732,11 +722,15 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
         email,
         passwordHash,
         role,
-        role === "STUDENT" ? studentNumber : null,
+        null,
         role === "STUDENT" ? southAfricanId : null,
         adminScope,
       ]
     );
+
+    if (role === "STUDENT") {
+      await ensureGeneratedStudentNumber(pool, result.rows[0].id);
+    }
 
     const user = toJwtUser(result.rows[0] as JwtUser & { admin_scope?: string | null });
     const token = signToken(user);
@@ -758,7 +752,7 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
 /* ===============================
    ADMIN CREATE USER (protected)
    POST /admin-create
-   Body: { email, password, role, studentNumber?, southAfricanId? }
+   Body: { email, password, role, southAfricanId? }
    Only authenticated ADMIN may create privileged roles.
 =================================*/
 authRouter.post(
@@ -768,7 +762,6 @@ authRouter.post(
     const email = normEmail(req.body?.email);
     const password = String(req.body?.password ?? "");
     const roleRaw = String(req.body?.role ?? "").trim().toUpperCase();
-    const studentNumber = normalizeStudentNumber(req.body?.studentNumber);
     const southAfricanId = normalizeSouthAfricanId(req.body?.southAfricanId);
     const adminScopeInput = normalizeAdminScope(req.body?.adminScope);
 
@@ -801,16 +794,6 @@ authRouter.post(
           error: { code: "VALIDATION", message: "southAfricanId must be exactly 13 digits" },
         });
       }
-      if (!studentNumber) {
-        return res.status(400).json({
-          error: { code: "VALIDATION", message: "studentNumber is required for student creation" },
-        });
-      }
-      if (studentNumber.length > 64) {
-        return res.status(400).json({
-          error: { code: "VALIDATION", message: "studentNumber must be 64 characters or fewer" },
-        });
-      }
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -827,11 +810,15 @@ authRouter.post(
           email,
           passwordHash,
           role,
-          role === "STUDENT" ? studentNumber : null,
+          null,
           role === "STUDENT" ? southAfricanId : null,
           adminScope,
         ]
       );
+
+      if (role === "STUDENT") {
+        await ensureGeneratedStudentNumber(pool, result.rows[0].id);
+      }
 
       return res.status(201).json({ user: toJwtUser(result.rows[0] as JwtUser & { admin_scope?: string | null }) });
     } catch (e: any) {
@@ -843,15 +830,15 @@ authRouter.post(
                 UPDATE users
                 SET
                   role = 'STUDENT',
-                  public_student_id = COALESCE(public_student_id, $2),
-                  south_african_id = COALESCE(south_african_id, $3)
+                  south_african_id = COALESCE(south_african_id, $2)
                 WHERE lower(email) = lower($1)
                 RETURNING id, email, role, admin_scope
               `,
-              [email, studentNumber, southAfricanId]
+              [email, southAfricanId]
             );
 
             if ((updated.rowCount ?? 0) > 0) {
+              await ensureGeneratedStudentNumber(pool, updated.rows[0].id);
               return res.status(200).json({
                 user: toJwtUser(updated.rows[0] as JwtUser & { admin_scope?: string | null }),
                 updated: true,

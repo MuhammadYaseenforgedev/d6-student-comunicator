@@ -205,6 +205,11 @@ export default function AppShell() {
     return profile?.courseName?.trim() || "Course not assigned";
   }, [isStudent, profile?.courseName]);
 
+  const studentNumber = useMemo(() => {
+    if (!isStudent) return "";
+    return profile?.studentNumber?.trim() || "Student number pending";
+  }, [isStudent, profile?.studentNumber]);
+
   const counts = notificationSummary.counts ?? {};
   const totalUnread = Number(notificationSummary.totalUnread ?? 0);
   const messageBadge = Number(counts.MESSAGE ?? 0);
@@ -402,7 +407,7 @@ export default function AppShell() {
                 />
               )}
 
-              {academicOrSuperAdmin && (
+              {(academicOrSuperAdmin || user?.role === "LECTURER") && (
                 <Item
                   to="/app/admin/users"
                   label="Accounts"
@@ -410,7 +415,7 @@ export default function AppShell() {
                 />
               )}
 
-              {academicOrSuperAdmin && (
+              {(academicOrSuperAdmin || user?.role === "LECTURER") && (
                 <Item
                   to="/app/admin/learner-onboarding"
                   label="Learner Onboarding"
@@ -418,7 +423,7 @@ export default function AppShell() {
                 />
               )}
 
-              {academicOrSuperAdmin && (
+              {(academicOrSuperAdmin || user?.role === "LECTURER") && (
                 <Item
                   to="/app/admin/parent-links"
                   label="Parent Link Approvals"
@@ -456,6 +461,7 @@ export default function AppShell() {
                 {studentDisplayName}
               </div>
               <div className="text-xs text-white/70">{studentCourse}</div>
+              <div className="mt-1 text-xs text-white/60">{studentNumber}</div>
             </div>
           )}
 

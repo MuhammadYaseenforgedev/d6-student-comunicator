@@ -3,7 +3,7 @@
 // Flow:
 // 1) Request OTP: POST /api/auth/request-otp
 // 2) Register: POST /api/auth/register with otp
-//    - STUDENT requires southAfricanId + studentNumber
+//    - STUDENT requires southAfricanId; studentNumber is generated
 // 3) Login: POST /api/auth/login with password + otp in production
 //    - STUDENT requires studentNumber
 //
@@ -286,7 +286,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     otpCode: string,
     selectedRole: UserRole,
     staffPassword: string,
-    studentNumberInput: string,
     southAfricanIdInput: string,
     legalTermsAccepted: boolean
   ) {
@@ -312,7 +311,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     }
 
     if (selectedRole === "STUDENT") {
-      payload.studentNumber = normalizeStudentNumber(studentNumberInput);
       payload.southAfricanId = normalizeSouthAfricanId(southAfricanIdInput);
     }
 
@@ -343,8 +341,8 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
 
     if (ENV_CONFIG_ERROR) return setError(ENV_CONFIG_ERROR);
     if (!eNorm) return setError("Please enter an email.");
-    if (!password || password.length < 6) {
-      return setError("Password must be at least 6 characters.");
+    if (!password || password.length < 8) {
+      return setError("Password must be at least 8 characters.");
     }
 
     if (mode === "register" && password !== confirmPassword) {
@@ -364,9 +362,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     }
 
     if (roleNeedsStudentIdentity) {
-      if (!studentNumberNorm) {
-        return setError("Student number is required for student registration.");
-      }
       if (!southAfricanIdNorm) {
         return setError("South African ID is required for student registration.");
       }
@@ -414,7 +409,6 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
           otp.trim(),
           role,
           staffRegisterPassword.trim(),
-          studentNumberNorm,
           southAfricanIdNorm,
           acceptedLegalTerms
         );
@@ -469,8 +463,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
     (mode !== "register" || acceptedLegalTerms) &&
     (!roleNeedsStaffPassword || !!staffRegisterPassword.trim()) &&
     (!roleNeedsStudentIdentity ||
-      (!!normalizeStudentNumber(studentNumber) &&
-        /^\d{13}$/.test(normalizeSouthAfricanId(southAfricanId))));
+      /^\d{13}$/.test(normalizeSouthAfricanId(southAfricanId)));
 
   return (
     <div className="relative mx-auto flex min-h-[calc(100vh-220px)] w-full max-w-7xl items-center justify-center overflow-hidden px-4 py-10 md:py-14">
@@ -610,7 +603,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                 </div>
               )}
 
-              {(mode === "login" || roleNeedsStudentIdentity) && (
+              {mode === "login" && (
                 <div>
                   <label
                     htmlFor="studentNumber"
@@ -623,18 +616,15 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                     name="studentNumber"
                     type="text"
                     className="input-glass mt-2"
-                    placeholder="e.g. STU-1001"
+                    placeholder="e.g. FA-20260001"
                     value={studentNumber}
                     onChange={(e) => setStudentNumber(e.target.value)}
                     autoComplete="off"
-                    required={roleNeedsStudentIdentity}
                     disabled={busy}
                   />
-                  {mode === "login" && (
-                    <p className="mt-2 text-xs text-white/55">
-                      Required for student accounts. Other roles can leave this blank.
-                    </p>
-                  )}
+                  <p className="mt-2 text-xs text-white/55">
+                    Required for student accounts. Other roles can leave this blank.
+                  </p>
                 </div>
               )}
 
@@ -679,7 +669,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={6}
+                  minLength={8}
                   autoComplete={
                     mode === "login" ? "current-password" : "new-password"
                   }
@@ -704,7 +694,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
-                    minLength={6}
+                    minLength={8}
                     autoComplete="new-password"
                     disabled={busy}
                   />

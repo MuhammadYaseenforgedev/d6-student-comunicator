@@ -14,12 +14,14 @@ describe("Admin account management", () => {
   const unique = `test_accounts_${Date.now()}`;
   let adminToken = "";
   let lecturerToken = "";
+  let financeToken = "";
   let adminId = "";
   let studentId = "";
   let lecturerId = "";
 
   beforeAll(async () => {
     const admin = await createUser("ADMIN", `${unique}_admin@co.za`);
+    const financeAdmin = await createUser("ADMIN", `${unique}_finance@co.za`, "Passw0rd!", "FINANCE");
     const lecturer = await createUser("LECTURER", `${unique}_lecturer@co.za`);
     const student = await createUser("STUDENT", `${unique}_student@co.za`);
     const parent = await createUser("PARENT", `${unique}_parent@co.za`);
@@ -28,6 +30,7 @@ describe("Admin account management", () => {
     lecturerId = lecturer.id;
     studentId = student.id;
     adminToken = signJwt(admin);
+    financeToken = signJwt(financeAdmin);
     lecturerToken = signJwt(lecturer);
 
     await pool.query(
@@ -77,10 +80,25 @@ describe("Admin account management", () => {
     expect(String(studentRow?.studentNumber ?? "")).toBe(`${unique.toUpperCase()}_STU`);
   });
 
-  test("non-admin cannot view admin account registry", async () => {
+  test("lecturer can view student accounts only in the account registry", async () => {
     const res = await request(app)
       .get("/api/users/admin/accounts")
       .set(auth(lecturerToken))
+      .query({ q: unique, limit: 50 });
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body?.value)).toBe(true);
+    expect(res.body.value.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.value.every((row: { role?: string }) => row.role === "STUDENT")).toBe(true);
+    expect(
+      res.body.value.some((row: { email?: string }) => row.email === `${unique}_student@co.za`)
+    ).toBe(true);
+  });
+
+  test("finance admin cannot view academic account registry", async () => {
+    const res = await request(app)
+      .get("/api/users/admin/accounts")
+      .set(auth(financeToken))
       .query({ q: unique });
 
     expect([401, 403]).toContain(res.status);
@@ -163,10 +181,23 @@ describe("Admin account management", () => {
 
     expect(res.status).toBe(400);
     expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
-    expect(String(res.body?.error?.message ?? "")).toMatch(/at least 6 characters/i);
+    expect(String(res.body?.error?.message ?? "")).toMatch(/at least 8 characters/i);
   });
 
-  test("admin-create rejects a password shorter than 6 characters", async () => {
+  test("lecturer cannot delete accounts", async () => {
+    const target = await createUser("STUDENT", `${unique}_lecturer_delete_blocked@co.za`);
+
+    const res = await request(app)
+      .delete(`/api/users/admin/accounts/${target.id}`)
+      .set(auth(lecturerToken));
+
+    expect(res.status).toBe(403);
+
+    const db = await pool.query(`SELECT 1 FROM users WHERE id = $1 LIMIT 1`, [target.id]);
+    expect(db.rowCount ?? 0).toBe(1);
+  });
+
+  test("admin-create rejects a password shorter than 8 characters", async () => {
     const res = await request(app)
       .post("/api/auth/admin-create")
       .set(auth(adminToken))
@@ -178,6 +209,28 @@ describe("Admin account management", () => {
 
     expect(res.status).toBe(400);
     expect(String(res.body?.error?.code ?? "")).toBe("VALIDATION");
-    expect(String(res.body?.error?.message ?? "")).toMatch(/at least 6 characters/i);
+    expect(String(res.body?.error?.message ?? "")).toMatch(/at least 8 characters/i);
+  });
+
+  test("admin-create generates a student number for new student accounts", async () => {
+    const email = `${unique}_generated_student@co.za`;
+
+    const res = await request(app)
+      .post("/api/auth/admin-create")
+      .set(auth(adminToken))
+      .send({
+        email,
+        password: "Passw0rd!",
+        role: "STUDENT",
+        southAfricanId: "9901011234099",
+      });
+
+    expect(res.status).toBe(201);
+
+    const db = await pool.query<{ public_student_id: string | null }>(
+      `SELECT public_student_id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email]
+    );
+    expect(String(db.rows[0]?.public_student_id ?? "")).toMatch(/^FA-\d{8}$/);
   });
 });

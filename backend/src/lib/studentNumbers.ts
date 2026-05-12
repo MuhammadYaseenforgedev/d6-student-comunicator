@@ -5,7 +5,7 @@ export type Queryable = {
   ) => Promise<{ rows: T[]; rowCount?: number | null }>;
 };
 
-const GENERATED_STUDENT_NUMBER_PREFIX = "STU";
+const GENERATED_STUDENT_NUMBER_PREFIX = "FA";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -16,11 +16,11 @@ function normalizeStudentNumber(value: unknown): string {
 }
 
 function buildGeneratedStudentNumber(year: number, sequence: number): string {
-  return `${GENERATED_STUDENT_NUMBER_PREFIX}-${year}-${String(sequence).padStart(4, "0")}`;
+  return `${GENERATED_STUDENT_NUMBER_PREFIX}-${year}${String(sequence).padStart(4, "0")}`;
 }
 
 async function getLatestGeneratedSequence(db: Queryable, year: number): Promise<number> {
-  const prefix = `${GENERATED_STUDENT_NUMBER_PREFIX}-${year}-`;
+  const prefix = `${GENERATED_STUDENT_NUMBER_PREFIX}-${year}`;
   const regex = `^${escapeRegExp(prefix)}([0-9]+)$`;
   const result = await db.query<{ max_sequence: number | string | null }>(
     `

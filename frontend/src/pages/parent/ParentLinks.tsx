@@ -43,7 +43,7 @@ export default function ParentLinks() {
 
     const cleaned = identifier.trim();
     if (!cleaned) {
-      setError("Enter a student number or public student ID such as STU-1001.");
+      setError("Enter a student number or public student ID such as FA-20260001.");
       return;
     }
 
@@ -89,7 +89,7 @@ export default function ParentLinks() {
           <input
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
-            placeholder="STU-1001"
+            placeholder="FA-20260001"
             className="input-glass"
             aria-label="Student identifier"
             title="Student identifier"

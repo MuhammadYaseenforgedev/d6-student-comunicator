@@ -1,4 +1,5 @@
 import type { AdminScope } from "./auth";
+import { apiDownload } from "./api";
 import { apiClient } from "./apiClient";
 
 export type AdminAccountRole = "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
@@ -61,4 +62,8 @@ export async function updateAdminAccount(
   }
 ) {
   return apiClient.patch<{ ok: boolean; user: AdminAccount }>(`/users/admin/accounts/${encodeURIComponent(userId)}`, input);
+}
+
+export async function downloadStudentNumbersCsv() {
+  return apiDownload("/api/users/admin/accounts/students.csv");
 }

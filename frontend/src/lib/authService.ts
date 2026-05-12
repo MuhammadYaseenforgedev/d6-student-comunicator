@@ -30,6 +30,7 @@ export type MeProfile = {
   firstName: string;
   lastName: string;
   courseName: string | null;
+  studentNumber?: string | null;
 };
 
 type RequestOtpInput = { email: string; purpose: "LOGIN" | "REGISTER" };

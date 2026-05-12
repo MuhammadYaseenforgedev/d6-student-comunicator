@@ -489,7 +489,7 @@ parentRouter.get("/parent/link-requests", requireRole("PARENT"), async (req, res
  */
 parentRouter.post(
   "/admin/parent/link-requests/:id/decide",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
     const adminId = req.user!.id;
@@ -793,7 +793,7 @@ parentRouter.get("/results", requireRole("PARENT"), async (req, res) => {
  */
 parentRouter.get(
   "/admin/parent/link-requests",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
   try {
     const statusRaw = String(req.query.status ?? "PENDING").trim().toUpperCase();

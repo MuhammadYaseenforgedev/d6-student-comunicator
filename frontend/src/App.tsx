@@ -220,7 +220,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["ADMIN"]}
+                          roles={["ADMIN", "LECTURER"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
