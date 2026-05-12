@@ -10,6 +10,7 @@ const ORIGINAL_ENV = {
   AUTH_REQUIRE_OTP: process.env.AUTH_REQUIRE_OTP,
   AUTH_ALLOW_PASSWORD_LOGIN: process.env.AUTH_ALLOW_PASSWORD_LOGIN,
   APP_ENV: process.env.APP_ENV,
+  JWT_SECRET: process.env.JWT_SECRET,
 };
 
 function restoreEnvVar(name: keyof typeof ORIGINAL_ENV) {
@@ -23,6 +24,7 @@ describe("Auth login policy", () => {
     restoreEnvVar("AUTH_REQUIRE_OTP");
     restoreEnvVar("AUTH_ALLOW_PASSWORD_LOGIN");
     restoreEnvVar("APP_ENV");
+    restoreEnvVar("JWT_SECRET");
   });
 
   afterAll(async () => {
@@ -30,6 +32,7 @@ describe("Auth login policy", () => {
     restoreEnvVar("AUTH_REQUIRE_OTP");
     restoreEnvVar("AUTH_ALLOW_PASSWORD_LOGIN");
     restoreEnvVar("APP_ENV");
+    restoreEnvVar("JWT_SECRET");
   });
 
   test("rejects wrong password with 401 when password login is enabled", async () => {
@@ -79,5 +82,22 @@ describe("Auth login policy", () => {
     expect(res.status).toBe(200);
     expect(typeof res.body?.token).toBe("string");
     expect(res.body?.user?.role).toBe("PARENT");
+  });
+
+  test("does not sign login tokens when JWT_SECRET is missing", async () => {
+    process.env.APP_ENV = "test";
+    process.env.AUTH_REQUIRE_OTP = "false";
+    process.env.AUTH_ALLOW_PASSWORD_LOGIN = "true";
+    delete process.env.JWT_SECRET;
+
+    const user = await createUser("PARENT", `${TEST_EMAIL_PREFIX}missing_jwt_secret@co.za`, "Passw0rd!");
+
+    const res = await request(app).post("/api/auth/login").send({
+      email: user.email,
+      password: "Passw0rd!",
+    });
+
+    expect(res.status).toBe(500);
+    expect(res.body?.token).toBeUndefined();
   });
 });

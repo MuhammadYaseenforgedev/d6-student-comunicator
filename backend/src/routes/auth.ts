@@ -32,11 +32,14 @@ type JwtUser = {
 };
 
 function signToken(user: JwtUser) {
-  const secret: Secret = (process.env.JWT_SECRET ?? "dev_secret_change_me") as Secret;
+  const secret = String(process.env.JWT_SECRET ?? "").trim();
+  if (!secret) {
+    throw new Error("JWT_SECRET not configured");
+  }
   const expiresIn = (process.env.JWT_EXPIRES_IN ?? "7d") as SignOptions["expiresIn"];
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role, adminScope: getEffectiveAdminScope(user) },
-    secret,
+    secret as Secret,
     { expiresIn }
   );
 }

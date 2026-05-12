@@ -57,7 +57,7 @@ Frontend deploy settings:
 ### OTP login behavior
 - `POST /api/auth/request-otp` returns `200` when provider is configured.
 - In production, response does not include `devOtp`.
-- If provider keys are missing, `/api/auth/request-otp` returns `503` with `Email provider not configured`.
+- If provider keys are missing, `/api/auth/request-otp` returns `503` with `OTP email service is not configured`.
 
 ### Role login checks
 - Admin login returns `200` + token.

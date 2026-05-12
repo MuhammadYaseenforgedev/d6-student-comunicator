@@ -46,6 +46,13 @@ AUTH_ALLOW_PASSWORD_LOGIN=false
 AUTH_ALLOW_PASSWORD_REGISTER=false
 AUTH_STAFF_REGISTER_PASSWORD=staff_secret
 
+SMTP_HOST=<smtp-hostname>
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<smtp-username>
+SMTP_PASS=<smtp-password>
+SMTP_FROM=<verified-sender@your-domain>
+
 THREADS_MODE=D6
 ALLOW_DEMO_OTP_BYPASS=false
 OTP_TTL_MINUTES=10
