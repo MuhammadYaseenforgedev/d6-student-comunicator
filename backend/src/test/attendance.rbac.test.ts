@@ -465,6 +465,26 @@ describe("Attendance RBAC + marking", () => {
     expect(String(row?.suggestedStatus ?? "")).toBe("PRESENT");
   });
 
+  test("academic admin sees only students linked to the selected session module", async () => {
+    const res = await request(app)
+      .get(`/api/attendance/sessions/${ctx.sessionId}/roster`)
+      .set(auth(ctx.academicAdminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.value.some((row: { id?: string }) => row.id === ctx.studentId)).toBe(true);
+    expect(res.body.value.some((row: { id?: string }) => row.id === ctx.otherStudentId)).toBe(false);
+  });
+
+  test("super admin sees only students linked to the selected session module", async () => {
+    const res = await request(app)
+      .get(`/api/attendance/sessions/${ctx.otherSessionId}/roster`)
+      .set(auth(ctx.adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.value.some((row: { id?: string }) => row.id === ctx.otherStudentId)).toBe(true);
+    expect(res.body.value.some((row: { id?: string }) => row.id === ctx.studentId)).toBe(false);
+  });
+
   test("lecturer can view and mark another lecturer's session after becoming assigned to that module", async () => {
     const bootstrapRes = await request(app)
       .post("/api/attendance/sessions")
