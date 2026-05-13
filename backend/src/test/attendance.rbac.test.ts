@@ -12,6 +12,8 @@ function auth(token: string) {
 
 type Ctx = {
   adminToken: string;
+  academicAdminToken: string;
+  financeAdminToken: string;
   lecturerToken: string;
   otherLecturerToken: string;
   strangerLecturerToken: string;
@@ -40,6 +42,8 @@ describe("Attendance RBAC + marking", () => {
 
   beforeAll(async () => {
     const admin = await createUser("ADMIN");
+    const academicAdmin = await createUser("ADMIN", undefined, "Passw0rd!", "ACADEMIC");
+    const financeAdmin = await createUser("ADMIN", undefined, "Passw0rd!", "FINANCE");
     const lecturer = await createUser("LECTURER");
     const otherLecturer = await createUser("LECTURER");
     const strangerLecturer = await createUser("LECTURER");
@@ -49,6 +53,8 @@ describe("Attendance RBAC + marking", () => {
     const otherParent = await createUser("PARENT");
 
     ctx.adminToken = signJwt(admin);
+    ctx.academicAdminToken = signJwt(academicAdmin);
+    ctx.financeAdminToken = signJwt(financeAdmin);
     ctx.lecturerToken = signJwt(lecturer);
     ctx.otherLecturerToken = signJwt(otherLecturer);
     ctx.strangerLecturerToken = signJwt(strangerLecturer);
@@ -148,6 +154,14 @@ describe("Attendance RBAC + marking", () => {
 
     await pool.query(
       `
+        INSERT INTO student_module_enrollments (module_id, student_id)
+        VALUES ($1, $2)
+      `,
+      [ctx.otherModuleId, otherStudent.id]
+    );
+
+    await pool.query(
+      `
         INSERT INTO parent_links (parent_user_id, student_user_id)
         VALUES ($1, $2)
       `,
@@ -186,7 +200,7 @@ describe("Attendance RBAC + marking", () => {
   });
 
   afterAll(async () => {
-    if (ctx.createdModuleIds.length > 0) {
+    if ((ctx.createdModuleIds ?? []).length > 0) {
       await pool.query(`DELETE FROM faculty_modules WHERE id = ANY($1::uuid[])`, [ctx.createdModuleIds]);
     }
     await pool.query(`DELETE FROM faculty_modules WHERE id = $1`, [ctx.otherModuleId]);
@@ -245,26 +259,68 @@ describe("Attendance RBAC + marking", () => {
     expect(assignment.rowCount ?? 0).toBe(1);
   });
 
-  test("admin can create attendance session for a globally selected lecturer and auto-assign them", async () => {
-    const res = await request(app)
-      .post("/api/attendance/sessions")
-      .set(auth(ctx.adminToken))
-      .send({ moduleId: ctx.moduleId, lecturerId: ctx.otherLecturerId, date: "2026-03-02" });
-
-    expect(res.status).toBe(201);
-    expect(String(res.body?.lecturerId ?? "")).toBe(ctx.otherLecturerId);
-
-    const assignment = await pool.query(
+  test("academic admin can create attendance session without lecturer assignment", async () => {
+    const before = await pool.query<{ count: number }>(
       `
-        SELECT 1
+        SELECT COUNT(*)::int AS count
         FROM lecturer_module_assignments
         WHERE module_id = $1
           AND lecturer_id = $2
-        LIMIT 1
       `,
       [ctx.moduleId, ctx.otherLecturerId]
     );
-    expect(assignment.rowCount ?? 0).toBe(1);
+
+    const res = await request(app)
+      .post("/api/attendance/sessions")
+      .set(auth(ctx.academicAdminToken))
+      .send({ moduleId: ctx.moduleId, date: "2026-03-02" });
+
+    expect(res.status).toBe(201);
+    expect(String(res.body?.moduleId ?? "")).toBe(ctx.moduleId);
+
+    const after = await pool.query<{ count: number }>(
+      `
+        SELECT COUNT(*)::int AS count
+        FROM lecturer_module_assignments
+        WHERE module_id = $1
+          AND lecturer_id = $2
+      `,
+      [ctx.moduleId, ctx.otherLecturerId]
+    );
+    expect(Number(after.rows[0]?.count ?? 0)).toBe(Number(before.rows[0]?.count ?? 0));
+  });
+
+  test("super admin can create and mark attendance without lecturer assignment", async () => {
+    const session = await request(app)
+      .post("/api/attendance/sessions")
+      .set(auth(ctx.adminToken))
+      .send({ moduleId: ctx.otherModuleId, date: "2026-03-05" });
+
+    expect(session.status).toBe(201);
+    const sessionId = String(session.body?.id ?? "");
+    expect(sessionId).toBeTruthy();
+
+    const mark = await request(app)
+      .post(`/api/attendance/sessions/${sessionId}/mark`)
+      .set(auth(ctx.adminToken))
+      .send([{ studentId: ctx.otherStudentId, status: "PRESENT" }]);
+
+    expect(mark.status).toBe(200);
+    expect(Number(mark.body?.count ?? 0)).toBe(1);
+  });
+
+  test("finance admin cannot manage attendance", async () => {
+    const create = await request(app)
+      .post("/api/attendance/sessions")
+      .set(auth(ctx.financeAdminToken))
+      .send({ moduleId: ctx.moduleId, date: "2026-03-06" });
+    expect(create.status).toBe(403);
+
+    const mark = await request(app)
+      .post(`/api/attendance/sessions/${ctx.sessionId}/mark`)
+      .set(auth(ctx.financeAdminToken))
+      .send([{ studentId: ctx.studentId, status: "PRESENT" }]);
+    expect(mark.status).toBe(403);
   });
 
   test("lecturer sees assigned modules while admin sees all modules", async () => {

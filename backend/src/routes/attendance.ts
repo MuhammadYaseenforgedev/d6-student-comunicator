@@ -1308,14 +1308,6 @@ attendanceRouter.post(
       );
     }
 
-    let lecturerId = String(req.body?.lecturerId ?? "").trim();
-    if (!lecturerId && user.role === "LECTURER") {
-      lecturerId = user.id;
-    }
-    if (!isUuid(lecturerId)) {
-      return err(res, 400, "VALIDATION", "lecturerId is required and must be a UUID");
-    }
-
     const moduleRes = await pool.query<{ id: string; code: string; name: string; course_id: string }>(
       `
         SELECT id, code, name, course_id
@@ -1331,30 +1323,19 @@ attendanceRouter.post(
       return err(res, 400, "VALIDATION", "Calendar entry module does not belong to its course");
     }
 
-    const lecturerRes = await pool.query(
-      `
-        SELECT 1
-        FROM users
-        WHERE id = $1
-          AND role = 'LECTURER'
-        LIMIT 1
-      `,
-      [lecturerId]
-    );
-    if ((lecturerRes.rowCount ?? 0) === 0) {
-      return err(res, 404, "NOT_FOUND", "Lecturer not found");
-    }
-
-    const assigned = await isLecturerAssignedToModule(pool, lecturerId, moduleId);
-    if (!assigned) {
-      await pool.query(
-        `
-          INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
-          VALUES ($1, $2)
-          ON CONFLICT (module_id, lecturer_id) DO NOTHING
-        `,
-        [moduleId, lecturerId]
-      );
+    const sessionOwnerId = user.id;
+    if (user.role === "LECTURER") {
+      const assigned = await isLecturerAssignedToModule(pool, sessionOwnerId, moduleId);
+      if (!assigned) {
+        await pool.query(
+          `
+            INSERT INTO lecturer_module_assignments (module_id, lecturer_id)
+            VALUES ($1, $2)
+            ON CONFLICT (module_id, lecturer_id) DO NOTHING
+          `,
+          [moduleId, sessionOwnerId]
+        );
+      }
     }
 
     if (calendarSource) {
@@ -1461,7 +1442,7 @@ attendanceRouter.post(
           created_at::text AS created_at
       `,
         [
-          lecturerId,
+          sessionOwnerId,
           moduleId,
           courseId,
           calendarSource?.id ?? null,

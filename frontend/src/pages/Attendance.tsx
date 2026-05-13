@@ -9,12 +9,10 @@ import {
   downloadAttendanceExport,
   getAttendanceSession,
   getMyAttendance,
-  listAttendanceDirectoryUsers,
   listAttendanceModules,
   listAttendanceSessionRoster,
   listAttendanceSessions,
   markAttendanceSession,
-  type AttendanceDirectoryUser,
   type AttendanceMeResponse,
   type AttendanceModule,
   type AttendanceModuleStudent,
@@ -55,14 +53,6 @@ function sortStudents<
   });
 }
 
-function sortDirectoryUsers(
-  rows: AttendanceDirectoryUser[]
-): AttendanceDirectoryUser[] {
-  return [...rows].sort((a, b) =>
-    a.email.toLowerCase().localeCompare(b.email.toLowerCase())
-  );
-}
-
 function studentDisplayName(student: AttendanceModuleStudent): string {
   return (
     `${student.firstName ?? ""} ${student.lastName ?? ""}`.trim() || student.email
@@ -82,15 +72,6 @@ function formatDateTime(raw: string | null): string {
 
 function sessionTitle(session: AttendanceSession): string {
   return `${session.moduleCode} - ${session.moduleName}`;
-}
-
-function personName(person?: {
-  email?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-}): string {
-  if (!person) return "Not assigned";
-  return `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim() || person.email || "Not assigned";
 }
 
 function getSessionStatus(session: AttendanceSession): {
@@ -307,21 +288,13 @@ export default function AttendancePage() {
   const user = getUser();
   const role = roleLabel(user?.role ?? "");
   if (role === "LECTURER" || role === "ADMIN") {
-    return (
-      <LecturerAttendanceView role={role} currentUserId={user?.id ?? ""} />
-    );
+    return <StaffAttendanceView />;
   }
   if (role === "PARENT") return <Navigate to="/app/parent/attendance" replace />;
   return <StudentAttendanceView />;
 }
 
-function LecturerAttendanceView({
-  role,
-  currentUserId,
-}: {
-  role: "LECTURER" | "ADMIN";
-  currentUserId: string;
-}) {
+function StaffAttendanceView() {
   const [modules, setModules] = useState<AttendanceModule[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [sessionDetail, setSessionDetail] = useState<AttendanceSession | null>(null);
@@ -336,25 +309,11 @@ function LecturerAttendanceView({
   const [exportTo, setExportTo] = useState(todayDate());
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
-  const [lecturerId, setLecturerId] = useState("");
-  const [candidateLecturers, setCandidateLecturers] = useState<
-    AttendanceDirectoryUser[]
-  >([]);
   const [busy, setBusy] = useState(false);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-
-  const selectedModule = useMemo(
-    () => modules.find((m) => m.id === moduleId) ?? null,
-    [modules, moduleId]
-  );
-
-  const assignedLecturerIds = useMemo(
-    () => new Set((selectedModule?.lecturers ?? []).map((lecturer) => lecturer.id)),
-    [selectedModule]
-  );
 
   const selectedSession = useMemo(
     () => sessionDetail ?? sessions.find((session) => session.id === sessionId) ?? null,
@@ -412,18 +371,10 @@ function LecturerAttendanceView({
     setSessionDetail(detail);
   }
 
-  async function loadLecturers() {
-    const lecturersRes = await listAttendanceDirectoryUsers({
-      roles: ["LECTURER"],
-      limit: 500,
-    });
-    setCandidateLecturers(sortDirectoryUsers(lecturersRes));
-  }
-
   useEffect(() => {
     void (async () => {
       try {
-        await Promise.all([loadModules(), loadLecturers()]);
+        await loadModules();
       } catch (e) {
         setError(
           e instanceof Error ? e.message : "Failed to load attendance modules"
@@ -463,30 +414,8 @@ function LecturerAttendanceView({
       .finally(() => setDetailLoading(false));
   }, [sessionId]);
 
-  useEffect(() => {
-    if (!candidateLecturers.length) {
-      setLecturerId("");
-      return;
-    }
-    const preferredLecturerId =
-      role === "LECTURER" &&
-      candidateLecturers.some((lecturer) => lecturer.id === currentUserId)
-        ? currentUserId
-        : selectedModule?.lecturers.find((lecturer) =>
-            candidateLecturers.some((candidate) => candidate.id === lecturer.id)
-          )?.id ?? "";
-
-    setLecturerId((current) => {
-      if (preferredLecturerId) return preferredLecturerId;
-      return candidateLecturers.some((lecturer) => lecturer.id === current)
-        ? current
-        : candidateLecturers[0].id;
-    });
-  }, [candidateLecturers, currentUserId, role, selectedModule]);
-
   async function createSession() {
     if (!moduleId) return setError("Select a module first.");
-    if (!lecturerId) return setError("Select a lecturer for this session.");
 
     try {
       setBusy(true);
@@ -498,7 +427,6 @@ function LecturerAttendanceView({
         date,
         startsAt: startsAt || undefined,
         endsAt: endsAt || undefined,
-        lecturerId,
       });
 
       setInfo(`Session created for ${created.date}.`);
@@ -576,9 +504,8 @@ function LecturerAttendanceView({
           <div className="text-lg font-semibold text-white">Create Session</div>
           <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-3 text-sm text-white/75">
             Staff module selection is global. If the module you need does not
-            exist yet, create it from Courses, then return here and pick any
-            lecturer directly from the full lecturer list. Each module belongs to
-            a course, and each course can contain multiple modules.
+            exist yet, create it from Courses, then return here to create the
+            attendance session for the relevant course module.
           </div>
 
           <Field label="Module" htmlFor="attendance-module">
@@ -598,30 +525,6 @@ function LecturerAttendanceView({
                     {m.code} - {m.name} | {m.courseName} ({m.enrolledCount} students)
                   </option>
                 ))
-              )}
-            </select>
-          </Field>
-
-          <Field label="Lecturer" htmlFor="attendance-lecturer">
-            <select
-              id="attendance-lecturer"
-              title="Select lecturer"
-              aria-label="Select lecturer"
-              value={lecturerId}
-              onChange={(e) => setLecturerId(e.target.value)}
-              className="select-glass"
-            >
-              {candidateLecturers.length ? (
-                candidateLecturers.map((lecturer) => (
-                  <option key={lecturer.id} value={lecturer.id}>
-                    {lecturer.email}
-                    {assignedLecturerIds.has(lecturer.id)
-                      ? " - assigned to module"
-                      : " - will be linked on create"}
-                  </option>
-                ))
-              ) : (
-                <option value="">No lecturers available</option>
               )}
             </select>
           </Field>
@@ -815,10 +718,7 @@ function LecturerAttendanceView({
                 </>
               }
             />
-            <DetailMeta
-              label="Lecturer / Owner"
-              value={personName(selectedSession.lecturer)}
-            />
+            <DetailMeta label="Created" value={formatDateTime(selectedSession.createdAt)} />
           </div>
         ) : (
           <EmptyState message="Select a session to view its detail." />
@@ -1185,7 +1085,7 @@ function StudentAttendanceView() {
 
       <Alert
         tone="info"
-        message="When your lecturer creates a session for one of your modules, join it here to record your check-in time. Your lecturer or admin still chooses the final attendance status."
+        message="When a session is created for one of your modules, join it here to record your check-in time. Academic staff still choose the final attendance status."
       />
 
       <div className="teal-glow-card p-5">
@@ -1218,12 +1118,6 @@ function StudentAttendanceView() {
                   </div>
                   <div className="mt-1 text-xs text-white/60">
                     {module.facultyName} | {module.courseName}
-                  </div>
-                  <div className="mt-3 text-xs text-white/70">
-                    Lecturers:{" "}
-                    {module.lecturers.length > 0
-                      ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
-                      : "Not assigned yet"}
                   </div>
                 </button>
               );
