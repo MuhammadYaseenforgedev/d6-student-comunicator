@@ -21,7 +21,6 @@ type RoleFilter = "ALL" | AdminAccountRole;
 type AccountType =
   | "STUDENT"
   | "PARENT"
-  | "LECTURER"
   | "ACADEMIC_ADMIN"
   | "SUPER_ADMIN"
   | "FINANCE_ADMIN";
@@ -29,7 +28,7 @@ type AccountType =
 const ROLE_FILTERS: Array<{ value: RoleFilter; label: string }> = [
   { value: "ALL", label: "All" },
   { value: "ADMIN", label: "Admins" },
-  { value: "LECTURER", label: "Lecturers" },
+  { value: "LECTURER", label: "Legacy Staff" },
   { value: "STUDENT", label: "Students" },
   { value: "PARENT", label: "Parents" },
 ];
@@ -39,7 +38,6 @@ const ADMIN_SCOPE_OPTIONS: AdminScope[] = ["FINANCE", "ACADEMIC", "SUPER"];
 const ACCOUNT_TYPE_OPTIONS: Array<{ value: AccountType; label: string }> = [
   { value: "STUDENT", label: "Student" },
   { value: "PARENT", label: "Parent" },
-  { value: "LECTURER", label: "Lecturer" },
   { value: "ACADEMIC_ADMIN", label: "Academic Admin" },
   { value: "SUPER_ADMIN", label: "Super Admin" },
   { value: "FINANCE_ADMIN", label: "Finance Admin" },
@@ -439,7 +437,7 @@ export default function AdminUsers() {
       {!isLecturerViewer && <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <SummaryCard label="Total" value={summary.total} />
         <SummaryCard label="Admins" value={summary.ADMIN} />
-        <SummaryCard label="Lecturers" value={summary.LECTURER} />
+        <SummaryCard label="Legacy Staff" value={summary.LECTURER} />
         <SummaryCard label="Students" value={summary.STUDENT} />
         <SummaryCard label="Parents" value={summary.PARENT} />
       </div>}
@@ -448,7 +446,7 @@ export default function AdminUsers() {
         <div>
           <div className="text-lg font-semibold text-white">Create Account</div>
           <div className="mt-1 text-sm text-white/72">
-            Create protected admin-managed student, parent, lecturer, academic admin, super admin, and finance admin accounts. Public registration stays limited to safe self-service roles.
+            Create protected admin-managed student, parent, academic admin, super admin, and finance admin accounts. Public registration stays limited to safe self-service roles.
           </div>
         </div>
 

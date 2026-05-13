@@ -114,6 +114,7 @@ export default function AppShell() {
 
   const isParent = user?.role === "PARENT";
   const isStudent = user?.role === "STUDENT";
+  const isLegacyLecturer = user?.role === "LECTURER";
   const financeAdmin = isFinanceAdmin(user);
   const academicOrSuperAdmin = isAcademicOrSuperAdmin(user);
 
@@ -259,12 +260,14 @@ export default function AppShell() {
                 onNavigate={closeMobileMenu}
                 end
               />
-              <Item
-                to="/app/notifications"
-                label="Notifications"
-                badge={totalUnread}
-                onNavigate={closeMobileMenu}
-              />
+              {!isLegacyLecturer && (
+                <Item
+                  to="/app/notifications"
+                  label="Notifications"
+                  badge={totalUnread}
+                  onNavigate={closeMobileMenu}
+                />
+              )}
               {user?.role === "STUDENT" && (
                 <Item
                   to="/app/personal-details"
@@ -292,7 +295,7 @@ export default function AppShell() {
             </>
           )}
 
-          {isParent ? (
+          {isLegacyLecturer ? null : isParent ? (
             <>
               <div className="divider-soft my-3" />
               <Item
@@ -398,7 +401,7 @@ export default function AppShell() {
                 />
               )}
 
-              {(academicOrSuperAdmin || user?.role === "LECTURER") && (
+              {academicOrSuperAdmin && (
                 <Item
                   to="/app/manage-results"
                   label="Manage Results"
@@ -415,7 +418,7 @@ export default function AppShell() {
                 />
               )}
 
-              {(academicOrSuperAdmin || user?.role === "LECTURER") && (
+              {academicOrSuperAdmin && (
                 <Item
                   to="/app/admin/learner-onboarding"
                   label="Learner Onboarding"
@@ -423,7 +426,7 @@ export default function AppShell() {
                 />
               )}
 
-              {(academicOrSuperAdmin || user?.role === "LECTURER") && (
+              {academicOrSuperAdmin && (
                 <Item
                   to="/app/admin/parent-links"
                   label="Parent Link Approvals"
@@ -451,6 +454,8 @@ export default function AppShell() {
             <span className="inline-flex items-center rounded-full border border-[#8CEBFF]/30 bg-[#8CEBFF]/10 px-3 py-1 text-xs font-medium text-[#8CEBFF]">
               {user?.role === "ADMIN"
                 ? `${adminScopeLabel(user.adminScope)}`
+                : isLegacyLecturer
+                  ? "Legacy Staff"
                 : user?.role ?? "Unknown"}
             </span>
           </div>
@@ -582,7 +587,7 @@ export default function AppShell() {
         )}
       </AnimatePresence>
 
-      {user && <RoleAssistant user={user} />}
+      {user && !isLegacyLecturer && <RoleAssistant user={user} />}
     </div>
   );
 }

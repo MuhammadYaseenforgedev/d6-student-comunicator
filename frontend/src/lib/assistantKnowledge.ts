@@ -492,8 +492,8 @@ export function answerAuthQuestion(
     return {
       text:
         mode === "register"
-          ? "Lecturer and Admin registration needs the shared staff registration password as well as email, password, confirm password, and OTP."
-          : "If you need to create a Lecturer or Admin account, switch to Register first. Staff registration uses a shared staff registration password plus OTP.",
+          ? "Protected admin registration needs the shared staff registration password as well as email, password, confirm password, and OTP."
+          : "If you need to create a staff admin account, switch to Register first. Staff registration uses a shared staff registration password plus OTP.",
       actionIds: ["staff-password", "switch-register"],
     };
   }
@@ -538,7 +538,7 @@ export function answerAuthQuestion(
         role === "PARENT"
           ? "Parent accounts land in the parent portal."
           : role === "LECTURER"
-            ? "Lecturer accounts land in the main teaching workspace."
+            ? "Legacy staff accounts land on the main dashboard."
             : role === "ADMIN"
               ? "Admin accounts land in the admin workspace based on their scope."
               : "Student accounts land on the dashboard and can jump to modules, results, messages, and calendar from there.",

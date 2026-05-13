@@ -57,17 +57,6 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   adminUser("finance-admin", "Login as Finance Admin", "FINANCE", "finance.demo@forge.local", "Finance Admin"),
   adminUser("academic-admin", "Login as Academic Admin", "ACADEMIC", "academic.demo@forge.local", "Academic Admin"),
   {
-    key: "lecturer",
-    label: "Login as Lecturer",
-    user: {
-      id: "demo-lecturer",
-      email: "lecturer.demo@forge.local",
-      role: "LECTURER",
-      firstName: "Lecturer",
-      lastName: "Demo",
-    },
-  },
-  {
     key: "student",
     label: "Login as Student",
     user: {

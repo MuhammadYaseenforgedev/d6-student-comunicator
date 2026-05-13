@@ -40,8 +40,7 @@ export function useAnnouncements(
   const user = getUser();
   const role = String(user?.role ?? "").toUpperCase();
   const adminScope = String(user?.adminScope ?? "").toUpperCase();
-  const canManage =
-    role === "LECTURER" || (role === "ADMIN" && adminScope !== "FINANCE");
+  const canManage = role === "ADMIN" && adminScope !== "FINANCE";
 
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);

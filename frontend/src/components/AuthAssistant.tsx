@@ -93,7 +93,7 @@ export default function AuthAssistant({
             id: actionId,
             label: "Staff password",
             run: () =>
-              "Lecturer and Admin registration needs the shared staff registration password before the account can be created.",
+              "Protected staff registration needs the shared staff registration password before an admin account can be created.",
           };
 
         case "parent-setup":
@@ -143,7 +143,7 @@ export default function AuthAssistant({
           ? "Explain student sign-in with email and OTP."
           : "Explain the South African ID field and generated student number during student registration.";
       case "staff-password":
-        return "Explain the shared staff registration password for lecturer and admin sign-up.";
+        return "Explain the shared staff registration password for protected admin sign-up.";
       case "parent-setup":
         return "Explain parent-specific registration fields and next steps.";
       case "support":

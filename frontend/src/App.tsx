@@ -129,7 +129,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["STUDENT", "LECTURER", "ADMIN"]}
+                          roles={["STUDENT", "ADMIN"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -149,7 +149,7 @@ export default function App() {
 
                     <Route
                       element={
-                        <RequireRole roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]} />
+                        <RequireRole roles={["STUDENT", "ADMIN", "PARENT"]} />
                       }
                     >
                       <Route path="messages" element={renderLazyRoute(<Inbox />)} />
@@ -159,7 +159,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]}
+                          roles={["STUDENT", "ADMIN", "PARENT"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -173,7 +173,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]}
+                          roles={["STUDENT", "ADMIN", "PARENT"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -184,7 +184,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["STUDENT", "LECTURER", "ADMIN"]}
+                          roles={["STUDENT", "ADMIN"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -195,7 +195,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["ADMIN", "LECTURER"]}
+                          roles={["ADMIN"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -220,7 +220,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["ADMIN", "LECTURER"]}
+                          roles={["ADMIN"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
