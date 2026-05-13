@@ -377,12 +377,6 @@ export default function Modules() {
                   <div className="mt-1 text-sm text-white/78">
                     Course: {selectedModule.courseLabel}
                   </div>
-                  <div className="mt-2 text-sm text-white/72">
-                    Academic staff:{" "}
-                    {selectedModule.lecturers.length > 0
-                      ? selectedModule.lecturers.join(", ")
-                      : "Not assigned yet"}
-                  </div>
                   {canDeleteModules ? (
                     <div className="mt-4 rounded-2xl border border-[rgba(255,94,130,0.22)] bg-[rgba(74,10,31,0.42)] p-4">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

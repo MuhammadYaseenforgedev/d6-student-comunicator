@@ -1,12 +1,10 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
-  assignLecturerToAttendanceModule,
   createAttendanceModule,
   enrollStudentInAttendanceModule,
   listAttendanceDirectoryUsers,
   listAttendanceModuleStudents,
   listAttendanceModules,
-  removeLecturerFromAttendanceModule,
   removeStudentFromAttendanceModule,
   type AttendanceDirectoryUser,
   type AttendanceModule,
@@ -100,7 +98,7 @@ export default function CourseModulesManager({
   eligibleStudentIds,
   showModuleSelector = true,
   title = "Modules",
-  subtitle = "Create modules and manage lecturer plus learner membership for the selected course.",
+  subtitle = "Create modules and manage learner membership for the selected course.",
   idPrefix = "course-modules",
   canRemoveModules = false,
   onSelectedModuleIdChange,
@@ -109,7 +107,6 @@ export default function CourseModulesManager({
   const [modules, setModules] = useState<AttendanceModule[]>([]);
   const [moduleStudents, setModuleStudents] = useState<AttendanceModuleStudent[]>([]);
   const [candidateStudents, setCandidateStudents] = useState<AttendanceDirectoryUser[]>([]);
-  const [candidateLecturers, setCandidateLecturers] = useState<AttendanceDirectoryUser[]>([]);
   const [internalModuleId, setInternalModuleId] = useState("");
   const [createCourseId, setCreateCourseId] = useState(selectedCourseId ?? "");
   const [newFacultyName, setNewFacultyName] = useState("");
@@ -117,7 +114,6 @@ export default function CourseModulesManager({
   const [newModuleName, setNewModuleName] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
-  const [selectedLecturerId, setSelectedLecturerId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -169,11 +165,6 @@ export default function CourseModulesManager({
     });
   }, [moduleStudents, studentSearch]);
 
-  const availableLecturers = useMemo(() => {
-    const assignedIds = new Set((selectedModule?.lecturers ?? []).map((lecturer) => lecturer.id));
-    return candidateLecturers.filter((lecturer) => !assignedIds.has(lecturer.id));
-  }, [candidateLecturers, selectedModule]);
-
   async function loadModules() {
     setModules(await listAttendanceModules());
   }
@@ -187,12 +178,8 @@ export default function CourseModulesManager({
   }
 
   async function loadDirectoryUsers() {
-    const [studentsRes, lecturersRes] = await Promise.all([
-      listAttendanceDirectoryUsers({ roles: ["STUDENT"], limit: 500 }),
-      listAttendanceDirectoryUsers({ roles: ["LECTURER"], limit: 500 }),
-    ]);
+    const studentsRes = await listAttendanceDirectoryUsers({ roles: ["STUDENT"], limit: 500 });
     setCandidateStudents(sortDirectoryUsers(studentsRes));
-    setCandidateLecturers(sortDirectoryUsers(lecturersRes));
   }
 
   async function refreshModuleData(nextModuleId?: string) {
@@ -268,14 +255,6 @@ export default function CourseModulesManager({
   }, [availableStudents]);
 
   useEffect(() => {
-    setSelectedLecturerId((current) =>
-      availableLecturers.some((lecturer) => lecturer.id === current)
-        ? current
-        : (availableLecturers[0]?.id ?? "")
-    );
-  }, [availableLecturers]);
-
-  useEffect(() => {
     if (!selectedModule) {
       setRemoveDialogOpen(false);
     }
@@ -324,49 +303,6 @@ export default function CourseModulesManager({
       setInfo(`Module ${created.code} created.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create module");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onAddLecturer() {
-    if (!activeModuleId || !selectedLecturerId) {
-      setError("Select a module and lecturer first.");
-      return;
-    }
-
-    try {
-      setBusy(true);
-      setError(null);
-      setInfo(null);
-      await assignLecturerToAttendanceModule(activeModuleId, selectedLecturerId);
-      await refreshModuleData(activeModuleId);
-      await notifyChanged();
-      setInfo("Lecturer linked to module.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to link lecturer to module");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onRemoveLecturer(lecturerId: string) {
-    if (!activeModuleId) return;
-    const confirmed = window.confirm("Remove this lecturer from the selected module?");
-    if (!confirmed) return;
-
-    try {
-      setBusy(true);
-      setError(null);
-      setInfo(null);
-      await removeLecturerFromAttendanceModule(activeModuleId, lecturerId);
-      await refreshModuleData(activeModuleId);
-      await notifyChanged();
-      setInfo("Lecturer removed from module.");
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Failed to remove lecturer from module"
-      );
     } finally {
       setBusy(false);
     }
@@ -555,7 +491,7 @@ export default function CourseModulesManager({
         <div>
           <div className="text-lg font-semibold text-white">Module Membership</div>
           <div className="mt-1 text-sm text-white/72">
-            Assign lecturers and learners to a module. Learners must already be
+            Assign learners to a module. Learners must already be
             enrolled in the parent course before they can be linked here.
           </div>
         </div>
@@ -586,7 +522,7 @@ export default function CourseModulesManager({
           <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] p-3 text-sm text-white/75">
             {selectedModule
               ? `Managing ${selectedModule.code} - ${selectedModule.name}. ${selectedModule.enrolledCount} learner(s) are currently linked to this module.`
-              : "Select a module above to manage lecturer and learner membership."}
+              : "Select a module above to manage learner membership."}
           </div>
         )}
 
@@ -597,7 +533,7 @@ export default function CourseModulesManager({
                 <div className="text-sm font-semibold text-white">Remove selected module</div>
                 <div className="mt-1 text-sm text-white/72">
                   Delete {selectedModule.code} - {selectedModule.name} only if it was added by
-                  mistake and no linked learners, lecturers, attendance, results, uploads, or
+                  mistake and no linked learners, attendance, results, uploads, or
                   announcements depend on it.
                 </div>
               </div>
@@ -618,72 +554,7 @@ export default function CourseModulesManager({
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold text-white">Assigned lecturers</div>
-              <div className="rounded-full border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
-                {(selectedModule?.lecturers ?? []).length} linked
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-              <select
-                id={`${idPrefix}-assigned-lecturer`}
-                title="Select lecturer to add to module"
-                aria-label="Select lecturer to add to module"
-                value={selectedLecturerId}
-                onChange={(e) => setSelectedLecturerId(e.target.value)}
-                disabled={busy || !activeModuleId || availableLecturers.length === 0}
-                className="select-glass"
-              >
-                {availableLecturers.length === 0 ? (
-                  <option value="">No additional lecturers available</option>
-                ) : (
-                  availableLecturers.map((lecturer) => (
-                    <option key={lecturer.id} value={lecturer.id}>
-                      {lecturer.email}
-                    </option>
-                  ))
-                )}
-              </select>
-
-              <button
-                type="button"
-                onClick={() => void onAddLecturer()}
-                disabled={busy || !activeModuleId || !selectedLecturerId}
-                className="btn-primary px-4 py-2 text-sm disabled:opacity-60"
-              >
-                Add lecturer
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {(selectedModule?.lecturers ?? []).length === 0 ? (
-                <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] p-3 text-sm text-white/75">
-                  No lecturers assigned to this module yet.
-                </div>
-              ) : (
-                selectedModule!.lecturers.map((lecturer) => (
-                  <div
-                    key={lecturer.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.52)] p-3"
-                  >
-                    <div className="text-sm text-white">{lecturer.email}</div>
-                    <button
-                      type="button"
-                      onClick={() => void onRemoveLecturer(lecturer.id)}
-                      disabled={busy}
-                      className="btn-danger px-3 py-1 text-xs disabled:opacity-60"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
+        <div className="grid grid-cols-1 gap-6">
           <div className="rounded-3xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] p-4">
             <div className="flex items-center justify-between gap-3">
               <div className="text-sm font-semibold text-white">Assigned learners</div>
@@ -789,7 +660,7 @@ export default function CourseModulesManager({
             </div>
             <div className="mt-4 rounded-2xl border border-[rgba(255,196,87,0.22)] bg-[rgba(97,59,9,0.35)] p-3 text-sm text-[#ffe8b0]">
               This action cannot be undone. Only empty modules can be removed. If the module has
-              linked learners, lecturers, attendance, assessment results, uploads, or targeted
+              linked learners, attendance, assessment results, uploads, or targeted
               announcements, the backend will block deletion and tell you why.
             </div>
 

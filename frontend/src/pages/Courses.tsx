@@ -38,12 +38,6 @@ function formatDate(raw: string | null): string {
   return new Date(ms).toLocaleDateString();
 }
 
-function uniqueLecturerEmails(modules: CourseModule[]): string[] {
-  return Array.from(
-    new Set(modules.flatMap((module) => module.lecturers.map((lecturer) => lecturer.email)))
-  ).sort((a, b) => a.localeCompare(b));
-}
-
 function summarizeModules(modules: CourseModule[], limit = 3): string {
   if (modules.length === 0) return "No modules linked yet.";
 
@@ -192,7 +186,7 @@ function PremiumCourseCard({
           Modules: {summarizeModules(course.modules, 3)}
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
             <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Modules</div>
             <div className="mt-1 text-base font-semibold text-white">
@@ -203,12 +197,6 @@ function PremiumCourseCard({
             <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Students</div>
             <div className="mt-1 text-base font-semibold text-white">
               {course.summary.studentCount}
-            </div>
-          </div>
-          <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Academic staff</div>
-            <div className="mt-1 text-base font-semibold text-white">
-              {course.summary.lecturerCount}
             </div>
           </div>
         </div>
@@ -290,18 +278,14 @@ function StudentCoursesView() {
     <div className="space-y-6">
       <PageHeader
         title="Courses"
-        subtitle="View your enrolled course, linked modules, and academic coverage."
+        subtitle="View your enrolled course, linked modules, and learner coverage."
       />
 
       {error && <Alert tone="error" message={error} />}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <SummaryCard label="Enrolled Courses" value={courses.length} />
         <SummaryCard label="Linked Modules" value={linkedModules.length} />
-        <SummaryCard
-          label="Academic Staff"
-          value={uniqueLecturerEmails(linkedModules).length}
-        />
         <div className="teal-glow-card p-4">
           <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
           <div className="mt-3">
@@ -322,7 +306,6 @@ function StudentCoursesView() {
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             {courses.map((course, index) => {
               const modules = course.modules.filter((module) => module.isStudentLinked);
-              const lecturers = uniqueLecturerEmails(modules);
 
               return (
                 <div
@@ -349,9 +332,8 @@ function StudentCoursesView() {
                     {course.description?.trim() || "No course description has been added yet."}
                   </div>
 
-                  <div className="relative mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="relative mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <SummaryCard label="Modules" value={modules.length} />
-                    <SummaryCard label="Academic Staff" value={lecturers.length} />
                     <div className="teal-glow-card p-4">
                       <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
                       <div className="mt-3">
@@ -382,12 +364,6 @@ function StudentCoursesView() {
                               {module.code} - {module.name}
                             </div>
                             <div className="mt-1 text-xs text-white/60">{module.facultyName}</div>
-                            <div className="mt-2 text-xs text-white/72">
-                              Academic staff:{" "}
-                              {module.lecturers.length > 0
-                                ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
-                                : "Not assigned yet"}
-                            </div>
                           </div>
                         ))
                       )}
@@ -1180,10 +1156,9 @@ function AdminCoursesView() {
                   Modules linked: {summarizeModules(selectedCourse.modules, 4)}
                 </div>
 
-                <div className="relative mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div className="relative mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
                   <SummaryCard label="Modules" value={selectedCourse.summary.moduleCount} />
                   <SummaryCard label="Students" value={selectedCourse.summary.studentCount} />
-                  <SummaryCard label="Academic Staff" value={selectedCourse.summary.lecturerCount} />
                   <div className="teal-glow-card p-4">
                     <div className="text-xs uppercase tracking-[0.16em] text-white/60">
                       Status
@@ -1299,13 +1274,13 @@ function AdminCoursesView() {
                     <div className="teal-glow-card p-5">
                       <SectionTitle
                         title="Module Coverage"
-                        subtitle="Review all modules linked to this course and their academic coverage."
+                        subtitle="Review all modules linked to this course and learner coverage."
                       />
                       <div className="mt-3 space-y-3">
                         {selectedCourse.modules.length === 0 ? (
                           <EmptyState
                             title="No modules in course"
-                            message="Assign at least one module to this course to expose academic coverage."
+                            message="Assign at least one module to this course to expose learner coverage."
                           />
                         ) : (
                           selectedCourse.modules.map((module) => (
@@ -1318,14 +1293,6 @@ function AdminCoursesView() {
                               </div>
                               <div className="mt-1 text-xs text-white/60">
                                 {module.facultyName} | {module.enrolledCount} linked students
-                              </div>
-                              <div className="mt-2 text-xs text-white/72">
-                                Academic staff:{" "}
-                                {module.lecturers.length > 0
-                                  ? module.lecturers
-                                      .map((lecturer) => lecturer.email)
-                                      .join(", ")
-                                  : "Not assigned yet"}
                               </div>
                             </div>
                           ))
