@@ -206,7 +206,7 @@ function PremiumCourseCard({
             </div>
           </div>
           <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.52)] px-3 py-3">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Lecturers</div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/55">Academic staff</div>
             <div className="mt-1 text-base font-semibold text-white">
               {course.summary.lecturerCount}
             </div>
@@ -290,7 +290,7 @@ function StudentCoursesView() {
     <div className="space-y-6">
       <PageHeader
         title="Courses"
-        subtitle="View your enrolled course, linked modules, and lecturer coverage."
+        subtitle="View your enrolled course, linked modules, and academic coverage."
       />
 
       {error && <Alert tone="error" message={error} />}
@@ -299,7 +299,7 @@ function StudentCoursesView() {
         <SummaryCard label="Enrolled Courses" value={courses.length} />
         <SummaryCard label="Linked Modules" value={linkedModules.length} />
         <SummaryCard
-          label="Assigned Lecturers"
+          label="Academic Staff"
           value={uniqueLecturerEmails(linkedModules).length}
         />
         <div className="teal-glow-card p-4">
@@ -351,7 +351,7 @@ function StudentCoursesView() {
 
                   <div className="relative mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <SummaryCard label="Modules" value={modules.length} />
-                    <SummaryCard label="Lecturers" value={lecturers.length} />
+                    <SummaryCard label="Academic Staff" value={lecturers.length} />
                     <div className="teal-glow-card p-4">
                       <div className="text-xs uppercase tracking-[0.16em] text-white/60">Status</div>
                       <div className="mt-3">
@@ -383,7 +383,7 @@ function StudentCoursesView() {
                             </div>
                             <div className="mt-1 text-xs text-white/60">{module.facultyName}</div>
                             <div className="mt-2 text-xs text-white/72">
-                              Lecturers:{" "}
+                              Academic staff:{" "}
                               {module.lecturers.length > 0
                                 ? module.lecturers.map((lecturer) => lecturer.email).join(", ")
                                 : "Not assigned yet"}
@@ -402,7 +402,7 @@ function StudentCoursesView() {
             modules={linkedModules}
             canManage={false}
             title="Assessments"
-            subtitle="Download lecturer-uploaded assessments for the modules linked to your student account."
+            subtitle="Download academic assessments for the modules linked to your student account."
           />
         </div>
       )}
@@ -446,7 +446,7 @@ function LecturerCoursesView() {
         setError(null);
         await loadCoursesData();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load lecturer courses");
+        setError(e instanceof Error ? e.message : "Failed to load academic courses");
       } finally {
         setLoading(false);
       }
@@ -1183,7 +1183,7 @@ function AdminCoursesView() {
                 <div className="relative mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <SummaryCard label="Modules" value={selectedCourse.summary.moduleCount} />
                   <SummaryCard label="Students" value={selectedCourse.summary.studentCount} />
-                  <SummaryCard label="Lecturers" value={selectedCourse.summary.lecturerCount} />
+                  <SummaryCard label="Academic Staff" value={selectedCourse.summary.lecturerCount} />
                   <div className="teal-glow-card p-4">
                     <div className="text-xs uppercase tracking-[0.16em] text-white/60">
                       Status
@@ -1299,13 +1299,13 @@ function AdminCoursesView() {
                     <div className="teal-glow-card p-5">
                       <SectionTitle
                         title="Module Coverage"
-                        subtitle="Review all modules linked to this course and their lecturer coverage."
+                        subtitle="Review all modules linked to this course and their academic coverage."
                       />
                       <div className="mt-3 space-y-3">
                         {selectedCourse.modules.length === 0 ? (
                           <EmptyState
                             title="No modules in course"
-                            message="Assign at least one module to this course to expose lecturer coverage."
+                            message="Assign at least one module to this course to expose academic coverage."
                           />
                         ) : (
                           selectedCourse.modules.map((module) => (
@@ -1320,7 +1320,7 @@ function AdminCoursesView() {
                                 {module.facultyName} | {module.enrolledCount} linked students
                               </div>
                               <div className="mt-2 text-xs text-white/72">
-                                Lecturers:{" "}
+                                Academic staff:{" "}
                                 {module.lecturers.length > 0
                                   ? module.lecturers
                                       .map((lecturer) => lecturer.email)
@@ -1383,7 +1383,7 @@ function AdminCoursesView() {
                     eligibleStudentIds={selectedCourse.students.map((student) => student.id)}
                     idPrefix="courses-admin-modules"
                     title="Modules"
-                    subtitle="Create modules for the selected course and manage lecturer plus learner membership here."
+                    subtitle="Create modules for the selected course and manage academic staff plus learner membership here."
                     canRemoveModules
                     onSelectedModuleIdChange={setSelectedCourseModuleId}
                     onChanged={loadAll}

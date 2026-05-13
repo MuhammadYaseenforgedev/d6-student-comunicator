@@ -215,7 +215,7 @@ export default function Modules() {
     if (!canDeleteModules || !selectedCourseId || !selectedModuleId || !selectedModule) return;
 
     const confirmed = window.confirm(
-      `Delete "${selectedModule.label}" from ${selectedModule.courseLabel}? Only empty modules can be removed. Linked learners, lecturers, attendance, results, uploads, or announcements will block deletion.`
+      `Delete "${selectedModule.label}" from ${selectedModule.courseLabel}? Only empty modules can be removed. Linked learners, academic staff, attendance, results, uploads, or announcements will block deletion.`
     );
     if (!confirmed) return;
 
@@ -268,7 +268,7 @@ export default function Modules() {
               isStudent
                 ? "You are not linked to any courses yet."
                 : isLecturer
-                  ? "No courses are assigned to your lecturer account yet."
+                  ? "No courses are assigned to your academic staff account yet."
                   : "No courses are available yet."
             }
           />
@@ -378,7 +378,7 @@ export default function Modules() {
                     Course: {selectedModule.courseLabel}
                   </div>
                   <div className="mt-2 text-sm text-white/72">
-                    Lecturers:{" "}
+                    Academic staff:{" "}
                     {selectedModule.lecturers.length > 0
                       ? selectedModule.lecturers.join(", ")
                       : "Not assigned yet"}
@@ -390,7 +390,7 @@ export default function Modules() {
                           <div className="text-sm font-semibold text-white">Delete module</div>
                           <div className="mt-1 text-sm text-white/72">
                             Remove this module only if it is empty. The backend will block deletion
-                            when linked learners, lecturers, attendance, results, uploads, or
+                            when linked learners, academic staff, attendance, results, uploads, or
                             announcements still exist.
                           </div>
                         </div>

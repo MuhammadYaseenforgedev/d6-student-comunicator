@@ -254,7 +254,7 @@ function announcements(channelId = "ch-general") {
         id: "ann-emergency-urgent",
         channelId,
         title: "Urgent notice: fire drill",
-        body: "A scheduled safety drill will take place at 10:00. Follow lecturer instructions.",
+        body: "A scheduled safety drill will take place at 10:00. Follow academic staff instructions.",
         pinned: true,
         createdBy: "superadmin.demo@forge.local",
         createdAt: addDays(-1),
@@ -511,7 +511,7 @@ function supportTickets() {
   return [
     { id: "ticket-open", requesterEmail: "student.demo@forge.local", requesterName: "Ayaan Khan", deviceNumber: "FG-LAP-001", issueType: "ACCOUNT_ACCESS", status: "OPEN", message: "Cannot access Teams link.", adminNote: null, assignedTo: null, assignedEmail: null, createdAt: addDays(-2), updatedAt: addDays(-2), resolvedAt: null, pulseSyncStatus: "SKIPPED" },
     { id: "ticket-progress", requesterEmail: "parent.demo@forge.local", requesterName: "Parent Demo", deviceNumber: null, issueType: "SOFTWARE", status: "IN_PROGRESS", message: "Need help viewing finance statement.", adminNote: "Finance team reviewing.", assignedTo: "demo-finance-admin", assignedEmail: "finance.demo@forge.local", createdAt: addDays(-4), updatedAt: addDays(-1), resolvedAt: null, pulseSyncStatus: "SKIPPED" },
-    { id: "ticket-resolved", requesterEmail: "lecturer.demo@forge.local", requesterName: "Lecturer Demo", deviceNumber: "FG-LAP-009", issueType: "NETWORK", status: "RESOLVED", message: "Lab Wi-Fi intermittent.", adminNote: "Resolved by IT.", assignedTo: "demo-super-admin", assignedEmail: "superadmin.demo@forge.local", createdAt: addDays(-8), updatedAt: addDays(-6), resolvedAt: addDays(-6), pulseSyncStatus: "SKIPPED" },
+    { id: "ticket-resolved", requesterEmail: "lecturer.demo@forge.local", requesterName: "Academic Staff Demo", deviceNumber: "FG-LAP-009", issueType: "NETWORK", status: "RESOLVED", message: "Lab Wi-Fi intermittent.", adminNote: "Resolved by IT.", assignedTo: "demo-super-admin", assignedEmail: "superadmin.demo@forge.local", createdAt: addDays(-8), updatedAt: addDays(-6), resolvedAt: addDays(-6), pulseSyncStatus: "SKIPPED" },
   ];
 }
 
@@ -709,7 +709,7 @@ export function getMockApiResponse<T>(request: MockRequest): T | undefined {
     const key = channelKeyFromId(channelId);
     return value([
       { id: `msg-${key}-1`, channelId, body: "Demo staff-student thread: Please review the assessment brief.", createdBy: "lecturer.demo@forge.local", createdAt: addDays(-1) },
-      { id: `msg-${key}-2`, channelId, body: "Lecturer-parent thread: Ayaan is on track for this module.", createdBy: "lecturer.demo@forge.local", createdAt: addDays(-2) },
+      { id: `msg-${key}-2`, channelId, body: "Academic staff-parent thread: Ayaan is on track for this module.", createdBy: "lecturer.demo@forge.local", createdAt: addDays(-2) },
       { id: `msg-${key}-3`, channelId, body: "Admin message: Local mock data is active for UI preview.", createdBy: "admin.demo@forge.local", createdAt: addDays(-3) },
     ]) as T;
   }
@@ -912,7 +912,7 @@ export function getMockApiResponse<T>(request: MockRequest): T | undefined {
   if (method === "GET" && path.startsWith("/integrations/teams-links")) {
     return value([
       { key: "ADMIN", label: "Admin Teams Workspace", url: "https://teams.microsoft.com/l/team/demo-admin" },
-      { key: "LECTURER", label: "Lecturer Teams Workspace", url: "https://teams.microsoft.com/l/team/demo-lecturer" },
+      { key: "LECTURER", label: "Academic Staff Teams Workspace", url: "https://teams.microsoft.com/l/team/demo-lecturer" },
       { key: "STUDENT", label: "Student Teams Workspace", url: "https://teams.microsoft.com/l/team/demo-student" },
     ]) as T;
   }

@@ -20,14 +20,14 @@ export default function UploadModal({
 
   const title = useMemo(() => {
     return scope === "LECTURER_MATERIAL"
-      ? "Upload Lecturer File"
+      ? "Upload Academic File"
       : "Submit Student File";
   }, [scope]);
 
   const helper = useMemo(() => {
     return scope === "LECTURER_MATERIAL"
-      ? "Visible to students and lecturers."
-      : "Visible to lecturers and admin. Students can still see their own submissions.";
+      ? "Visible to students and academic staff."
+      : "Visible to academic staff and admin. Students can still see their own submissions.";
   }, [scope]);
 
   if (!open) return null;

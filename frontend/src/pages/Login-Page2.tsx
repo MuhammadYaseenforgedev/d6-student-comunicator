@@ -343,7 +343,7 @@ export default function LoginPage2({ onOpenLegal }: LoginPage2Props) {
 
     if (roleNeedsStaffPassword && !staffRegisterPassword.trim()) {
       return setError(
-        "Staff registration password is required for Admin and Lecturer roles."
+        "Staff registration password is required for protected staff roles."
       );
     }
 

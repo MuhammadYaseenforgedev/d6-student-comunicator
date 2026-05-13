@@ -1483,7 +1483,7 @@ async function buildStaffAttendanceReply(user: AuthUser): Promise<AssistantLiveR
   if (isFinanceAdmin(user)) {
     return buildReply({
       summary: "Attendance isn't available through chat for finance admin accounts.",
-      note: "Attendance chat support is limited to students, parents, lecturers, academic admins, and super admins.",
+      note: "Attendance chat support is limited to students, parents, academic staff, academic admins, and super admins.",
     });
   }
 
@@ -1687,7 +1687,7 @@ async function buildFinanceReply(user: AuthUser): Promise<AssistantLiveReply> {
   if (user.role === "ADMIN") {
     return buildReply({
       summary: "Finance summaries aren't available through chat for this admin role.",
-      note: "Finance chat support is available for students, parents, finance admins, and lecturers viewing their own account.",
+      note: "Finance chat support is available for students, parents, finance admins, and academic staff viewing their own account.",
     });
   }
 
@@ -1714,7 +1714,7 @@ async function buildCalendarReply(user: AuthUser): Promise<AssistantLiveReply> {
   if (isFinanceAdmin(user)) {
     return buildReply({
       summary: "Calendar isn't available through chat for finance admin accounts.",
-      note: "Calendar chat support is limited to students, parents, lecturers, academic admins, and super admins.",
+      note: "Calendar chat support is limited to students, parents, academic staff, academic admins, and super admins.",
     });
   }
 

@@ -29,7 +29,7 @@ Use this checklist for final chatbot demos and smoke tests.
 - Empty-state check: parent with no linked child should be sent to `Children`
 - Follow-up check: `And then?`
 
-## Lecturer
+## Academic Staff
 
 - Overview: `What do I need to look at?`
 - Live data: `Any attendance?`

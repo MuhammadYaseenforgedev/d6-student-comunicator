@@ -43,7 +43,7 @@ Frontend deploy settings:
 ## 3) Demo Accounts
 
 - Admin: `demo+admin@co.za` / `DemoPass123`
-- Lecturer: `demo+lecturer@co.za` / `DemoPass123`
+- Legacy academic staff: `demo+lecturer@co.za` / `DemoPass123`
 - Student: `demo+student1@replace-with-real-inbox.com` / `DemoPass123` / student number `20231771`
 - Student 2: `demo+student2@replace-with-real-inbox.com` / `DemoPass123` / student number `20231772`
 - Parent: `demo+parent@co.za` / `DemoPass123`
@@ -61,13 +61,13 @@ Frontend deploy settings:
 
 ### Role login checks
 - Admin login returns `200` + token.
-- Lecturer login returns `200` + token.
+- Legacy academic staff login returns `200` + token.
 - Student login (`studentNumber=20231771`) returns `200` + token.
 - Parent login returns `200` + token.
 
 ### D6 messaging policy checks
 - Parent -> Student thread create (`POST /api/threads`) returns `403`.
-- Parent -> Lecturer thread create (`POST /api/threads`) returns `200/201`.
+- Parent -> academic staff/admin thread create (`POST /api/threads`) returns `200/201`.
 
 ### Upload/download smoke (PowerShell)
 
@@ -77,12 +77,12 @@ Note:
 ```powershell
 $BaseUrl = "https://d6-student-comunicator.onrender.com"
 
-# Login as lecturer
+# Login as legacy academic staff
 $lecturerBody = @{ email = "demo+lecturer@co.za"; password = "DemoPass123"; otp = (Read-Host "Lecturer OTP") } | ConvertTo-Json
 $lecturerResp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/login" -ContentType "application/json" -Body $lecturerBody
 $lecturerToken = $lecturerResp.token
 
-# Upload lecturer material
+# Upload academic material
 $lecturerFile = Join-Path $env:TEMP "exec-lecturer-material.txt"
 Set-Content -Path $lecturerFile -Value "Exec demo material" -Encoding UTF8
 curl.exe -sS -X POST "$BaseUrl/api/uploads" `
@@ -115,14 +115,14 @@ curl.exe -sS -L -X GET "$BaseUrl/api/uploads/$firstId/download" -H "Authorizatio
 ```
 
 Expected outcomes:
-- Lecturer upload: HTTP `201`.
+- Academic material upload: HTTP `201`.
 - Student upload: HTTP `201`.
 - Download request: HTTP `200` with file output.
 
 ### Data non-empty checks
 - Parent results: `GET /api/parent/results?childId=20231771` returns `count >= 4`.
 - Parent finance: `GET /api/parent/finance?childId=20231771` returns non-empty `documents`.
-- Calendar endpoints for student/lecturer return seeded rows.
+- Calendar endpoints for student/academic staff return seeded rows.
 
 ## 5) Send-to-Execs Template
 

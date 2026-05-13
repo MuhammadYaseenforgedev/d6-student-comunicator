@@ -11,7 +11,7 @@ A secure, role-based university communicator organized by channels (faculty/modu
 - View audit log
 - Send emergency alerts
 
-### Lecturer
+### Academic Staff
 - Create module channels (if permitted by Admin)
 - Post announcements/resources/polls to owned channels
 - Chat in owned channels

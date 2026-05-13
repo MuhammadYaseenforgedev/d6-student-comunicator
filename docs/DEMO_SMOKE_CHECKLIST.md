@@ -5,7 +5,7 @@ Use the seeded demo accounts and verify these flows after deploy.
 ## Authentication
 
 1. Admin login with correct credentials succeeds.
-2. Lecturer login with correct credentials succeeds.
+2. Academic staff login with correct credentials succeeds.
 3. Student login with correct credentials and student number succeeds.
 4. Parent login with correct credentials succeeds.
 5. Wrong password is rejected with an auth error.
@@ -14,8 +14,8 @@ Use the seeded demo accounts and verify these flows after deploy.
 ## RBAC
 
 1. Student cannot access admin finance or account-management routes.
-2. Parent can view parent portal pages but cannot access lecturer/admin attendance actions.
-3. Lecturer can manage attendance and results.
+2. Parent can view parent portal pages but cannot access academic admin attendance actions.
+3. Academic Admin can manage attendance and results.
 4. Admin can manage finance, accounts, attendance, and parent-link approvals.
 
 ## Demo Data Visibility
@@ -40,8 +40,8 @@ Use the seeded demo accounts and verify these flows after deploy.
 
 ## Attendance
 
-1. Lecturer/admin can load attendance modules and sessions.
-2. Lecturer/admin can open a roster and mark attendance.
+1. Academic Admin can load attendance modules and sessions.
+2. Academic Admin can open a roster and mark attendance.
 3. Student can open attendance and see their own records.
 
 ## Parent Linking

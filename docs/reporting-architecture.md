@@ -20,7 +20,7 @@ This document captures the current backend reporting surface for Section 1 witho
 ## What Can Be Reported Immediately
 
 - Attendance reporting
-  - Session counts by course/module/lecturer.
+  - Session counts by course/module/academic staff.
   - Attendance status totals by learner, module, and date range.
   - Check-in timeliness using `attendance_checkins` versus session start times.
 - Course and module access reporting
@@ -65,7 +65,7 @@ This document captures the current backend reporting surface for Section 1 witho
 
 ## Future Outputs
 
-- Attendance dashboards by learner, lecturer, module, and course.
+- Attendance dashboards by learner, academic staff, module, and course.
 - Course/module progress summaries combining enrollments, results, and uploads.
 - Ticket operations dashboards with incorrect-details workflows.
 - Import/onboarding dashboards for incomplete learner records.

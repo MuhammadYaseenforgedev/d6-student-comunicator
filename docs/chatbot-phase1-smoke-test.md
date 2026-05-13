@@ -13,12 +13,12 @@ Use this matrix to manually verify the live-intent chatbot and the Phase 2 inten
 ## Parent
 - Supported query: `What upcoming events do I have?`
 - Expected: `Summary:` line with upcoming event count for linked children, then up to 3 child-labelled event details
-- Unsupported query: `Show lecturer results management`
-- Expected: fallback guidance listing supported topics, not lecturer-only data
+- Unsupported query: `Show academic staff results management`
+- Expected: fallback guidance listing supported topics, not staff-only data
 - Empty-state expectation: `Summary: No linked children were found for calendar yet.` or `Summary: No finance items were found for your linked children.`
 - Failure-state expectation: `Summary: I couldn't reach the finance service at the moment.` and `Note: Please try again shortly.`
 
-## Lecturer
+## Academic Staff
 - Supported query: `What is my attendance?`
 - Expected: `Summary:` line with module coverage count, then up to 3 accessible attendance modules
 - Unsupported query: `Show my results`
@@ -71,7 +71,7 @@ Use this matrix to manually verify the live-intent chatbot and the Phase 2 inten
 - Unsupported action query: `can you link children`
 - Expected: honest limitation response plus a `Children` action button
 
-### Lecturer
+### Academic Staff
 - Unsupported action query: `can you publish results`
 - Expected: honest limitation response plus a `Manage Results` action button
 - Expected follow-up: the chatbot should not pretend to publish results directly inside chat

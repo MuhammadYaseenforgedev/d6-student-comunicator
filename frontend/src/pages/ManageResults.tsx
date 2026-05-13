@@ -260,7 +260,7 @@ export default function ManageResults() {
     <div className="space-y-6">
       <PageHeader
         title="Manage Results"
-        subtitle="Admins and lecturers can create, edit, delete, and download student results."
+        subtitle="Academic admins can create, edit, delete, and download student results."
       />
 
       <section className="teal-glow-card p-5">

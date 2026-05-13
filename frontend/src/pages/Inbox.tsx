@@ -2,7 +2,7 @@
 // Inbox screen:
 // - Lists conversation threads
 // - Allows creating a new conversation
-// - Parents are limited to messaging lecturers and admins
+// - Parents are limited to messaging academic staff and admins
 // - Uses shared neon glass styles for consistent layout
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -148,7 +148,7 @@ export default function Inbox() {
         (r) => r.email.trim().toLowerCase() === email
       );
       if (!allowed) {
-        setError("Parents can only message lecturers or admins.");
+        setError("Parents can only message academic staff or admins.");
         return;
       }
     }
@@ -199,7 +199,7 @@ export default function Inbox() {
                 <h2 className="text-lg font-semibold text-white">New Message</h2>
                 <p className="mt-1 text-sm text-white/72">
                   {isParent
-                    ? "Start a new conversation with a lecturer or admin."
+                    ? "Start a new conversation with academic staff or admin."
                     : "Start a new conversation by entering the other participant's email."}
                 </p>
               </div>
@@ -236,7 +236,7 @@ export default function Inbox() {
                       <option value="">
                         {loadingRecipients
                           ? "Loading recipients..."
-                          : "No lecturer/admin recipients found"}
+                          : "No academic staff/admin recipients found"}
                       </option>
                     ) : (
                       recipients.map((r) => (

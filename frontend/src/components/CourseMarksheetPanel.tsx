@@ -272,7 +272,7 @@ export default function CourseMarksheetPanel({
       <div className="rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.56)] p-3 text-sm text-white/75">
         {activeModule
           ? `Managing ${activeModule.code} - ${activeModule.name}.`
-          : "Select a module to load the lecturer marksheet."}
+          : "Select a module to load the academic marksheet."}
       </div>
 
       <input

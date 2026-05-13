@@ -29,7 +29,7 @@ export default function CourseAssessmentsPanel({
   onSelectedModuleIdChange,
   canManage,
   title = "Assessments",
-  subtitle = "Lecturers can upload assessments for a module, and enrolled students can download the files relevant to their modules.",
+  subtitle = "Academic staff can upload assessments for a module, and enrolled students can download the files relevant to their modules.",
 }: CourseAssessmentsPanelProps) {
   const [internalModuleId, setInternalModuleId] = useState(selectedModuleId ?? "");
   const [items, setItems] = useState<UploadRecord[]>([]);

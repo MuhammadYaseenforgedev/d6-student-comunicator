@@ -53,7 +53,7 @@ The bootstrap seeds demo users with password:
 
 Emails:
 1. `admin_demo@local.test` (ADMIN)
-2. `lecturer_demo@local.test` (LECTURER)
+2. `lecturer_demo@local.test` (legacy academic staff account)
 3. `student_demo@local.test` (STUDENT, requires student number at login)
 4. `student_demo2@local.test` (STUDENT, requires student number at login)
 5. `parent_demo@local.test` (PARENT)
@@ -71,9 +71,9 @@ Staff self-registration password (env controlled):
 3. Login as `PARENT`, submit link request with student SA ID.
 4. Return to `ADMIN`, approve request.
 5. Login as `PARENT`, confirm linked child appears and parent can view results/finance/calendar.
-6. Login as `LECTURER`, verify announcements and uploads management.
+6. Login as Academic Admin, verify announcements and uploads management.
 7. Login as `STUDENT`, verify student login requires student number plus email/password.
-8. Open messaging from `PARENT` to `LECTURER` and verify replies.
+8. Open messaging from `PARENT` to academic staff/admin and verify replies.
 
 ## 6) Stop Demo
 From repo root:

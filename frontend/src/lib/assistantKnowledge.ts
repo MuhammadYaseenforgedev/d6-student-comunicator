@@ -249,7 +249,7 @@ export function getRoleAssistantProfile(
       return {
         key,
         name: "Mentor",
-        subtitle: "Lecturer workspace guide",
+        subtitle: "Academic workspace guide",
         placeholder:
           "Ask about modules, messages, uploads, attendance, or results...",
         welcome:
@@ -355,11 +355,11 @@ export function getAuthAssistantProfile(
     case "LECTURER":
       return {
         name: "Mentor",
-        subtitle: "Lecturer registration guide",
+        subtitle: "Academic staff registration guide",
         placeholder:
-          "Ask about lecturer registration, staff password, or OTP...",
+          "Ask about academic staff registration, staff password, or OTP...",
         welcome:
-          "I am Mentor. I can help you register a lecturer account, explain the staff password, and guide you into the teaching workspace.",
+          "I am Mentor. I can help with protected staff registration, explain the staff password, and guide you into the academic workspace.",
       };
 
     case "ADMIN":
@@ -404,7 +404,7 @@ export function getAuthContext(mode: AuthMode, role: UserRole) {
     case "LECTURER":
     case "ADMIN":
       return {
-        title: `${role === "LECTURER" ? "Lecturer" : "Admin"} registration`,
+        title: `${role === "LECTURER" ? "Academic staff" : "Admin"} registration`,
         summary:
           "Staff registration needs email, password, confirm password, OTP, and the shared staff registration password before the account can be created.",
       };
@@ -581,7 +581,7 @@ function studentDestinations(): AssistantDestination[] {
       "Modules",
       "/app/modules",
       ["module", "modules", "subject", "subjects"],
-      "Modules is the quickest place to review linked study modules and the lecturers attached to them."
+      "Modules is the quickest place to review linked study modules and the academic staff attached to them."
     ),
     destination(
       "faculty",
@@ -609,7 +609,7 @@ function studentDestinations(): AssistantDestination[] {
       "Uploads",
       "/app/uploads",
       ["upload", "uploads", "file", "files", "submission", "submissions", "assessment", "assessments", "assignment", "assignments"],
-      "Uploads lets you submit student work and download lecturer materials shared with your account."
+      "Uploads lets you submit student work and download academic materials shared with your account."
     ),
     destination(
       "messages",
@@ -670,7 +670,7 @@ function lecturerDestinations(): AssistantDestination[] {
       "Modules",
       "/app/modules",
       ["module", "modules", "subject", "subjects"],
-      "Modules is where you review the teaching spaces assigned to your lecturer account."
+      "Modules is where you review the teaching spaces assigned to your academic staff account."
     ),
     destination(
       "faculty",
@@ -698,7 +698,7 @@ function lecturerDestinations(): AssistantDestination[] {
       "Uploads",
       "/app/uploads",
       ["upload", "uploads", "file", "files", "submission", "submissions", "materials", "assessment", "assessments", "assignment", "assignments"],
-      "Uploads lets you share lecturer materials, review student submissions, and download the files your role can access."
+      "Uploads lets you share academic materials, review student submissions, and download the files your role can access."
     ),
     destination(
       "messages",
@@ -719,14 +719,14 @@ function lecturerDestinations(): AssistantDestination[] {
       "Attendance",
       "/app/attendance",
       ["attendance", "roster", "check in", "check-in", "sessions"],
-      "Attendance is where lecturers manage sessions, rosters, and attendance marking."
+      "Attendance is where academic staff manage sessions, rosters, and attendance marking."
     ),
     destination(
       "manage-results",
       "Manage Results",
       "/app/manage-results",
       ["manage results", "publish results", "result", "results", "grades", "marks"],
-      "Manage Results is where lecturers publish, update, and review learner results."
+      "Manage Results is where academic staff publish, update, and review learner results."
     ),
   ];
 }
@@ -1094,7 +1094,7 @@ function buildWorkflowInstruction(
   switch (destination.id) {
     case "uploads":
       if (user.role === "LECTURER") {
-        return "Open Uploads to share lecturer materials or review student submissions.";
+        return "Open Uploads to share academic materials or review student submissions.";
       }
       if (user.role === "PARENT") {
         return "Open Uploads to view or download files available to your linked child.";

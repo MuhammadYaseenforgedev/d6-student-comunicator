@@ -4,7 +4,7 @@
 // - Allow eligible users to upload files
 // - List uploaded files the current user can access
 // - Support download for visible files
-// - Support delete for lecturer/admin roles
+// - Support delete for academic staff/admin roles
 // - Keep styling aligned with the shared neon glass theme
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -53,7 +53,7 @@ function prettySize(bytes: number) {
 function kindLabel(kind: UploadKind): string {
   return kind === "STUDENT_SUBMISSION"
     ? "Student submission"
-    : "Lecturer material";
+    : "Academic material";
 }
 
 function buildUploadModuleOptions(
@@ -114,7 +114,7 @@ function uploadContextLabel(upload: UploadRecord): string {
 
 function noCourseMessage(role: UserRole): string {
   if (role === "STUDENT") return "You are not linked to any enrolled modules yet.";
-  if (role === "LECTURER") return "No teaching modules are assigned to your lecturer account yet.";
+  if (role === "LECTURER") return "No teaching modules are assigned to your academic staff account yet.";
   return "No courses are available for uploads yet.";
 }
 
@@ -317,7 +317,7 @@ export default function Uploads1() {
       return "Choose a course and module first, then upload the file into the correct academic context.";
     }
     if (role === "LECTURER") {
-      return "Choose one of your assigned teaching modules before uploading lecturer material.";
+      return "Choose one of your assigned teaching modules before uploading academic material.";
     }
     if (role === "PARENT") {
       return "View submissions and shared files tied to your approved child links.";
@@ -325,7 +325,7 @@ export default function Uploads1() {
     if (role === "STUDENT") {
       return "Choose one of your enrolled modules before uploading a student submission.";
     }
-    return "View and download shared lecturer materials.";
+    return "View and download shared academic materials.";
   }, [isAdmin, role]);
 
   async function onUpload(e: React.FormEvent<HTMLFormElement>) {
@@ -333,7 +333,7 @@ export default function Uploads1() {
     setError(null);
 
     if (!canUpload) {
-      setError("Only students, lecturers, or admin can upload.");
+      setError("Only students, academic staff, or admin can upload.");
       return;
     }
 
@@ -420,8 +420,8 @@ export default function Uploads1() {
                   ? "Student submissions stay tied to the selected course, module, and student."
                   : "Student submissions stay tied to the selected course and module."
                 : isAdmin
-                  ? "Lecturer materials are saved against the selected course and module, with an optional lecturer target."
-                  : "Lecturer materials are saved against the selected course and module."}
+                  ? "Academic materials are saved against the selected course and module, with an optional staff target."
+                  : "Academic materials are saved against the selected course and module."}
             </div>
 
             <form onSubmit={onUpload} className="mt-4 space-y-3">
@@ -442,7 +442,7 @@ export default function Uploads1() {
                     aria-label="Upload type"
                     title="Upload type"
                   >
-                    <option value="LECTURER_MATERIAL">Lecturer material</option>
+                    <option value="LECTURER_MATERIAL">Academic material</option>
                     <option value="STUDENT_SUBMISSION">
                       Student submission
                     </option>
@@ -525,7 +525,7 @@ export default function Uploads1() {
                   >
                     {uploadKind === "STUDENT_SUBMISSION"
                       ? "For student"
-                      : "For lecturer (optional)"}
+                      : "For academic staff (optional)"}
                   </label>
                   <select
                     id="upload-target"
@@ -645,7 +645,7 @@ export default function Uploads1() {
                   : role === "PARENT"
                     ? "You can view uploads linked to your approved children."
                   : canUpload
-                    ? "You can view lecturer materials and submissions within your allowed academic scope."
+                    ? "You can view academic materials and submissions within your allowed academic scope."
                     : "You can view materials your role is allowed to access."}
               </div>
             </div>

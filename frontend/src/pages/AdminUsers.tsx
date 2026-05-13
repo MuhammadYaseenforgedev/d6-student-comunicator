@@ -177,7 +177,7 @@ export default function AdminUsers() {
 
   async function onDelete(account: AdminAccount) {
     if (isLecturerViewer) {
-      setError("Lecturers cannot delete accounts.");
+      setError("Legacy staff cannot delete accounts.");
       return;
     }
 
@@ -215,7 +215,7 @@ export default function AdminUsers() {
 
   function beginEdit(account: AdminAccount) {
     if (isLecturerViewer) {
-      setError("Lecturers can view student accounts but cannot edit account records.");
+      setError("Legacy staff can view student accounts but cannot edit account records.");
       return;
     }
 
@@ -267,7 +267,7 @@ export default function AdminUsers() {
     e.preventDefault();
 
     if (isLecturerViewer) {
-      setError("Lecturers cannot create accounts.");
+      setError("Legacy staff cannot create accounts.");
       return;
     }
 
@@ -587,7 +587,7 @@ export default function AdminUsers() {
           <div>
             <div className="text-lg font-semibold text-white">Student Accounts</div>
             <div className="mt-1 text-sm text-white/72">
-              Lecturer access is read-only. Account creation, password resets, student number edits, and deletion remain restricted to Academic Admins and Super Admins.
+              Legacy staff access is read-only. Account creation, password resets, student number edits, and deletion remain restricted to Academic Admins and Super Admins.
             </div>
           </div>
           {error && <div className="error-banner">{error}</div>}

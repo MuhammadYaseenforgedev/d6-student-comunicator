@@ -154,7 +154,7 @@ export default function StudentResults() {
               Assessment results
             </div>
             <div className="mt-1 text-sm text-white/70">
-              Your lecturers and admins publish results here. Result notifications now open this page directly.
+              Academic staff publish results here. Result notifications now open this page directly.
             </div>
           </div>
 
