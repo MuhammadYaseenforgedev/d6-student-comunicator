@@ -290,6 +290,36 @@ describe("Attendance RBAC + marking", () => {
     expect(Number(after.rows[0]?.count ?? 0)).toBe(Number(before.rows[0]?.count ?? 0));
   });
 
+  test("academic admin attendance session preserves selected South Africa time", async () => {
+    const res = await request(app)
+      .post("/api/attendance/sessions")
+      .set(auth(ctx.academicAdminToken))
+      .send({
+        moduleId: ctx.moduleId,
+        date: "2026-05-14",
+        startsAt: "2026-05-14T08:00:00+02:00",
+        endsAt: "2026-05-14T08:30:00+02:00",
+      });
+
+    expect(res.status).toBe(201);
+    expect(String(res.body?.date ?? "")).toBe("2026-05-14");
+    expect(new Date(String(res.body?.startsAt ?? "")).toISOString()).toBe(
+      "2026-05-14T06:00:00.000Z"
+    );
+    expect(new Date(String(res.body?.endsAt ?? "")).toISOString()).toBe(
+      "2026-05-14T06:30:00.000Z"
+    );
+
+    const formatter = new Intl.DateTimeFormat("en-ZA", {
+      timeZone: "Africa/Johannesburg",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    expect(formatter.format(new Date(String(res.body?.startsAt ?? "")))).toBe("08:00");
+    expect(formatter.format(new Date(String(res.body?.endsAt ?? "")))).toBe("08:30");
+  });
+
   test("super admin can create and mark attendance without lecturer assignment", async () => {
     const session = await request(app)
       .post("/api/attendance/sessions")

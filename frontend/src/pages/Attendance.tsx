@@ -414,6 +414,14 @@ function StaffAttendanceView() {
       .finally(() => setDetailLoading(false));
   }, [sessionId]);
 
+  function combineLocalDateTime(dateValue: string, timeValue: string): string | undefined {
+    if (!dateValue || !timeValue) return undefined;
+    const normalizedTime = timeValue.length === 5 ? `${timeValue}:00` : timeValue;
+    const selected = new Date(`${dateValue}T${normalizedTime}`);
+    if (Number.isNaN(selected.getTime())) return undefined;
+    return selected.toISOString();
+  }
+
   async function createSession() {
     if (!moduleId) return setError("Select a module first.");
 
@@ -425,8 +433,8 @@ function StaffAttendanceView() {
       const created = await createAttendanceSession({
         moduleId,
         date,
-        startsAt: startsAt || undefined,
-        endsAt: endsAt || undefined,
+        startsAt: combineLocalDateTime(date, startsAt),
+        endsAt: combineLocalDateTime(date, endsAt),
       });
 
       setInfo(`Session created for ${created.date}.`);
@@ -545,9 +553,9 @@ function StaffAttendanceView() {
             <Field label="Start (optional)" htmlFor="attendance-start">
               <input
                 id="attendance-start"
-                title="Attendance start date and time"
-                aria-label="Attendance start date and time"
-                type="datetime-local"
+                title="Attendance start time"
+                aria-label="Attendance start time"
+                type="time"
                 value={startsAt}
                 onChange={(e) => setStartsAt(e.target.value)}
                 className="input-glass"
@@ -557,9 +565,9 @@ function StaffAttendanceView() {
             <Field label="End (optional)" htmlFor="attendance-end">
               <input
                 id="attendance-end"
-                title="Attendance end date and time"
-                aria-label="Attendance end date and time"
-                type="datetime-local"
+                title="Attendance end time"
+                aria-label="Attendance end time"
+                type="time"
                 value={endsAt}
                 onChange={(e) => setEndsAt(e.target.value)}
                 className="input-glass"

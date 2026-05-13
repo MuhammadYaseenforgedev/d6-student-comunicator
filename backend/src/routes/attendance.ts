@@ -1431,7 +1431,7 @@ attendanceRouter.post(
           course_id,
           calendar_entry_id,
           course_schedule_template_id,
-          attendance_date,
+          attendance_date::text AS attendance_date,
           starts_at::text AS starts_at,
           ends_at::text AS ends_at,
           attendance_open_at::text AS attendance_open_at,
