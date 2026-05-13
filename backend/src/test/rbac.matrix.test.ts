@@ -102,13 +102,13 @@ describe("RBAC matrix (automated)", () => {
     },
 
     {
-      name: "LECTURER can create announcement",
+      name: "LECTURER cannot create announcement",
       run: () =>
         request(app)
           .post(`/api/channels/${ctx.channelId}/announcements`)
           .set(auth(ctx.lecturerToken))
           .send({ title: `t-${Date.now()}`, body: "hello" }),
-      expect: [200, 201],
+      expect: [401, 403],
     },
 
     {

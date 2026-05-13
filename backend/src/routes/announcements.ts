@@ -412,7 +412,7 @@ announcementRouter.get(
 
 announcementRouter.post(
   "/channels/:channelId/announcements",
-  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
     try {
       const { channelId } = req.params as { channelId: string };
@@ -498,7 +498,7 @@ announcementRouter.post(
 
 announcementRouter.patch(
   "/channels/:channelId/announcements/:announcementId",
-  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
     try {
       const { channelId, announcementId } = req.params as {
@@ -562,7 +562,7 @@ announcementRouter.patch(
 
 announcementRouter.delete(
   "/channels/:channelId/announcements/:announcementId",
-  requireAccess({ roles: ["ADMIN", "LECTURER"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
   async (req, res) => {
     try {
       const { channelId, announcementId } = req.params as {

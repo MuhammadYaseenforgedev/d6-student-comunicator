@@ -380,16 +380,17 @@ describe("Notification inbox and auth header parsing", () => {
   });
 
   test("removes stale announcement notifications after the source announcement is deleted", async () => {
+    const admin = await createUser("ADMIN");
     const lecturer = await createUser("LECTURER");
     const student = await createUser("STUDENT");
 
-    const lecturerToken = signJwt(lecturer);
+    const adminToken = signJwt(admin);
     const studentToken = signJwt(student);
     const channelId = await createChannel(lecturer.id, `notice-${Date.now()}`);
 
     const createRes = await request(app)
       .post(`/api/channels/${channelId}/announcements`)
-      .set(auth(lecturerToken))
+      .set(auth(adminToken))
       .send({ title: `notice-${Date.now()}`, body: "important notice body" });
 
     expect(createRes.status).toBe(201);
@@ -408,7 +409,7 @@ describe("Notification inbox and auth header parsing", () => {
 
     const deleteRes = await request(app)
       .delete(`/api/channels/${channelId}/announcements/${announcementId}`)
-      .set(auth(lecturerToken));
+      .set(auth(adminToken));
 
     expect(deleteRes.status).toBe(200);
 
@@ -424,16 +425,17 @@ describe("Notification inbox and auth header parsing", () => {
   });
 
   test("removes announcement notifications after the source announcement expires", async () => {
+    const admin = await createUser("ADMIN");
     const lecturer = await createUser("LECTURER");
     const student = await createUser("STUDENT");
 
-    const lecturerToken = signJwt(lecturer);
+    const adminToken = signJwt(admin);
     const studentToken = signJwt(student);
     const channelId = await createChannel(lecturer.id, `expiring-notice-${Date.now()}`);
 
     const createRes = await request(app)
       .post(`/api/channels/${channelId}/announcements`)
-      .set(auth(lecturerToken))
+      .set(auth(adminToken))
       .send({
         title: `expiring-${Date.now()}`,
         body: "temporary notice",

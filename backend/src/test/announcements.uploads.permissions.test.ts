@@ -5,6 +5,7 @@ import { cleanupTestUsers, createChannel, createUser, signJwt } from "./helpers"
 
 type Ctx = {
   adminToken: string;
+  academicAdminToken: string;
   financeAdminToken: string;
   lecturerToken: string;
   studentToken: string;
@@ -49,6 +50,7 @@ describe("Announcements and uploads permissions", () => {
 
   beforeAll(async () => {
     const admin = await createUser("ADMIN");
+    const academicAdmin = await createUser("ADMIN", undefined, "Passw0rd!", "ACADEMIC");
     const financeAdmin = await createUser("ADMIN", undefined, "Passw0rd!", "FINANCE");
     const lecturer = await createUser("LECTURER");
     const student = await createUser("STUDENT");
@@ -56,6 +58,7 @@ describe("Announcements and uploads permissions", () => {
     const parent = await createUser("PARENT");
 
     ctx.adminToken = signJwt(admin);
+    ctx.academicAdminToken = signJwt(academicAdmin);
     ctx.financeAdminToken = signJwt(financeAdmin);
     ctx.lecturerToken = signJwt(lecturer);
     ctx.studentToken = signJwt(student);
@@ -191,7 +194,7 @@ describe("Announcements and uploads permissions", () => {
   test("Parent and student can view announcements", async () => {
     const created = await request(app)
       .post(`/api/channels/${ctx.channelId}/announcements`)
-      .set(auth(ctx.lecturerToken))
+      .set(auth(ctx.adminToken))
       .send({ title: `notice-${Date.now()}`, body: "body" });
     expect(created.status).toBe(201);
     ctx.announcementId = String(created.body?.id ?? "");
@@ -208,12 +211,36 @@ describe("Announcements and uploads permissions", () => {
     expect(studentList.status).toBe(200);
   });
 
-  test("Lecturer and admin can edit/delete announcements; parent/student cannot", async () => {
+  test("Academic and super admins can manage announcements; lecturer, parent, and student cannot", async () => {
+    const academicAdminCreate = await request(app)
+      .post(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.academicAdminToken))
+      .send({ title: `academic-admin-${Date.now()}`, body: "body" });
+    expect(academicAdminCreate.status).toBe(201);
+
+    const superAdminCreate = await request(app)
+      .post(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.adminToken))
+      .send({ title: `super-admin-${Date.now()}`, body: "body" });
+    expect(superAdminCreate.status).toBe(201);
+
+    const lecturerCreate = await request(app)
+      .post(`/api/channels/${ctx.channelId}/announcements`)
+      .set(auth(ctx.lecturerToken))
+      .send({ title: `lecturer-deny-${Date.now()}`, body: "body" });
+    expect(lecturerCreate.status).toBe(403);
+
     const lecturerEdit = await request(app)
       .patch(`/api/channels/${ctx.channelId}/announcements/${ctx.announcementId}`)
       .set(auth(ctx.lecturerToken))
       .send({ title: `edited-${Date.now()}` });
-    expect(lecturerEdit.status).toBe(200);
+    expect(lecturerEdit.status).toBe(403);
+
+    const adminEdit = await request(app)
+      .patch(`/api/channels/${ctx.channelId}/announcements/${ctx.announcementId}`)
+      .set(auth(ctx.academicAdminToken))
+      .send({ title: `edited-${Date.now()}` });
+    expect(adminEdit.status).toBe(200);
 
     const parentEdit = await request(app)
       .patch(`/api/channels/${ctx.channelId}/announcements/${ctx.announcementId}`)
@@ -226,6 +253,11 @@ describe("Announcements and uploads permissions", () => {
       .set(auth(ctx.studentToken));
     expect([401, 403]).toContain(studentDelete.status);
 
+    const lecturerDelete = await request(app)
+      .delete(`/api/channels/${ctx.channelId}/announcements/${ctx.announcementId}`)
+      .set(auth(ctx.lecturerToken));
+    expect(lecturerDelete.status).toBe(403);
+
     const adminDelete = await request(app)
       .delete(`/api/channels/${ctx.channelId}/announcements/${ctx.announcementId}`)
       .set(auth(ctx.adminToken));
@@ -235,7 +267,7 @@ describe("Announcements and uploads permissions", () => {
   test("Module announcements are scoped to linked modules", async () => {
     const allowedCreate = await request(app)
       .post(`/api/channels/${ctx.modulesChannelId}/announcements`)
-      .set(auth(ctx.lecturerToken))
+      .set(auth(ctx.academicAdminToken))
       .send({
         title: `module-ann-${Date.now()}`,
         body: "Module-specific notice",
@@ -282,7 +314,7 @@ describe("Announcements and uploads permissions", () => {
   test("Announcements: expiry is validated and expired items are hidden by default", async () => {
     const pastCreate = await request(app)
       .post(`/api/channels/${ctx.channelId}/announcements`)
-      .set(auth(ctx.lecturerToken))
+      .set(auth(ctx.adminToken))
       .send({
         title: `expired-${Date.now()}`,
         body: "Should be rejected",
@@ -292,7 +324,7 @@ describe("Announcements and uploads permissions", () => {
 
     const futureCreate = await request(app)
       .post(`/api/channels/${ctx.channelId}/announcements`)
-      .set(auth(ctx.lecturerToken))
+      .set(auth(ctx.adminToken))
       .send({
         title: `timed-${Date.now()}`,
         body: "Visible for a while",
