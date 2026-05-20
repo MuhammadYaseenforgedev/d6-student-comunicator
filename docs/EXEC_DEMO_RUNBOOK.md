@@ -4,26 +4,44 @@
 
 ### Vercel (frontend project)
 - `VITE_API_URL=https://d6-student-comunicator.onrender.com`
+- `VITE_DATA_MODE=api`
+- `VITE_ENABLE_DEMO_LOGIN=false`
+- `VITE_API_TARGET=primary`
+- `VITE_API_URL_SECONDARY=` unless intentionally using a secondary backend
 
 ### Render (backend service)
 - `NODE_ENV=production`
 - `APP_ENV=production`
 - `DATABASE_URL=<neon-connection-string>`
 - `JWT_SECRET=<strong-random-secret>`
-- `CORS_ORIGIN=https://<your-vercel-production-domain>`
+- `CORS_ALLOW_ORIGINS=https://<your-vercel-production-domain>`
   - Multiple origins supported via comma-separated values.
+  - `CORS_ORIGIN` is supported only as a legacy fallback.
+  - `CORS_CREDENTIALS` is not an active runtime control.
 - `THREADS_MODE=D6`
 - `AUTH_REQUIRE_OTP=true`
 - `AUTH_ALLOW_PASSWORD_LOGIN=false`
 - `AUTH_ALLOW_PASSWORD_REGISTER=false`
 - `AUTH_STAFF_REGISTER_PASSWORD=<staff-registration-password>`
 - `ALLOW_DEMO_OTP_BYPASS=false`
+- `DEMO_SEED_ENABLED=false` or absent after seeding is complete
 - `SMTP_HOST=<smtp-hostname>`
 - `SMTP_PORT=587`
 - `SMTP_SECURE=false`
 - `SMTP_USER=<smtp-username>`
 - `SMTP_PASS=<smtp-password>`
 - `SMTP_FROM=<verified-sender@your-domain>`
+- Preferred upload storage:
+  - `SUPABASE_URL=<supabase-project-url>`
+  - `SUPABASE_SERVICE_ROLE_KEY=<supabase-service-role-key>`
+  - `SUPABASE_STORAGE_BUCKET=uploads`
+- Fallback upload storage:
+  - `UPLOAD_DIR=<absolute persistent mounted disk path>`
+
+Production notes:
+- `DEMO_MODE` and `DEMO_BYPASS_LOGIN` are not active production controls.
+- `APP_ENV=production` forces OTP and disables password-only login/register shortcuts even if shortcut env vars are misconfigured.
+- `ALLOW_DEMO_OTP_BYPASS` must remain `false` in production.
 
 ## 2) Deploy + Seed
 
@@ -57,7 +75,9 @@ Frontend deploy settings:
 ### OTP login behavior
 - `POST /api/auth/request-otp` returns `200` when provider is configured.
 - In production, response does not include `devOtp`.
-- If provider keys are missing, `/api/auth/request-otp` returns `503` with `OTP email service is not configured`.
+- SMTP variables are required for usable OTP email delivery.
+- Login OTP requests may intentionally return `200` with `emailDeliveryEnabled:false` if SMTP is unavailable, to avoid account enumeration.
+- Check SMTP provider logs and backend logs for actual delivery issues.
 
 ### Role login checks
 - Admin login returns `200` + token.
@@ -72,7 +92,9 @@ Frontend deploy settings:
 ### Upload/download smoke (PowerShell)
 
 Note:
-- Files are stored on disk (`UPLOAD_DIR`) and served through protected route `GET /api/uploads/:id/download` (auth + role checks). There is no public unauthenticated static mount for uploads.
+- Files are preferably stored in private Supabase Storage. If Supabase Storage is not configured, files are stored on disk (`UPLOAD_DIR`) and must use a persistent mounted path in production.
+- A blank/local `UPLOAD_DIR` on Render-style ephemeral disk is not durable.
+- Files are served through protected route `GET /api/uploads/:id/download` (auth + role checks). There is no public unauthenticated static mount for uploads.
 
 ```powershell
 $BaseUrl = "https://d6-student-comunicator.onrender.com"
@@ -123,6 +145,7 @@ Expected outcomes:
 - Parent results: `GET /api/parent/results?childId=20231771` returns `count >= 4`.
 - Parent finance: `GET /api/parent/finance?childId=20231771` returns non-empty `documents`.
 - Calendar endpoints for student/academic staff return seeded rows.
+- Calendar ICS feed copy creates a signed private URL. Anyone with that URL can view the included calendar events; feed revocation is future work.
 
 ## 5) Send-to-Execs Template
 

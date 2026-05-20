@@ -9,7 +9,9 @@ Use the seeded demo accounts and verify these flows after deploy.
 3. Student login with correct credentials and student number succeeds.
 4. Parent login with correct credentials succeeds.
 5. Wrong password is rejected with an auth error.
-6. If OTP is required in this environment, password-only login is blocked unless `AUTH_ALLOW_PASSWORD_LOGIN=true`.
+6. In production (`APP_ENV=production`), OTP is required and password-only login is blocked even if shortcut env vars are misconfigured.
+7. In non-production only, password-only login can be explicitly enabled with `AUTH_ALLOW_PASSWORD_LOGIN=true`.
+8. If SMTP is unavailable, login OTP requests may return `200` with `emailDeliveryEnabled:false`; check SMTP provider logs and backend logs for delivery issues.
 
 ## RBAC
 

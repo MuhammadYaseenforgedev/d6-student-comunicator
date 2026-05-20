@@ -10,8 +10,10 @@ This guide starts a local, executive-shareable demo with:
 This is for local pilot/demo only.
 
 Cloud hosting note:
-1. Upload files are stored on local/container disk (`backend/uploads` by default).
-2. On free hosting platforms with ephemeral storage, uploaded files do not persist across restarts/redeploys.
+1. Production should use private Supabase Storage when `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET` are configured.
+2. If Supabase Storage is not configured, upload files are stored on local/container disk (`backend/uploads` by default, or `UPLOAD_DIR` when set).
+3. On free hosting platforms with ephemeral storage, blank/local `UPLOAD_DIR` does not persist across restarts/redeploys.
+4. Cloud production must use `APP_ENV=production`, `NODE_ENV=production`, `CORS_ALLOW_ORIGINS=<frontend-origin>`, `VITE_DATA_MODE=api`, and `VITE_ENABLE_DEMO_LOGIN=false`.
 
 ## 2) Prerequisites
 1. Windows PowerShell 5+ (or PowerShell 7).

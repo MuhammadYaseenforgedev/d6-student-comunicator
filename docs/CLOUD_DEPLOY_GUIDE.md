@@ -55,6 +55,7 @@ SMTP_FROM=<verified-sender@your-domain>
 
 THREADS_MODE=D6
 ALLOW_DEMO_OTP_BYPASS=false
+DEMO_SEED_ENABLED=false
 OTP_TTL_MINUTES=10
 OTP_MAX_ATTEMPTS=5
 OTP_EMAIL_WINDOW_MINUTES=10
@@ -63,11 +64,22 @@ OTP_IP_WINDOW_MINUTES=10
 OTP_IP_MAX_PER_WINDOW=25
 
 # Comma-separated allowlist (no spaces required)
-CORS_ORIGIN=https://<your-vercel-app>.vercel.app,https://<your-custom-frontend-domain>
+CORS_ALLOW_ORIGINS=https://<your-vercel-app>.vercel.app,https://<your-custom-frontend-domain>
 
-# Persistent upload directory mounted on the host/container
-UPLOAD_DIR=/var/lib/d6/uploads
+# Preferred persistent upload storage
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<supabase-service-role-key>
+SUPABASE_STORAGE_BUCKET=uploads
+
+# Fallback only when using a persistent mounted disk instead of Supabase Storage
+UPLOAD_DIR=
 ```
+
+Notes:
+1. `CORS_ORIGIN` remains supported by the backend as a legacy fallback, but production docs should use `CORS_ALLOW_ORIGINS`.
+2. `CORS_CREDENTIALS` is not an active runtime control in this app; the backend does not use credentialed CORS.
+3. `DEMO_MODE` and `DEMO_BYPASS_LOGIN` are not active production controls. Keep `APP_ENV=production`, `NODE_ENV=production`, `ALLOW_DEMO_OTP_BYPASS=false`, and `DEMO_SEED_ENABLED=false` or unset.
+4. In `APP_ENV=production`, the backend forces OTP and disables password-only login/register shortcuts even if shortcut env vars are accidentally set.
 
 ## 3) Deploy Frontend on Vercel
 
@@ -84,7 +96,15 @@ Set frontend environment variables (Vercel -> Environment Variables):
 VITE_API_URL=https://<your-render-backend>.onrender.com
 VITE_API_BASE_URL=
 VITE_DATA_MODE=api
+VITE_ENABLE_DEMO_LOGIN=false
+VITE_API_TARGET=primary
+VITE_API_URL_SECONDARY=
 ```
+
+Production notes:
+1. `VITE_API_URL` must point to the Render backend, not `localhost`.
+2. Keep `VITE_DATA_MODE=api`; `mock`/`demo` modes use local frontend demo data.
+3. Keep `VITE_ENABLE_DEMO_LOGIN=false`; local demo login is only for mock/demo frontend data modes.
 
 SPA routing:
 1. This repo includes `vercel.json` rewrite to route all frontend paths to `index.html`.
@@ -92,19 +112,29 @@ SPA routing:
 
 ## 4) CORS Allowlist Example
 
-Use exact frontend origins in `CORS_ORIGIN`:
+Use exact frontend origins in `CORS_ALLOW_ORIGINS`:
 
 ```env
-CORS_ORIGIN=https://d6-communicator.vercel.app,https://demo.yourdomain.com
+CORS_ALLOW_ORIGINS=https://d6-communicator.vercel.app,https://demo.yourdomain.com
 ```
 
-The backend accepts a comma-separated list and trims entries automatically.
+The backend accepts a comma-separated list and trims entries automatically. `CORS_ORIGIN` is still accepted as a legacy fallback, but prefer `CORS_ALLOW_ORIGINS` for all production setups.
 
 ## 5) Upload Persistence
 
-Current upload storage is filesystem-based. That is acceptable for production only if `UPLOAD_DIR` points to a persistent mounted directory.
+Preferred production upload storage is Supabase Storage. Files are still served through protected backend download routes; do not expose the bucket publicly for app access.
 
 Recommended production setup:
+
+1. Create a private Supabase Storage bucket.
+2. Set:
+```env
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<supabase-service-role-key>
+SUPABASE_STORAGE_BUCKET=uploads
+```
+
+Fallback production setup:
 
 1. Create or mount a persistent directory on the backend host, for example:
    1. `/var/lib/d6/uploads`
@@ -115,18 +145,37 @@ Recommended production setup:
 UPLOAD_DIR=/var/lib/d6/uploads
 ```
 
-If you leave `UPLOAD_DIR` blank, the app falls back to `backend/uploads` inside the app filesystem:
+If Supabase Storage is not configured and you leave `UPLOAD_DIR` blank, the app falls back to `backend/uploads` inside the app filesystem:
 
 1. Uploaded files can be lost on restart/redeploy on ephemeral hosts.
 2. Metadata in Postgres may remain while file blobs disappear.
 
 The current app now prunes broken upload metadata when files are missing, but that is cleanup protection, not durable storage.
 
-## 6) After URLs Go Live
+## 6) OTP Email Delivery
+
+SMTP is required for usable production OTP delivery:
+
+```env
+SMTP_HOST=<smtp-hostname>
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<smtp-username>
+SMTP_PASS=<smtp-password>
+SMTP_FROM=<verified-sender@your-domain>
+```
+
+Production login OTP requests may intentionally return `200` with `emailDeliveryEnabled:false` if SMTP is unavailable, to avoid account enumeration. Operators must check SMTP provider logs and backend logs for actual delivery failures.
+
+## 7) Calendar ICS Feeds
+
+Calendar subscription feeds use signed private URLs. Anyone with a feed URL can view the calendar events included by that user's current feed scope. Feed revocation is not implemented yet and should be treated as future work.
+
+## 8) After URLs Go Live
 
 After first successful deploy:
 
-1. Update backend `CORS_ORIGIN` with the final Vercel domain(s).
+1. Update backend `CORS_ALLOW_ORIGINS` with the final Vercel domain(s).
 2. Update frontend `VITE_API_URL` to the final Render backend URL.
 3. Redeploy backend and frontend.
 4. Verify:
