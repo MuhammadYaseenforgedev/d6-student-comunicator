@@ -1,6 +1,9 @@
 import { Router } from "express";
+import jwt from "jsonwebtoken";
+import { getEffectiveAdminScope, type AdminScope } from "../lib/adminAccess";
 import { pool } from "../config/db";
 import { isLecturerAssignedToCourse } from "../lib/courseAccess";
+import { buildIcsCalendar } from "../lib/ics";
 import { requireAccess } from "../middleware/rbac";
 import { pgCalendarRepo } from "../repos/pgCalendarRepo";
 
@@ -48,9 +51,73 @@ function normalizeRole(raw: unknown): "ADMIN" | "LECTURER" | "STUDENT" | "PARENT
   return "STUDENT";
 }
 
+function parseFeedRole(raw: unknown): "ADMIN" | "LECTURER" | "STUDENT" | "PARENT" | null {
+  const role = String(raw ?? "").trim().toUpperCase();
+  if (role === "ADMIN" || role === "LECTURER" || role === "STUDENT" || role === "PARENT") {
+    return role;
+  }
+  return null;
+}
+
+export const calendarFeedRouter = Router();
 export const calendarRouter = Router();
 
 // requireAuth is already applied globally in app.ts
+
+type CalendarFeedTokenPayload = {
+  purpose: "calendar-feed";
+  userId: string;
+  role: "ADMIN" | "LECTURER" | "STUDENT" | "PARENT";
+  adminScope?: AdminScope | null;
+  childId?: string | null;
+};
+
+function getJwtSecret(): string {
+  const secret = String(process.env.JWT_SECRET ?? "").trim();
+  if (!secret) throw Object.assign(new Error("JWT_SECRET not configured"), { code: "CONFIG" });
+  return secret;
+}
+
+function feedUrlForRequest(req: any, token: string): string {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0]?.trim();
+  const protocol = forwardedProto || req.protocol || "http";
+  const host = req.get("host") ?? "localhost";
+  return `${protocol}://${host}/api/calendar/ics/${encodeURIComponent(token)}`;
+}
+
+function verifyCalendarFeedToken(raw: string): CalendarFeedTokenPayload | null {
+  const token = String(raw ?? "").trim();
+  if (!token) return null;
+
+  try {
+    const payload = jwt.verify(token, getJwtSecret(), {
+      issuer: "forge-communicator",
+      audience: "calendar-feed",
+    });
+    if (typeof payload !== "object" || payload === null) return null;
+
+    const decoded = payload as Partial<CalendarFeedTokenPayload>;
+    const role = parseFeedRole(decoded.role);
+    const userId = String(decoded.userId ?? "").trim();
+    const childId = String(decoded.childId ?? "").trim();
+
+    if (decoded.purpose !== "calendar-feed") return null;
+    if (!role) return null;
+    if (!isUuid(userId)) return null;
+    if (role === "PARENT" && (!childId || !isUuid(childId))) return null;
+    if (role !== "PARENT" && childId) return null;
+
+    return {
+      purpose: "calendar-feed",
+      userId,
+      role,
+      adminScope: getEffectiveAdminScope({ role, adminScope: decoded.adminScope }),
+      childId: childId || null,
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function parentHasChild(parentId: string, childId: string): Promise<boolean> {
   const q = `
@@ -62,6 +129,111 @@ async function parentHasChild(parentId: string, childId: string): Promise<boolea
   const r = await pool.query(q, [parentId, childId]);
   return (r.rowCount ?? 0) > 0;
 }
+
+// POST /calendar/feed-token
+calendarRouter.post(
+  "/calendar/feed-token",
+  requireAccess({
+    roles: ["LECTURER", "STUDENT", "PARENT"],
+    adminScopes: ["ACADEMIC", "SUPER"],
+  }),
+  async (req, res) => {
+    try {
+      const user = req.user!;
+      const childId = String(req.body?.childId ?? "").trim();
+
+      if (user.role === "PARENT") {
+        if (!childId) return err(res, 400, "VALIDATION", "childId is required for parent feeds");
+        if (!isUuid(childId)) return err(res, 400, "VALIDATION", "childId must be a UUID");
+
+        const ok = await parentHasChild(user.id, childId);
+        if (!ok) return err(res, 403, "FORBIDDEN", "Parent is not linked to this child");
+      } else if (childId) {
+        return err(res, 400, "VALIDATION", "childId is only supported for parent feeds");
+      }
+
+      const payload: CalendarFeedTokenPayload = {
+        purpose: "calendar-feed",
+        userId: user.id,
+        role: user.role,
+        adminScope: getEffectiveAdminScope(user),
+        childId: user.role === "PARENT" ? childId : null,
+      };
+
+      const token = jwt.sign(payload, getJwtSecret(), {
+        expiresIn: "180d",
+        issuer: "forge-communicator",
+        audience: "calendar-feed",
+      });
+
+      return res.json({
+        token,
+        feedUrl: feedUrlForRequest(req, token),
+        expiresInDays: 180,
+      });
+    } catch (e: any) {
+      console.error("[calendar] POST /calendar/feed-token error", e);
+      const status = e?.code === "CONFIG" ? 500 : 500;
+      return err(res, status, "INTERNAL", "Failed to create calendar feed token");
+    }
+  }
+);
+
+// GET /calendar/ics/:token
+calendarFeedRouter.get("/calendar/ics/:token", async (req, res) => {
+  try {
+    const payload = verifyCalendarFeedToken(String(req.params.token ?? ""));
+    if (!payload) return err(res, 401, "UNAUTHORIZED", "Invalid or expired calendar feed token");
+
+    if (payload.role === "ADMIN") {
+      const scope = getEffectiveAdminScope(payload);
+      if (scope !== "ACADEMIC" && scope !== "SUPER") {
+        return err(res, 403, "FORBIDDEN", "Calendar feed is not available for this admin scope");
+      }
+    }
+
+    let targetUserId = payload.userId;
+    let targetRole = payload.role;
+
+    if (payload.role === "PARENT") {
+      const childId = String(payload.childId ?? "").trim();
+      const ok = await parentHasChild(payload.userId, childId);
+      if (!ok) return err(res, 403, "FORBIDDEN", "Parent is not linked to this child");
+      targetUserId = childId;
+      targetRole = "STUDENT";
+    }
+
+    const now = new Date();
+    const starts = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const ends = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    const entries = await pgCalendarRepo.listForUser(targetUserId, {
+      role: targetRole,
+      start: starts,
+      end: ends,
+      limit: 250,
+    });
+
+    const ics = buildIcsCalendar(
+      entries.map((entry) => ({
+        id: entry.id,
+        source: entry.source,
+        title: entry.title,
+        description: entry.description,
+        location: entry.location,
+        startsAt: entry.startsAt,
+        endsAt: entry.endsAt,
+      }))
+    );
+
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Content-Disposition", 'inline; filename="forge-calendar.ics"');
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.status(200).send(ics);
+  } catch (e: any) {
+    console.error("[calendar] GET /calendar/ics/:token error", e);
+    return err(res, 500, "INTERNAL", "Failed to load calendar feed");
+  }
+});
 
 async function validateCalendarCourseAccess(user: { id: string; role: string }, courseId: string) {
   if (!isUuid(courseId)) {

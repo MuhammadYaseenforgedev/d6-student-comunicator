@@ -15,7 +15,7 @@ import { eventRouter } from "./routes/events";
 import { uploadRouter } from "./routes/uploads";
 import { parentRouter } from "./routes/parent";
 import { threadRouter } from "./routes/threads";
-import { calendarRouter } from "./routes/calendar";
+import { calendarFeedRouter, calendarRouter } from "./routes/calendar";
 import { financeRouter } from "./routes/finance";
 import { userRouter } from "./routes/users";
 import { meRouter } from "./routes/me";
@@ -122,6 +122,7 @@ export function createApp() {
   app.use("/api/auth", authRouter);
   app.use("/api/support", supportRouter);
   app.use("/api/assistant", assistantPublicRouter);
+  app.use("/api", calendarFeedRouter);
 
   // =========================
   // Everything below requires auth
