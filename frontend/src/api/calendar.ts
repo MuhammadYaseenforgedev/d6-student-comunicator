@@ -19,6 +19,13 @@ export type CalendarEntry = {
   source?: CalendarEntrySource;
 };
 
+export type CalendarFeedTokenResponse = {
+  token: string;
+  feedUrl: string;
+  expiresInDays?: number;
+  expiresAt?: string;
+};
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -85,4 +92,14 @@ export async function updateCalendarEntry(
 
 export async function deleteCalendarEntry(id: string): Promise<void> {
   await apiDelete<void>(`/api/calendar/${id}`);
+}
+
+export async function createCalendarFeedToken(options?: {
+  childId?: string;
+}): Promise<CalendarFeedTokenResponse> {
+  const childId = options?.childId?.trim();
+  return apiPost<CalendarFeedTokenResponse>(
+    "/api/calendar/feed-token",
+    childId ? { childId } : {}
+  );
 }

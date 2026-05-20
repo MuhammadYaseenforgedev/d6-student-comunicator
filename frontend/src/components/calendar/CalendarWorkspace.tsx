@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Copy,
   Layers3,
   MapPin,
   PencilLine,
@@ -20,7 +21,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import type { CalendarEntry } from "../../api/calendar";
+import { createCalendarFeedToken, type CalendarEntry } from "../../api/calendar";
 import { useCalendarApi } from "../../hooks/useCalendarApi";
 import type { CourseRecord } from "../../lib/courseApi";
 import CalendarEntryEditorModal, {
@@ -198,6 +199,10 @@ export default function CalendarWorkspace({ childId, courseOptions = [] }: Props
   const [editorState, setEditorState] = useState<EditorState | null>(null);
   const [savingEntry, setSavingEntry] = useState(false);
   const [deletingEntry, setDeletingEntry] = useState(false);
+  const [copyingFeedLink, setCopyingFeedLink] = useState(false);
+  const [feedCopyMessage, setFeedCopyMessage] = useState<string | null>(null);
+  const [feedCopyWarning, setFeedCopyWarning] = useState<string | null>(null);
+  const [fallbackFeedUrl, setFallbackFeedUrl] = useState("");
 
   const counts = useMemo(() => {
     let personal = 0;
@@ -268,6 +273,32 @@ export default function CalendarWorkspace({ childId, courseOptions = [] }: Props
 
   async function handleRefresh() {
     await reload();
+  }
+
+  async function handleCopyFeedLink() {
+    setCopyingFeedLink(true);
+    setFeedCopyMessage(null);
+    setFeedCopyWarning(null);
+    setFallbackFeedUrl("");
+
+    try {
+      const { feedUrl } = await createCalendarFeedToken(childId ? { childId } : {});
+      if (!feedUrl) throw new Error("Calendar feed link was not returned.");
+
+      try {
+        await navigator.clipboard.writeText(feedUrl);
+        setFeedCopyMessage("Calendar feed link copied. Keep this private.");
+      } catch {
+        setFallbackFeedUrl(feedUrl);
+        setFeedCopyWarning(
+          "Copy this private feed link manually. Anyone with this link can view the included calendar events."
+        );
+      }
+    } catch (e) {
+      setFeedCopyWarning(e instanceof Error ? e.message : "Failed to create calendar feed link.");
+    } finally {
+      setCopyingFeedLink(false);
+    }
   }
 
   function openCreateModal() {
@@ -386,28 +417,46 @@ export default function CalendarWorkspace({ childId, courseOptions = [] }: Props
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.46)] px-3 py-2 text-xs text-white/62">
-                  {loading ? "Syncing calendar..." : `${filteredItems.length} event${filteredItems.length === 1 ? "" : "s"} in view`}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  className="btn-secondary px-4 py-2"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <RefreshCcw size={16} />
-                    Refresh
-                  </span>
-                </button>
-                {canCreate ? (
-                  <button type="button" onClick={openCreateModal} className="btn-primary px-4 py-2">
+              <div className="flex flex-col gap-2 xl:items-end">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="rounded-2xl border border-[rgba(140,235,255,0.14)] bg-[rgba(8,18,48,0.46)] px-3 py-2 text-xs text-white/62">
+                    {loading ? "Syncing calendar..." : `${filteredItems.length} event${filteredItems.length === 1 ? "" : "s"} in view`}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRefresh}
+                    className="btn-secondary px-4 py-2"
+                  >
                     <span className="inline-flex items-center gap-2">
-                      <Plus size={16} />
-                      New entry
+                      <RefreshCcw size={16} />
+                      Refresh
                     </span>
                   </button>
-                ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleCopyFeedLink();
+                    }}
+                    className="btn-secondary px-4 py-2"
+                    disabled={copyingFeedLink}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Copy size={16} />
+                      {copyingFeedLink ? "Copying..." : "Copy calendar feed link"}
+                    </span>
+                  </button>
+                  {canCreate ? (
+                    <button type="button" onClick={openCreateModal} className="btn-primary px-4 py-2">
+                      <span className="inline-flex items-center gap-2">
+                        <Plus size={16} />
+                        New entry
+                      </span>
+                    </button>
+                  ) : null}
+                </div>
+                <div className="max-w-xl text-xs leading-5 text-white/58 xl:text-right">
+                  Use this private link to subscribe in Outlook, Google Calendar, or Apple Calendar. Keep it private.
+                </div>
               </div>
             </div>
 
@@ -460,6 +509,17 @@ export default function CalendarWorkspace({ childId, courseOptions = [] }: Props
           </div>
 
           {error && <div className="error-banner">{error}</div>}
+          {feedCopyMessage ? <div className="info-banner p-3 text-sm">{feedCopyMessage}</div> : null}
+          {feedCopyWarning ? <div className="error-banner p-3 text-sm">{feedCopyWarning}</div> : null}
+          {fallbackFeedUrl ? (
+            <textarea
+              className="min-h-[5rem] w-full resize-y rounded-2xl border border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.58)] p-3 text-xs text-white/78 outline-none"
+              readOnly
+              value={fallbackFeedUrl}
+              aria-label="Private calendar feed link"
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          ) : null}
 
           <div className="grid min-h-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="glass-panel-strong d6-calendar-shell min-h-[28rem] min-w-0 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:max-h-[72dvh]">
