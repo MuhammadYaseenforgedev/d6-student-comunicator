@@ -31,6 +31,19 @@
 - `SMTP_USER=<smtp-username>`
 - `SMTP_PASS=<smtp-password>`
 - `SMTP_FROM=<verified-sender@your-domain>`
+- WhatsApp outbound notification config, prepared for future use only:
+  - `WHATSAPP_ENABLED=false`
+  - `WHATSAPP_PROVIDER=none`
+  - `WHATSAPP_DRY_RUN=true`
+  - `WHATSAPP_DEFAULT_COUNTRY_CODE=ZA`
+  - `WHATSAPP_ALLOWED_CATEGORIES=ANNOUNCEMENT,EMERGENCY,ATTENDANCE,PARENT_LINK`
+  - `TWILIO_ACCOUNT_SID=`
+  - `TWILIO_AUTH_TOKEN=`
+  - `TWILIO_WHATSAPP_FROM=`
+  - `TWILIO_MESSAGING_SERVICE_SID=`
+  - `WHATSAPP_META_ACCESS_TOKEN=`
+  - `WHATSAPP_META_PHONE_NUMBER_ID=`
+  - `WHATSAPP_META_API_VERSION=`
 - Preferred upload storage:
   - `SUPABASE_URL=<supabase-project-url>`
   - `SUPABASE_SERVICE_ROLE_KEY=<supabase-service-role-key>`
@@ -42,6 +55,7 @@ Production notes:
 - `DEMO_MODE` and `DEMO_BYPASS_LOGIN` are not active production controls.
 - `APP_ENV=production` forces OTP and disables password-only login/register shortcuts even if shortcut env vars are misconfigured.
 - `ALLOW_DEMO_OTP_BYPASS` must remain `false` in production.
+- WhatsApp must remain disabled/dry-run until outbound delivery, consent/opt-out handling, and provider template approval are implemented.
 
 ## 2) Deploy + Seed
 

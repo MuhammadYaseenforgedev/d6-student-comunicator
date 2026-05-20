@@ -202,6 +202,67 @@ export type NotificationSummary = {
   counts: Partial<Record<NotificationCategory, number>>;
 };
 
+export type NotificationDeliveryChannel = "WHATSAPP";
+
+export type NotificationDeliveryStatus =
+  | "PENDING"
+  | "SKIPPED"
+  | "DRY_RUN"
+  | "SENT"
+  | "FAILED"
+  | "DELIVERED";
+
+export type NotificationDeliveryProvider = "none" | "twilio" | "meta";
+
+export type UserContactPreference = {
+  id: string;
+  userId: string;
+  whatsappPhoneE164: string | null;
+  whatsappEnabled: boolean;
+  whatsappOptedInAt: string | null;
+  whatsappOptedOutAt: string | null;
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotificationDelivery = {
+  id: string;
+  notificationId: string | null;
+  userId: string;
+  channel: NotificationDeliveryChannel;
+  provider: NotificationDeliveryProvider;
+  templateName: string | null;
+  status: NotificationDeliveryStatus;
+  providerMessageId: string | null;
+  errorCode: string | null;
+  attemptedAt: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateNotificationDeliveryAttemptInput = {
+  notificationId?: string | null;
+  userId: string;
+  channel: NotificationDeliveryChannel;
+  provider: NotificationDeliveryProvider;
+  templateName?: string | null;
+  status?: NotificationDeliveryStatus;
+  providerMessageId?: string | null;
+  errorCode?: string | null;
+  attemptedAt?: string | null;
+  deliveredAt?: string | null;
+};
+
+export type UpdateNotificationDeliveryStatusInput = {
+  status: NotificationDeliveryStatus;
+  providerMessageId?: string | null;
+  errorCode?: string | null;
+  attemptedAt?: string | null;
+  deliveredAt?: string | null;
+};
+
 /* =========
    Inputs
    ========= */
@@ -453,6 +514,17 @@ export type NotificationRepo = {
   markAllRead(userId: string, categories?: NotificationCategory[]): Promise<number>;
 };
 
+export type NotificationDeliveryRepo = {
+  getContactPreferenceForUser(userId: string): Promise<UserContactPreference | null>;
+  isWhatsAppOptedIn(userId: string): Promise<boolean>;
+  createDeliveryAttempt(input: CreateNotificationDeliveryAttemptInput): Promise<NotificationDelivery>;
+  updateDeliveryStatus(
+    id: string,
+    input: UpdateNotificationDeliveryStatusInput
+  ): Promise<NotificationDelivery | null>;
+  listDeliveriesForNotification(notificationId: string): Promise<NotificationDelivery[]>;
+};
+
 /* =========
    Repos object shape
    ========= */
@@ -468,4 +540,5 @@ export type Repos = {
   calendar: CalendarRepo;
   finance: FinanceRepo;
   notifications: NotificationRepo;
+  notificationDeliveries: NotificationDeliveryRepo;
 };

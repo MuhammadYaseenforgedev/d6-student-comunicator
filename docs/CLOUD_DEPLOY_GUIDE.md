@@ -53,6 +53,21 @@ SMTP_USER=<smtp-username>
 SMTP_PASS=<smtp-password>
 SMTP_FROM=<verified-sender@your-domain>
 
+# WhatsApp outbound notification config is prepared for future use only.
+# Keep disabled/dry-run until outbound delivery is implemented and approved.
+WHATSAPP_ENABLED=false
+WHATSAPP_PROVIDER=none
+WHATSAPP_DRY_RUN=true
+WHATSAPP_DEFAULT_COUNTRY_CODE=ZA
+WHATSAPP_ALLOWED_CATEGORIES=ANNOUNCEMENT,EMERGENCY,ATTENDANCE,PARENT_LINK
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_WHATSAPP_FROM=
+TWILIO_MESSAGING_SERVICE_SID=
+WHATSAPP_META_ACCESS_TOKEN=
+WHATSAPP_META_PHONE_NUMBER_ID=
+WHATSAPP_META_API_VERSION=
+
 THREADS_MODE=D6
 ALLOW_DEMO_OTP_BYPASS=false
 DEMO_SEED_ENABLED=false
@@ -171,7 +186,21 @@ Production login OTP requests may intentionally return `200` with `emailDelivery
 
 Calendar subscription feeds use signed private URLs. Anyone with a feed URL can view the calendar events included by that user's current feed scope. Feed revocation is not implemented yet and should be treated as future work.
 
-## 8) After URLs Go Live
+## 8) WhatsApp Outbound Notifications
+
+WhatsApp outbound notification settings are documented for future integration only. The safe production defaults are:
+
+```env
+WHATSAPP_ENABLED=false
+WHATSAPP_PROVIDER=none
+WHATSAPP_DRY_RUN=true
+WHATSAPP_DEFAULT_COUNTRY_CODE=ZA
+WHATSAPP_ALLOWED_CATEGORIES=ANNOUNCEMENT,EMERGENCY,ATTENDANCE,PARENT_LINK
+```
+
+Provider credentials must remain blank until a provider is selected, message templates are approved, consent/opt-out handling is implemented, and the backend sender is wired up.
+
+## 9) After URLs Go Live
 
 After first successful deploy:
 

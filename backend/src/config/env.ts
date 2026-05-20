@@ -4,8 +4,26 @@ import dotenv from "dotenv";
 
 const VALID_APP_ENVS = ["development", "test", "staging", "demo", "production", "local"] as const;
 const DEFAULT_DEMO_OTP_ALLOWED_ENVS = ["test", "staging", "demo"] as const;
+const VALID_WHATSAPP_PROVIDERS = ["none", "twilio", "meta"] as const;
+const VALID_WHATSAPP_CATEGORIES = [
+  "MESSAGE",
+  "ANNOUNCEMENT",
+  "EMERGENCY",
+  "ATTENDANCE",
+  "RESULT",
+  "FINANCE",
+  "PARENT_LINK",
+] as const;
+const DEFAULT_WHATSAPP_ALLOWED_CATEGORIES = [
+  "ANNOUNCEMENT",
+  "EMERGENCY",
+  "ATTENDANCE",
+  "PARENT_LINK",
+] as const;
 
 export type AppEnv = (typeof VALID_APP_ENVS)[number];
+export type WhatsAppProvider = (typeof VALID_WHATSAPP_PROVIDERS)[number];
+export type WhatsAppNotificationCategory = (typeof VALID_WHATSAPP_CATEGORIES)[number];
 
 function loadEnvFile() {
   const explicit = String(process.env.ENV_FILE ?? "").trim();
@@ -114,6 +132,41 @@ function parseAppEnvList(raw: string | undefined): AppEnv[] {
   return Array.from(seen);
 }
 
+function parseWhatsAppProvider(raw: string | undefined): WhatsAppProvider {
+  const normalized = String(raw ?? "").trim().toLowerCase() || "none";
+  if (!VALID_WHATSAPP_PROVIDERS.includes(normalized as WhatsAppProvider)) {
+    throw new Error(
+      `Invalid WHATSAPP_PROVIDER: expected one of ${VALID_WHATSAPP_PROVIDERS.join(", ")} but received "${raw}"`
+    );
+  }
+  return normalized as WhatsAppProvider;
+}
+
+function parseWhatsAppCategories(raw: string | undefined): WhatsAppNotificationCategory[] {
+  const values = String(raw ?? "")
+    .split(",")
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+
+  if (values.length === 0) {
+    return [...DEFAULT_WHATSAPP_ALLOWED_CATEGORIES];
+  }
+
+  const seen = new Set<WhatsAppNotificationCategory>();
+  for (const value of values) {
+    if (!VALID_WHATSAPP_CATEGORIES.includes(value as WhatsAppNotificationCategory)) {
+      throw new Error(
+        `Invalid WHATSAPP_ALLOWED_CATEGORIES entry: expected one of ${VALID_WHATSAPP_CATEGORIES.join(
+          ", "
+        )} but received "${value}"`
+      );
+    }
+    seen.add(value as WhatsAppNotificationCategory);
+  }
+
+  return Array.from(seen);
+}
+
 export function getAppEnv(): AppEnv {
   const rawAppEnv = String(process.env.APP_ENV ?? "").trim();
   if (rawAppEnv) {
@@ -178,6 +231,23 @@ const PULSE_TICKET_FORM_URL =
   String(process.env.PULSE_TICKET_FORM_URL ?? "").trim() ||
   "https://pulse.forgetalent.co.za/ticket.php";
 const PULSE_SYNC_TIMEOUT_MS = parsePositiveInt(process.env.PULSE_SYNC_TIMEOUT_MS, 10000);
+const WHATSAPP_ENABLED = parseBoolean(process.env.WHATSAPP_ENABLED, false);
+const WHATSAPP_PROVIDER = parseWhatsAppProvider(process.env.WHATSAPP_PROVIDER);
+const WHATSAPP_DRY_RUN = parseBoolean(process.env.WHATSAPP_DRY_RUN, true);
+const WHATSAPP_DEFAULT_COUNTRY_CODE =
+  String(process.env.WHATSAPP_DEFAULT_COUNTRY_CODE ?? "").trim().toUpperCase() || "ZA";
+const WHATSAPP_ALLOWED_CATEGORIES = parseWhatsAppCategories(process.env.WHATSAPP_ALLOWED_CATEGORIES);
+const TWILIO_ACCOUNT_SID = String(process.env.TWILIO_ACCOUNT_SID ?? "").trim() || undefined;
+const TWILIO_AUTH_TOKEN = String(process.env.TWILIO_AUTH_TOKEN ?? "").trim() || undefined;
+const TWILIO_WHATSAPP_FROM = String(process.env.TWILIO_WHATSAPP_FROM ?? "").trim() || undefined;
+const TWILIO_MESSAGING_SERVICE_SID =
+  String(process.env.TWILIO_MESSAGING_SERVICE_SID ?? "").trim() || undefined;
+const WHATSAPP_META_ACCESS_TOKEN =
+  String(process.env.WHATSAPP_META_ACCESS_TOKEN ?? "").trim() || undefined;
+const WHATSAPP_META_PHONE_NUMBER_ID =
+  String(process.env.WHATSAPP_META_PHONE_NUMBER_ID ?? "").trim() || undefined;
+const WHATSAPP_META_API_VERSION =
+  String(process.env.WHATSAPP_META_API_VERSION ?? "").trim() || undefined;
 
 if (!DATABASE_URL && !DB_PASSWORD) {
   required("DB_PASSWORD");
@@ -214,6 +284,20 @@ export const env = {
   PULSE_SYNC_ENABLED,
   PULSE_TICKET_FORM_URL,
   PULSE_SYNC_TIMEOUT_MS,
+
+  // WhatsApp outbound notification config. No sender is wired up yet.
+  WHATSAPP_ENABLED,
+  WHATSAPP_PROVIDER,
+  WHATSAPP_DRY_RUN,
+  WHATSAPP_DEFAULT_COUNTRY_CODE,
+  WHATSAPP_ALLOWED_CATEGORIES,
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN,
+  TWILIO_WHATSAPP_FROM,
+  TWILIO_MESSAGING_SERVICE_SID,
+  WHATSAPP_META_ACCESS_TOKEN,
+  WHATSAPP_META_PHONE_NUMBER_ID,
+  WHATSAPP_META_API_VERSION,
 
   // Demo OTP bypass controls
   get ALLOW_DEMO_OTP_BYPASS(): boolean {
