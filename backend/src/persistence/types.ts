@@ -508,7 +508,7 @@ export type FinanceRepo = {
 export type NotificationRepo = {
   listForUser(userId: string, opts?: NotificationListOptions): Promise<NotificationListResult>;
   getUnreadSummary(userId: string): Promise<NotificationSummary>;
-  createMany(inputs: CreateNotificationInput[]): Promise<void>;
+  createMany(inputs: CreateNotificationInput[]): Promise<Notification[]>;
   upsert(input: CreateNotificationInput & { sourceKey: string }): Promise<Notification>;
   markRead(userId: string, notificationId: string): Promise<boolean>;
   markAllRead(userId: string, categories?: NotificationCategory[]): Promise<number>;

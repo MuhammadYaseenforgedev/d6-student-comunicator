@@ -45,8 +45,8 @@ function mapNotification(row: NotificationRow): Notification {
   };
 }
 
-async function insertOne(input: CreateNotificationInput): Promise<void> {
-  await pool.query(
+async function insertOne(input: CreateNotificationInput): Promise<Notification | null> {
+  const result = await pool.query<NotificationRow>(
     `
       INSERT INTO user_notifications (
         user_id,
@@ -60,6 +60,18 @@ async function insertOne(input: CreateNotificationInput): Promise<void> {
       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
       ON CONFLICT (user_id, source_key) WHERE source_key IS NOT NULL
       DO NOTHING
+      RETURNING
+        id,
+        user_id,
+        category,
+        type,
+        title,
+        body,
+        meta,
+        source_key,
+        is_read,
+        read_at,
+        created_at
     `,
     [
       input.userId,
@@ -71,6 +83,7 @@ async function insertOne(input: CreateNotificationInput): Promise<void> {
       input.sourceKey ?? null,
     ]
   );
+  return result.rows[0] ? mapNotification(result.rows[0]) : null;
 }
 
 export const pgNotificationRepo: NotificationRepo = {
@@ -152,11 +165,14 @@ export const pgNotificationRepo: NotificationRepo = {
     return { totalUnread, counts };
   },
 
-  async createMany(inputs: CreateNotificationInput[]): Promise<void> {
+  async createMany(inputs: CreateNotificationInput[]): Promise<Notification[]> {
+    const created: Notification[] = [];
     for (const input of inputs) {
       if (!input.userId || !input.title) continue;
-      await insertOne(input);
+      const notification = await insertOne(input);
+      if (notification) created.push(notification);
     }
+    return created;
   },
 
   async upsert(input: CreateNotificationInput & { sourceKey: string }): Promise<Notification> {

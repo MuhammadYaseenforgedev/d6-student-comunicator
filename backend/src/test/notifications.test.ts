@@ -2,6 +2,7 @@ import request from "supertest";
 import crypto from "crypto";
 import { app } from "../app";
 import { pool } from "../config/db";
+import { env } from "../config/env";
 import { cleanupTestUsers, createChannel, createUser, signJwt } from "./helpers";
 
 type NotificationDto = {
@@ -17,6 +18,48 @@ function auth(token: string, spaced = false) {
   return { Authorization: spaced ? `Bearer    ${token}` : `Bearer ${token}` };
 }
 
+async function upsertWhatsAppPreference(userId: string) {
+  await pool.query(
+    `
+      INSERT INTO user_contact_preferences (
+        user_id,
+        whatsapp_phone_e164,
+        whatsapp_enabled,
+        whatsapp_opted_in_at,
+        whatsapp_opted_out_at,
+        source
+      )
+      VALUES ($1, '+27820000001', true, now(), NULL, 'test')
+      ON CONFLICT (user_id) DO UPDATE
+      SET
+        whatsapp_phone_e164 = EXCLUDED.whatsapp_phone_e164,
+        whatsapp_enabled = EXCLUDED.whatsapp_enabled,
+        whatsapp_opted_in_at = EXCLUDED.whatsapp_opted_in_at,
+        whatsapp_opted_out_at = NULL,
+        updated_at = now()
+    `,
+    [userId]
+  );
+}
+
+async function listWhatsAppDeliveries(notificationId: string) {
+  const result = await pool.query<{
+    status: string;
+    template_name: string | null;
+    provider_message_id: string | null;
+    error_code: string | null;
+  }>(
+    `
+      SELECT status, template_name, provider_message_id, error_code
+      FROM notification_deliveries
+      WHERE notification_id = $1
+      ORDER BY created_at ASC
+    `,
+    [notificationId]
+  );
+  return result.rows;
+}
+
 describe("Notification inbox and auth header parsing", () => {
   const previousThreadsMode = process.env.THREADS_MODE;
   const attendanceSessionIds: string[] = [];
@@ -24,13 +67,27 @@ describe("Notification inbox and auth header parsing", () => {
   const courseIds: string[] = [];
   const facultyIds: string[] = [];
   const parentLinkRequestIds: string[] = [];
+  const previousWhatsAppConfig = {
+    enabled: env.WHATSAPP_ENABLED,
+    dryRun: env.WHATSAPP_DRY_RUN,
+    provider: env.WHATSAPP_PROVIDER,
+    allowedCategories: [...env.WHATSAPP_ALLOWED_CATEGORIES],
+  };
 
   beforeAll(() => {
     process.env.THREADS_MODE = "D6";
+    env.WHATSAPP_ENABLED = true;
+    env.WHATSAPP_DRY_RUN = true;
+    env.WHATSAPP_PROVIDER = "none";
+    env.WHATSAPP_ALLOWED_CATEGORIES = ["ANNOUNCEMENT", "EMERGENCY", "ATTENDANCE", "PARENT_LINK"];
   });
 
   afterAll(async () => {
     process.env.THREADS_MODE = previousThreadsMode;
+    env.WHATSAPP_ENABLED = previousWhatsAppConfig.enabled;
+    env.WHATSAPP_DRY_RUN = previousWhatsAppConfig.dryRun;
+    env.WHATSAPP_PROVIDER = previousWhatsAppConfig.provider;
+    env.WHATSAPP_ALLOWED_CATEGORIES = previousWhatsAppConfig.allowedCategories;
     if (attendanceSessionIds.length > 0) {
       await pool.query(`DELETE FROM attendance_records WHERE session_id = ANY($1::uuid[])`, [attendanceSessionIds]);
       await pool.query(`DELETE FROM attendance_sessions WHERE id = ANY($1::uuid[])`, [attendanceSessionIds]);
@@ -92,6 +149,7 @@ describe("Notification inbox and auth header parsing", () => {
     const messageNotification = items.find((item) => item.category === "MESSAGE");
     expect(messageNotification).toBeTruthy();
     expect(messageNotification?.meta?.href).toBe(`/app/messages/${threadId}`);
+    expect(await listWhatsAppDeliveries(messageNotification!.id)).toHaveLength(0);
 
     const markRes = await request(app)
       .post(`/api/notifications/${messageNotification!.id}/read`)
@@ -146,6 +204,15 @@ describe("Notification inbox and auth header parsing", () => {
     expect(resultSummaryRes.status).toBe(200);
     expect(Number(resultSummaryRes.body?.counts?.RESULT ?? 0)).toBeGreaterThanOrEqual(1);
 
+    const resultListRes = await request(app)
+      .get("/api/notifications?category=RESULT&unreadOnly=true")
+      .set(auth(parentToken));
+    expect(resultListRes.status).toBe(200);
+    const resultItems = Array.isArray(resultListRes.body?.value) ? (resultListRes.body.value as NotificationDto[]) : [];
+    const resultNotification = resultItems.find((item) => item.category === "RESULT");
+    expect(resultNotification).toBeTruthy();
+    expect(await listWhatsAppDeliveries(resultNotification!.id)).toHaveLength(0);
+
     await pool.query(
       `
         INSERT INTO finance_accounts (user_id, balance_cents, currency, updated_at)
@@ -162,6 +229,15 @@ describe("Notification inbox and auth header parsing", () => {
 
     expect(financeSummaryRes.status).toBe(200);
     expect(Number(financeSummaryRes.body?.counts?.FINANCE ?? 0)).toBeGreaterThanOrEqual(1);
+
+    const financeListRes = await request(app)
+      .get("/api/notifications?category=FINANCE&unreadOnly=true")
+      .set(auth(parentToken));
+    expect(financeListRes.status).toBe(200);
+    const financeItems = Array.isArray(financeListRes.body?.value) ? (financeListRes.body.value as NotificationDto[]) : [];
+    const financeNotification = financeItems.find((item) => item.category === "FINANCE");
+    expect(financeNotification).toBeTruthy();
+    expect(await listWhatsAppDeliveries(financeNotification!.id)).toHaveLength(0);
   });
 
   test("creates attendance notifications for marked students and linked parents", async () => {
@@ -172,6 +248,8 @@ describe("Notification inbox and auth header parsing", () => {
     const lecturerToken = signJwt(lecturer);
     const studentToken = signJwt(student);
     const parentToken = signJwt(parent);
+    await upsertWhatsAppPreference(student.id);
+    await upsertWhatsAppPreference(parent.id);
 
     const facultyId = crypto.randomUUID();
     const courseId = crypto.randomUUID();
@@ -266,6 +344,14 @@ describe("Notification inbox and auth header parsing", () => {
     expect(String(studentNotification?.body ?? "")).toContain("Notification Module");
     expect(studentNotification?.meta?.href).toBe("/app/attendance");
     expect(studentNotification?.meta?.status).toBe("ABSENT");
+    const studentAttendanceDeliveries = await listWhatsAppDeliveries(studentNotification!.id);
+    expect(studentAttendanceDeliveries).toHaveLength(1);
+    expect(studentAttendanceDeliveries[0]).toMatchObject({
+      status: "DRY_RUN",
+      template_name: "attendance_update",
+      error_code: null,
+    });
+    expect(JSON.stringify(studentAttendanceDeliveries[0])).not.toContain("ABSENT");
 
     const parentListRes = await request(app)
       .get("/api/notifications?category=ATTENDANCE&unreadOnly=true")
@@ -283,6 +369,14 @@ describe("Notification inbox and auth header parsing", () => {
     expect(parentNotification?.title).toContain("Attendance update");
     expect(String(parentNotification?.body ?? "")).toContain("ABSENT");
     expect(parentNotification?.meta?.href).toBe("/app/parent/attendance");
+    const parentAttendanceDeliveries = await listWhatsAppDeliveries(parentNotification!.id);
+    expect(parentAttendanceDeliveries).toHaveLength(1);
+    expect(parentAttendanceDeliveries[0]).toMatchObject({
+      status: "DRY_RUN",
+      template_name: "attendance_update",
+      error_code: null,
+    });
+    expect(JSON.stringify(parentAttendanceDeliveries[0])).not.toContain("ABSENT");
 
     const markReadRes = await request(app)
       .post(`/api/notifications/${studentNotification!.id}/read`)
@@ -305,6 +399,7 @@ describe("Notification inbox and auth header parsing", () => {
       const student = await createUser("STUDENT");
       const parentToken = signJwt(parent);
       const studentToken = signJwt(student);
+      await upsertWhatsAppPreference(parent.id);
       const southAfricanId = `${Date.now()}${Math.floor(Math.random() * 1_000_000)
         .toString()
         .padStart(6, "0")}`.slice(-13);
@@ -364,6 +459,13 @@ describe("Notification inbox and auth header parsing", () => {
       expect(String(notification?.body ?? "")).toContain(publicStudentId);
       expect(notification?.meta?.href).toBe("/app/parent/children");
       expect(notification?.meta?.decision).toBe(decision);
+      const parentLinkDeliveries = await listWhatsAppDeliveries(notification!.id);
+      expect(parentLinkDeliveries).toHaveLength(1);
+      expect(parentLinkDeliveries[0]).toMatchObject({
+        status: "DRY_RUN",
+        template_name: "parent_link_update",
+        error_code: null,
+      });
 
       const studentSummaryRes = await request(app)
         .get("/api/notifications/summary")
@@ -383,6 +485,7 @@ describe("Notification inbox and auth header parsing", () => {
     const admin = await createUser("ADMIN");
     const lecturer = await createUser("LECTURER");
     const student = await createUser("STUDENT");
+    await upsertWhatsAppPreference(student.id);
 
     const adminToken = signJwt(admin);
     const studentToken = signJwt(student);
@@ -406,6 +509,16 @@ describe("Notification inbox and auth header parsing", () => {
     expect(
       beforeItems.some((item) => String(item.meta?.announcementId ?? "") === announcementId)
     ).toBe(true);
+    const announcementNotification = beforeItems.find(
+      (item) => String(item.meta?.announcementId ?? "") === announcementId
+    );
+    const announcementDeliveries = await listWhatsAppDeliveries(announcementNotification!.id);
+    expect(announcementDeliveries).toHaveLength(1);
+    expect(announcementDeliveries[0]).toMatchObject({
+      status: "DRY_RUN",
+      template_name: "announcement_update",
+      error_code: null,
+    });
 
     const deleteRes = await request(app)
       .delete(`/api/channels/${channelId}/announcements/${announcementId}`)
@@ -422,6 +535,47 @@ describe("Notification inbox and auth header parsing", () => {
     expect(
       afterItems.some((item) => String(item.meta?.announcementId ?? "") === announcementId)
     ).toBe(false);
+  });
+
+  test("creates emergency announcement WhatsApp dry-run delivery with emergency template", async () => {
+    const admin = await createUser("ADMIN");
+    const lecturer = await createUser("LECTURER");
+    const student = await createUser("STUDENT");
+    await upsertWhatsAppPreference(student.id);
+
+    const adminToken = signJwt(admin);
+    const studentToken = signJwt(student);
+    const channelId = await createChannel(lecturer.id, `emergency-${Date.now()}`);
+    await pool.query(`UPDATE channels SET type = 'EMERGENCY' WHERE id = $1`, [channelId]);
+
+    const createRes = await request(app)
+      .post(`/api/channels/${channelId}/announcements`)
+      .set(auth(adminToken))
+      .send({ title: `emergency-${Date.now()}`, body: "emergency notice body" });
+
+    expect(createRes.status).toBe(201);
+    const announcementId = String(createRes.body?.id ?? "");
+    expect(announcementId).toBeTruthy();
+
+    const listRes = await request(app)
+      .get("/api/notifications?category=EMERGENCY")
+      .set(auth(studentToken));
+
+    expect(listRes.status).toBe(200);
+    const items = Array.isArray(listRes.body?.value) ? (listRes.body.value as NotificationDto[]) : [];
+    const emergencyNotification = items.find(
+      (item) => String(item.meta?.announcementId ?? "") === announcementId
+    );
+    expect(emergencyNotification).toBeTruthy();
+    expect(emergencyNotification?.category).toBe("EMERGENCY");
+
+    const deliveries = await listWhatsAppDeliveries(emergencyNotification!.id);
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0]).toMatchObject({
+      status: "DRY_RUN",
+      template_name: "emergency_alert",
+      error_code: null,
+    });
   });
 
   test("removes announcement notifications after the source announcement expires", async () => {

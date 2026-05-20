@@ -1,6 +1,7 @@
 import { pool } from "../config/db";
 import { repos } from "../persistence";
 import type { CreateNotificationInput, NotificationCategory } from "../persistence/types";
+import { fanOutWhatsAppForNotifications } from "./whatsapp/notificationFanout";
 
 type UserRow = {
   id: string;
@@ -43,6 +44,12 @@ function notificationHref(path: string): Record<string, unknown> {
 function financeAmount(balanceCents: number, currency: string): string {
   const value = (balanceCents / 100).toFixed(2);
   return `${currency} ${value}`;
+}
+
+async function fanOutWhatsAppSafely(createdNotifications: Awaited<ReturnType<typeof repos.notifications.createMany>>) {
+  await fanOutWhatsAppForNotifications(createdNotifications).catch((e) => {
+    console.warn("[notifications] WhatsApp dry-run fan-out failed", e);
+  });
 }
 
 async function loadUsersByIds(userIds: string[]): Promise<Map<string, UserRow>> {
@@ -194,7 +201,7 @@ export async function createAnnouncementNotifications(input: {
       ? `Emergency alert: ${input.title}`
       : `New announcement in ${input.moduleLabel ?? channel.name}`;
 
-  await repos.notifications.createMany(
+  const createdNotifications = await repos.notifications.createMany(
     recipients.map((recipient) => ({
       userId: recipient.id,
       category,
@@ -217,6 +224,7 @@ export async function createAnnouncementNotifications(input: {
       sourceKey: `announcement:${input.announcementId}`,
     }))
   );
+  await fanOutWhatsAppSafely(createdNotifications);
 }
 
 export async function createThreadMessageNotifications(input: {
@@ -352,7 +360,8 @@ export async function createAttendanceNotifications(input: {
     }
   }
 
-  await repos.notifications.createMany(notifications);
+  const createdNotifications = await repos.notifications.createMany(notifications);
+  await fanOutWhatsAppSafely(createdNotifications);
 }
 
 export async function createResultNotifications(input: {
@@ -428,7 +437,7 @@ export async function createParentLinkDecisionNotification(input: {
   const student = usersById.get(input.studentId);
   const childDisplay = student ? studentLabel(student) : "student";
 
-  await repos.notifications.createMany([
+  const createdNotifications = await repos.notifications.createMany([
     {
       userId: input.parentId,
       category: "PARENT_LINK",
@@ -448,6 +457,7 @@ export async function createParentLinkDecisionNotification(input: {
       sourceKey: `parent-link:${input.requestId}:${input.decision.toLowerCase()}`,
     },
   ]);
+  await fanOutWhatsAppSafely(createdNotifications);
 }
 
 export async function syncFinanceStatusNotificationsForUser(user: {

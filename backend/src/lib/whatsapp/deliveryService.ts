@@ -8,6 +8,7 @@ import type {
 } from "../../persistence/types";
 import { dryRunWhatsAppProvider } from "./dryRunProvider";
 import type { WhatsAppProvider, WhatsAppTemplateName } from "./provider";
+import { mapNotificationCategoryToWhatsAppTemplate } from "./templates";
 
 type WhatsAppDeliveryConfig = {
   enabled: boolean;
@@ -42,13 +43,6 @@ type SendDeps = {
   provider?: WhatsAppProvider;
 };
 
-const TEMPLATE_BY_CATEGORY: Partial<Record<NotificationCategory, WhatsAppTemplateName>> = {
-  ANNOUNCEMENT: "announcement_update",
-  EMERGENCY: "emergency_alert",
-  ATTENDANCE: "attendance_update",
-  PARENT_LINK: "parent_link_update",
-};
-
 function getDefaultConfig(): WhatsAppDeliveryConfig {
   return {
     enabled: env.WHATSAPP_ENABLED,
@@ -58,8 +52,8 @@ function getDefaultConfig(): WhatsAppDeliveryConfig {
   };
 }
 
-function isAllowedCategory(category: NotificationCategory, config: WhatsAppDeliveryConfig): boolean {
-  return config.allowedCategories.includes(category) && Boolean(TEMPLATE_BY_CATEGORY[category]);
+function isAllowedTemplateCategory(category: NotificationCategory, config: WhatsAppDeliveryConfig): boolean {
+  return config.allowedCategories.includes(category);
 }
 
 async function createSkippedDelivery(
@@ -87,7 +81,8 @@ export async function sendWhatsAppForNotification(
   const config = deps.config ?? getDefaultConfig();
   const deliveryRepo = deps.deliveryRepo ?? repos.notificationDeliveries;
   const provider = deps.provider ?? dryRunWhatsAppProvider;
-  const templateName = TEMPLATE_BY_CATEGORY[input.category] ?? null;
+  const template = mapNotificationCategoryToWhatsAppTemplate(input.category);
+  const templateName = template?.templateName ?? null;
 
   if (!config.enabled) {
     return {
@@ -96,23 +91,24 @@ export async function sendWhatsAppForNotification(
     };
   }
 
-  if (!isAllowedCategory(input.category, config)) {
+  if (!template || !isAllowedTemplateCategory(template.category, config)) {
     return {
       decision: "SKIPPED_CATEGORY",
       delivery: await createSkippedDelivery(deliveryRepo, input, config, "WHATSAPP_CATEGORY_NOT_ALLOWED", null),
     };
   }
-  if (!templateName) {
-    return {
-      decision: "SKIPPED_CATEGORY",
-      delivery: await createSkippedDelivery(deliveryRepo, input, config, "WHATSAPP_CATEGORY_NOT_ALLOWED", null),
-    };
-  }
+  const safeTemplateName = template.templateName;
 
   if (!config.dryRun) {
     return {
       decision: "SKIPPED_NO_DRY_RUN",
-      delivery: await createSkippedDelivery(deliveryRepo, input, config, "WHATSAPP_REAL_SEND_NOT_IMPLEMENTED", templateName),
+      delivery: await createSkippedDelivery(
+        deliveryRepo,
+        input,
+        config,
+        "WHATSAPP_REAL_SEND_NOT_IMPLEMENTED",
+        safeTemplateName
+      ),
     };
   }
 
@@ -120,27 +116,27 @@ export async function sendWhatsAppForNotification(
   if (!preference) {
     return {
       decision: "SKIPPED_NO_PREFERENCE",
-      delivery: await createSkippedDelivery(deliveryRepo, input, config, "WHATSAPP_NO_CONTACT_PREFERENCE", templateName),
+      delivery: await createSkippedDelivery(deliveryRepo, input, config, "WHATSAPP_NO_CONTACT_PREFERENCE", safeTemplateName),
     };
   }
 
   if (!preference.whatsappEnabled || !preference.whatsappPhoneE164 || !preference.whatsappOptedInAt) {
     return {
       decision: "SKIPPED_NOT_OPTED_IN",
-      delivery: await createSkippedDelivery(deliveryRepo, input, config, "WHATSAPP_NOT_OPTED_IN", templateName),
+      delivery: await createSkippedDelivery(deliveryRepo, input, config, "WHATSAPP_NOT_OPTED_IN", safeTemplateName),
     };
   }
 
   if (preference.whatsappOptedOutAt) {
     return {
       decision: "SKIPPED_OPTED_OUT",
-      delivery: await createSkippedDelivery(deliveryRepo, input, config, "WHATSAPP_OPTED_OUT", templateName),
+      delivery: await createSkippedDelivery(deliveryRepo, input, config, "WHATSAPP_OPTED_OUT", safeTemplateName),
     };
   }
 
   const providerResult = await provider.sendTemplateMessage({
     toE164: preference.whatsappPhoneE164,
-    templateName,
+    templateName: safeTemplateName,
   });
 
   const delivery = await deliveryRepo.createDeliveryAttempt({
@@ -148,7 +144,7 @@ export async function sendWhatsAppForNotification(
     userId: input.userId,
     channel: "WHATSAPP",
     provider: provider.provider,
-    templateName,
+    templateName: safeTemplateName,
     status: providerResult.status,
     providerMessageId: providerResult.providerMessageId,
   });

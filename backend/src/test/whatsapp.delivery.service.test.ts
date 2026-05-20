@@ -2,7 +2,6 @@ import { pool } from "../config/db";
 import type { NotificationCategory } from "../persistence/types";
 import { pgNotificationDeliveryRepo } from "../repos/pgNotificationDeliveryRepo";
 import { sendWhatsAppForNotification } from "../lib/whatsapp/deliveryService";
-import { dryRunWhatsAppProvider } from "../lib/whatsapp/dryRunProvider";
 import { cleanupTestUsers, createUser } from "./helpers";
 
 const baseConfig = {
@@ -164,16 +163,26 @@ describe("WhatsApp dry-run delivery service", () => {
     const user = await createUser("PARENT");
     const notificationId = await createNotification(user.id, "EMERGENCY");
     await upsertPreference(user.id, { enabled: true, optedIn: true });
+    const sendTemplateMessage = jest.fn().mockResolvedValue({
+      providerMessageId: "dryrun_test",
+      status: "DRY_RUN",
+    });
 
     const result = await sendWhatsAppForNotification(
       { notificationId, userId: user.id, category: "EMERGENCY" },
-      { config: baseConfig, provider: dryRunWhatsAppProvider }
+      { config: baseConfig, provider: { provider: "none", sendTemplateMessage } }
     );
 
     expect(result.decision).toBe("DRY_RUN");
     expect(result.delivery?.status).toBe("DRY_RUN");
     expect(result.delivery?.templateName).toBe("emergency_alert");
-    expect(result.delivery?.providerMessageId).toMatch(/^dryrun_/);
+    expect(result.delivery?.providerMessageId).toBe("dryrun_test");
+    expect(sendTemplateMessage).toHaveBeenCalledWith({
+      toE164: "+27820000001",
+      templateName: "emergency_alert",
+    });
+    expect(sendTemplateMessage.mock.calls[0][0]).not.toHaveProperty("body");
+    expect(sendTemplateMessage.mock.calls[0][0]).not.toHaveProperty("messageBody");
   });
 
   test("sensitive or disallowed category is skipped before contact lookup", async () => {
