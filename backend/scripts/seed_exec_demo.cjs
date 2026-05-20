@@ -48,6 +48,23 @@ const DEMO_USERS = {
     email: "demo+admin@co.za",
     password: "DemoPass123",
     role: "ADMIN",
+    adminScope: "SUPER",
+    studentNumber: null,
+    southAfricanId: null,
+  },
+  academicAdmin: {
+    email: "demo+academic-admin@co.za",
+    password: "DemoPass123",
+    role: "ADMIN",
+    adminScope: "ACADEMIC",
+    studentNumber: null,
+    southAfricanId: null,
+  },
+  financeAdmin: {
+    email: "demo+finance-admin@co.za",
+    password: "DemoPass123",
+    role: "ADMIN",
+    adminScope: "FINANCE",
     studentNumber: null,
     southAfricanId: null,
   },
@@ -310,9 +327,49 @@ const ATTENDANCE_SEED = {
   ],
 };
 
+const NOTIFICATION_SEEDS = [
+  {
+    actor: "student1",
+    category: "ANNOUNCEMENT",
+    type: "EXEC_DEMO_ANNOUNCEMENT",
+    title: "Welcome announcement available",
+    body: "A new academic announcement is ready to view.",
+    href: "/app/announcements",
+    sourceKey: "exec-demo:student:announcement",
+  },
+  {
+    actor: "parent",
+    category: "FINANCE",
+    type: "EXEC_DEMO_FINANCE",
+    title: "Statement ready",
+    body: "The latest learner statement is available in the parent finance view.",
+    href: "/app/parent/finance",
+    sourceKey: "exec-demo:parent:finance",
+  },
+  {
+    actor: "academicAdmin",
+    category: "ATTENDANCE",
+    type: "EXEC_DEMO_ATTENDANCE",
+    title: "Attendance records ready",
+    body: "Demo attendance sessions and records are ready for academic review.",
+    href: "/app/attendance",
+    sourceKey: "exec-demo:academic-admin:attendance",
+  },
+  {
+    actor: "financeAdmin",
+    category: "FINANCE",
+    type: "EXEC_DEMO_FINANCE_REVIEW",
+    title: "Finance demo account ready",
+    body: "Demo finance records and documents are available for review.",
+    href: "/app/admin/finance",
+    sourceKey: "exec-demo:finance-admin:finance",
+  },
+];
+
 async function upsertDemoUser(pool, userSpec, summary) {
   const email = normalizeEmail(userSpec.email);
   const passwordHash = await bcrypt.hash(String(userSpec.password), 10);
+  const adminScope = userSpec.role === "ADMIN" ? userSpec.adminScope || "SUPER" : null;
 
   const existing = await pool.query(
     `
@@ -327,11 +384,11 @@ async function upsertDemoUser(pool, userSpec, summary) {
   if ((existing.rowCount || 0) === 0) {
     const created = await pool.query(
       `
-        INSERT INTO users (email, password_hash, role, public_student_id, south_african_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO users (email, password_hash, role, admin_scope, public_student_id, south_african_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
       `,
-      [email, passwordHash, userSpec.role, userSpec.studentNumber, userSpec.southAfricanId]
+      [email, passwordHash, userSpec.role, adminScope, userSpec.studentNumber, userSpec.southAfricanId]
     );
     summary.users.created += 1;
     return created.rows[0].id;
@@ -344,11 +401,12 @@ async function upsertDemoUser(pool, userSpec, summary) {
       SET
         password_hash = $2,
         role = $3,
-        public_student_id = $4,
-        south_african_id = $5
+        admin_scope = $4,
+        public_student_id = $5,
+        south_african_id = $6
       WHERE id = $1
     `,
-    [id, passwordHash, userSpec.role, userSpec.studentNumber, userSpec.southAfricanId]
+    [id, passwordHash, userSpec.role, adminScope, userSpec.studentNumber, userSpec.southAfricanId]
   );
   summary.users.updated += 1;
   return id;
@@ -736,7 +794,7 @@ async function ensureResults(pool, studentId, summary) {
   }
 }
 
-async function ensureFinance(pool, pgRepos, studentId, summary) {
+async function ensureFinance(pool, pgRepos, studentId, createdBy, summary) {
   await pgRepos.finance.ensureAccount(studentId);
 
   for (const seed of FINANCE_SEEDS) {
@@ -783,7 +841,7 @@ async function ensureFinance(pool, pgRepos, studentId, summary) {
         INSERT INTO finance_documents (
           id, user_id, type, title, description, amount_cents, currency, issued_at, created_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6, 'ZAR', $7::timestamptz, NULL)
+        VALUES ($1, $2, $3, $4, $5, $6, 'ZAR', $7::timestamptz, $8)
         ON CONFLICT (id) DO UPDATE
         SET
           user_id = EXCLUDED.user_id,
@@ -795,7 +853,7 @@ async function ensureFinance(pool, pgRepos, studentId, summary) {
           issued_at = EXCLUDED.issued_at,
           created_by = EXCLUDED.created_by
       `,
-      [seed.id, studentId, seed.type, seed.title, seed.description, seed.amountCents, seed.issuedAt]
+      [seed.id, studentId, seed.type, seed.title, seed.description, seed.amountCents, seed.issuedAt, createdBy]
     );
     if ((exists.rowCount || 0) === 0) summary.finance.documentsCreated += 1;
     else summary.finance.documentsUpdated += 1;
@@ -806,7 +864,7 @@ async function ensureFinance(pool, pgRepos, studentId, summary) {
     await pool.query(
       `
         INSERT INTO finance_notifications (id, user_id, title, body, severity, created_by)
-        VALUES ($1, $2, $3, $4, $5, NULL)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (id) DO UPDATE
         SET
           user_id = EXCLUDED.user_id,
@@ -815,7 +873,7 @@ async function ensureFinance(pool, pgRepos, studentId, summary) {
           severity = EXCLUDED.severity,
           created_by = EXCLUDED.created_by
       `,
-      [seed.id, studentId, seed.title, seed.body, seed.severity]
+      [seed.id, studentId, seed.title, seed.body, seed.severity, createdBy]
     );
     if ((exists.rowCount || 0) === 0) summary.finance.notificationsCreated += 1;
     else summary.finance.notificationsUpdated += 1;
@@ -824,6 +882,140 @@ async function ensureFinance(pool, pgRepos, studentId, summary) {
   const tx = await pgRepos.finance.listTransactions(studentId, { limit: 100 });
   summary.finance.totalTransactions = tx.length;
   summary.finance.statementLike = tx.filter((x) => /statement/i.test(String(x.description || ""))).length;
+}
+
+async function ensureLearnerProfiles(pool, usersByKey, summary) {
+  const seeds = [
+    {
+      userId: usersByKey.student1.id,
+      externalSourceId: "EXEC-DEMO-20231771",
+      activationRequired: false,
+      onboardingStatus: "ACTIVATED",
+      activatedAt: "now()",
+      completedAt: "now()",
+    },
+    {
+      userId: usersByKey.student2.id,
+      externalSourceId: "EXEC-DEMO-20231772",
+      activationRequired: true,
+      onboardingStatus: "PENDING_ACTIVATION",
+      activatedAt: null,
+      completedAt: null,
+    },
+  ];
+
+  for (const seed of seeds) {
+    const exists = await pool.query(`SELECT 1 FROM student_profiles WHERE user_id = $1 LIMIT 1`, [seed.userId]);
+    await pool.query(
+      `
+        INSERT INTO student_profiles (
+          user_id,
+          verified_from_talent,
+          external_source,
+          external_source_id,
+          locked_fields,
+          source_metadata,
+          activation_required,
+          onboarding_status,
+          activated_at,
+          completed_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          true,
+          'EXEC_DEMO',
+          $2,
+          $3::jsonb,
+          $4::jsonb,
+          $5,
+          $6,
+          CASE WHEN $7::text = 'now()' THEN now() ELSE NULL END,
+          CASE WHEN $8::text = 'now()' THEN now() ELSE NULL END,
+          now()
+        )
+        ON CONFLICT (user_id) DO UPDATE
+        SET
+          verified_from_talent = true,
+          external_source = EXCLUDED.external_source,
+          external_source_id = EXCLUDED.external_source_id,
+          locked_fields = EXCLUDED.locked_fields,
+          source_metadata = EXCLUDED.source_metadata,
+          activation_required = EXCLUDED.activation_required,
+          onboarding_status = EXCLUDED.onboarding_status,
+          activated_at = EXCLUDED.activated_at,
+          completed_at = EXCLUDED.completed_at,
+          updated_at = now()
+      `,
+      [
+        seed.userId,
+        seed.externalSourceId,
+        JSON.stringify(["email", "public_student_id", "south_african_id"]),
+        JSON.stringify({ seed: "exec-demo", importedFor: "client-smoke-test" }),
+        seed.activationRequired,
+        seed.onboardingStatus,
+        seed.activatedAt,
+        seed.completedAt,
+      ]
+    );
+    if ((exists.rowCount || 0) === 0) summary.learnerProfiles.created += 1;
+    else summary.learnerProfiles.updated += 1;
+  }
+}
+
+async function ensureNotifications(pool, usersByKey, summary) {
+  for (const seed of NOTIFICATION_SEEDS) {
+    const userId = usersByKey[seed.actor]?.id;
+    if (!userId) continue;
+
+    const exists = await pool.query(
+      `
+        SELECT 1
+        FROM user_notifications
+        WHERE user_id = $1 AND source_key = $2
+        LIMIT 1
+      `,
+      [userId, seed.sourceKey]
+    );
+
+    await pool.query(
+      `
+        INSERT INTO user_notifications (
+          user_id,
+          category,
+          type,
+          title,
+          body,
+          meta,
+          source_key,
+          is_read
+        )
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, false)
+        ON CONFLICT (user_id, source_key) WHERE source_key IS NOT NULL
+        DO UPDATE
+        SET
+          category = EXCLUDED.category,
+          type = EXCLUDED.type,
+          title = EXCLUDED.title,
+          body = EXCLUDED.body,
+          meta = EXCLUDED.meta,
+          is_read = false,
+          read_at = NULL
+      `,
+      [
+        userId,
+        seed.category,
+        seed.type,
+        seed.title,
+        seed.body,
+        JSON.stringify({ href: seed.href, seed: "exec-demo" }),
+        seed.sourceKey,
+      ]
+    );
+
+    if ((exists.rowCount || 0) === 0) summary.notifications.created += 1;
+    else summary.notifications.updated += 1;
+  }
 }
 
 async function ensureCalendar(pool, usersByKey, summary) {
@@ -911,6 +1103,7 @@ async function run() {
     threads: { created: 0, reused: 0 },
     threadMessages: { created: 0 },
     attendance: { sessionsCreated: 0, sessionsUpdated: 0, recordsCreated: 0, recordsUpdated: 0, enrollmentsAdded: 0 },
+    learnerProfiles: { created: 0, updated: 0 },
     results: { created: 0, updated: 0 },
     finance: {
       transactionsCreated: 0,
@@ -924,6 +1117,7 @@ async function run() {
     },
     calendar: { created: 0, updated: 0 },
     uploads: { created: 0, updated: 0 },
+    notifications: { created: 0, updated: 0 },
   };
 
   const usersByKey = {};
@@ -956,14 +1150,21 @@ async function run() {
           type: channelSeed.type,
           isPrivate: channelSeed.isPrivate,
           createdBy: usersByKey.admin.id,
-          memberIds: [usersByKey.admin.id, usersByKey.lecturer.id, usersByKey.student1.id, usersByKey.parent.id],
+          memberIds: [
+            usersByKey.admin.id,
+            usersByKey.academicAdmin.id,
+            usersByKey.financeAdmin.id,
+            usersByKey.lecturer.id,
+            usersByKey.student1.id,
+            usersByKey.parent.id,
+          ],
         },
         summary
       );
       channelIdsByKey[channelSeed.key] = channelId;
     }
 
-    await ensureAnnouncements(pgRepos, channelIdsByKey, usersByKey.admin.id, summary);
+    await ensureAnnouncements(pgRepos, channelIdsByKey, usersByKey.academicAdmin.id, summary);
     await ensureChannelMessages(pgRepos, channelIdsByKey, usersByKey, summary);
     await ensureChannelEvents(pgRepos, channelIdsByKey, usersByKey.lecturer.id, summary);
 
@@ -1007,25 +1208,29 @@ async function run() {
     );
 
     await ensureAttendance(pool, usersByKey, summary);
+    await ensureLearnerProfiles(pool, usersByKey, summary);
     await ensureResults(pool, usersByKey.student1.id, summary);
-    await ensureFinance(pool, pgRepos, usersByKey.student1.id, summary);
+    await ensureFinance(pool, pgRepos, usersByKey.student1.id, usersByKey.financeAdmin.id, summary);
     await ensureCalendar(pool, usersByKey, summary);
     await ensureUploads(pool, usersByKey, summary);
+    await ensureNotifications(pool, usersByKey, summary);
 
     console.log("");
     console.log("=== DEMO SEED SUMMARY ===");
     console.log(JSON.stringify(summary, null, 2));
     console.log("");
     console.log("=== DEMO CREDENTIALS ===");
-    console.log(`ADMIN    ${DEMO_USERS.admin.email} / ${DEMO_USERS.admin.password}`);
-    console.log(`LECTURER ${DEMO_USERS.lecturer.email} / ${DEMO_USERS.lecturer.password}`);
+    console.log(`SUPER ADMIN    ${DEMO_USERS.admin.email} / ${DEMO_USERS.admin.password}`);
+    console.log(`ACADEMIC ADMIN ${DEMO_USERS.academicAdmin.email} / ${DEMO_USERS.academicAdmin.password}`);
+    console.log(`FINANCE ADMIN  ${DEMO_USERS.financeAdmin.email} / ${DEMO_USERS.financeAdmin.password}`);
+    console.log(`LEGACY STAFF   ${DEMO_USERS.lecturer.email} / ${DEMO_USERS.lecturer.password}`);
     console.log(
-      `STUDENT  ${DEMO_USERS.student1.email} / ${DEMO_USERS.student1.password} (studentNumber=${DEMO_USERS.student1.studentNumber})`
+      `STUDENT        ${DEMO_USERS.student1.email} / ${DEMO_USERS.student1.password} (internal reference ${DEMO_USERS.student1.studentNumber})`
     );
     console.log(
-      `STUDENT2 ${DEMO_USERS.student2.email} / ${DEMO_USERS.student2.password} (studentNumber=${DEMO_USERS.student2.studentNumber})`
+      `STUDENT2       ${DEMO_USERS.student2.email} / ${DEMO_USERS.student2.password} (internal reference ${DEMO_USERS.student2.studentNumber})`
     );
-    console.log(`PARENT   ${DEMO_USERS.parent.email} / ${DEMO_USERS.parent.password}`);
+    console.log(`PARENT         ${DEMO_USERS.parent.email} / ${DEMO_USERS.parent.password}`);
     console.log("");
     console.log("THREADS_MODE should be D6 in production.");
   } finally {
