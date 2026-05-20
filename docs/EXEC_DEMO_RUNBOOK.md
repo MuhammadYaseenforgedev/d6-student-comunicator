@@ -60,11 +60,17 @@ Frontend deploy settings:
 
 ## 3) Demo Accounts
 
-- Admin: `demo+admin@co.za` / `DemoPass123`
-- Legacy academic staff: `demo+lecturer@co.za` / `DemoPass123`
-- Student: `demo+student1@replace-with-real-inbox.com` / `DemoPass123` / student number `20231771`
-- Student 2: `demo+student2@replace-with-real-inbox.com` / `DemoPass123` / student number `20231772`
+- Super Admin: `demo+admin@co.za` / `DemoPass123`
+- Academic Admin: `demo+academic-admin@co.za` / `DemoPass123`
+- Finance Admin: `demo+finance-admin@co.za` / `DemoPass123`
 - Parent: `demo+parent@co.za` / `DemoPass123`
+- Student: `demo+student1@replace-with-real-inbox.com` / `DemoPass123`
+- Second Student/import onboarding learner: `demo+student2@replace-with-real-inbox.com` / `DemoPass123`
+- Legacy Lecturer compatibility only: `demo+lecturer@co.za` / `DemoPass123`
+
+Student login uses email, password, and the configured OTP policy. Student numbers such as `20231771` and `20231772` are internal/admin references only and should not be presented as login credentials.
+
+If live OTP email delivery must be demonstrated, replace the seeded student placeholder inboxes with real accessible inboxes before demo day.
 
 ## 4) Demo-Day Smoke Checklist (10 minutes)
 
@@ -80,10 +86,12 @@ Frontend deploy settings:
 - Check SMTP provider logs and backend logs for actual delivery issues.
 
 ### Role login checks
-- Admin login returns `200` + token.
-- Legacy academic staff login returns `200` + token.
-- Student login (`studentNumber=20231771`) returns `200` + token.
+- Super Admin login returns `200` + token.
+- Academic Admin login returns `200` + token.
+- Finance Admin login returns `200` + token.
+- Student login with email/password/OTP returns `200` + token.
 - Parent login returns `200` + token.
+- Legacy Lecturer login can be checked for compatibility only; it is not an active demo workflow.
 
 ### D6 messaging policy checks
 - Parent -> Student thread create (`POST /api/threads`) returns `403`.
@@ -99,24 +107,23 @@ Note:
 ```powershell
 $BaseUrl = "https://d6-student-comunicator.onrender.com"
 
-# Login as legacy academic staff
-$lecturerBody = @{ email = "demo+lecturer@co.za"; password = "DemoPass123"; otp = (Read-Host "Lecturer OTP") } | ConvertTo-Json
-$lecturerResp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/login" -ContentType "application/json" -Body $lecturerBody
-$lecturerToken = $lecturerResp.token
+# Login as Academic Admin
+$academicBody = @{ email = "demo+academic-admin@co.za"; password = "DemoPass123"; otp = (Read-Host "Academic Admin OTP") } | ConvertTo-Json
+$academicResp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/login" -ContentType "application/json" -Body $academicBody
+$academicToken = $academicResp.token
 
 # Upload academic material
-$lecturerFile = Join-Path $env:TEMP "exec-lecturer-material.txt"
-Set-Content -Path $lecturerFile -Value "Exec demo material" -Encoding UTF8
+$academicFile = Join-Path $env:TEMP "exec-academic-material.txt"
+Set-Content -Path $academicFile -Value "Exec demo material" -Encoding UTF8
 curl.exe -sS -X POST "$BaseUrl/api/uploads" `
-  -H "Authorization: Bearer $lecturerToken" `
+  -H "Authorization: Bearer $academicToken" `
   -F "kind=LECTURER_MATERIAL" `
-  -F "file=@$lecturerFile;type=text/plain"
+  -F "file=@$academicFile;type=text/plain"
 
 # Login as student
 $studentBody = @{
   email = "demo+student1@replace-with-real-inbox.com"
   password = "DemoPass123"
-  studentNumber = "20231771"
   otp = (Read-Host "Student OTP")
 } | ConvertTo-Json
 $studentResp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/login" -ContentType "application/json" -Body $studentBody

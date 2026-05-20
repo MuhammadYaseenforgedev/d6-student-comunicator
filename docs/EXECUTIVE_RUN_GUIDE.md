@@ -49,33 +49,39 @@ Logs:
 2. `logs/frontend-*.log`
 3. `logs/run-demo-*.log`
 
-## 4) Demo Accounts and Roles
-The bootstrap seeds demo users with password:
-1. `D6Demo!2026`
+## 4) Exec Demo Accounts and Roles
+The exec demo seed (`npm --prefix backend run seed:exec-demo`) seeds these users with password:
+1. `DemoPass123`
 
-Emails:
-1. `admin_demo@local.test` (ADMIN)
-2. `lecturer_demo@local.test` (legacy academic staff account)
-3. `student_demo@local.test` (STUDENT, requires student number at login)
-4. `student_demo2@local.test` (STUDENT, requires student number at login)
-5. `parent_demo@local.test` (PARENT)
+Accounts:
+1. `demo+admin@co.za` (Super Admin)
+2. `demo+academic-admin@co.za` (Academic Admin)
+3. `demo+finance-admin@co.za` (Finance Admin)
+4. `demo+parent@co.za` (Parent)
+5. `demo+student1@replace-with-real-inbox.com` (Student)
+6. `demo+student2@replace-with-real-inbox.com` (Second Student/import onboarding learner)
+7. `demo+lecturer@co.za` (Legacy Lecturer compatibility only)
 
-Student identities seeded for linking/login:
-1. `student_demo@local.test` -> student number `STU-DEMO-1001`, SA ID `9001015009087`
-2. `student_demo2@local.test` -> student number `STU-DEMO-1002`, SA ID `9001015009088`
+Student identities seeded for admin reference and parent linking:
+1. `demo+student1@replace-with-real-inbox.com` -> internal student reference `20231771`, SA ID `0101015009087`
+2. `demo+student2@replace-with-real-inbox.com` -> internal student reference `20231772`, SA ID `0101015009088`
+
+Students log in with email, password, and the configured OTP policy. Student numbers are internal/admin references only and are not login credentials. Replace the seeded student placeholder inboxes with real accessible inboxes if live OTP email delivery must be demonstrated.
 
 Staff self-registration password (env controlled):
 1. `AUTH_STAFF_REGISTER_PASSWORD=staff_secret` (example default in `backend/.env.example`)
 
 ## 5) Executive Walkthrough (Role by Role)
-1. Login as `ADMIN`.
+1. Login as Super Admin.
 2. Open `Parent Link Approvals` and verify pending/approved queue is visible.
-3. Login as `PARENT`, submit link request with student SA ID.
-4. Return to `ADMIN`, approve request.
-5. Login as `PARENT`, confirm linked child appears and parent can view results/finance/calendar.
-6. Login as Academic Admin, verify announcements and uploads management.
-7. Login as `STUDENT`, verify student login requires student number plus email/password.
-8. Open messaging from `PARENT` to academic staff/admin and verify replies.
+3. Login as Parent, submit link request with student SA ID.
+4. Return to Super Admin, approve request.
+5. Login as Parent, confirm linked child appears and parent can view results/finance/calendar.
+6. Login as Academic Admin, verify announcements, uploads, attendance, and results workflows.
+7. Login as Finance Admin, verify finance account and document workflows.
+8. Login as Student, verify email/password/OTP login and student-facing results, attendance, uploads, notifications, and calendar.
+9. Open messaging from Parent to academic staff/admin and verify replies.
+10. Treat Lecturer as legacy compatibility only, not an active executive workflow.
 
 ## 6) Stop Demo
 From repo root:
