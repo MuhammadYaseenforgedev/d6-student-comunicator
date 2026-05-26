@@ -17,6 +17,12 @@ const DEMO_EMAILS = [
   "demo+parent@co.za",
 ];
 
+const DEMO_WHATSAPP_PREFERENCES = [
+  { email: "demo+academic-admin@co.za", phone: "+27820000001" },
+  { email: "demo+parent@co.za", phone: "+27820000002" },
+  { email: "demo+student1@replace-with-real-inbox.com", phone: "+27820000003" },
+];
+
 function runExecSeed() {
   if (!fs.existsSync(compiledDbModule)) {
     throw new Error("Run `npm --prefix backend run build` before the exec demo seed test.");
@@ -118,5 +124,51 @@ describe("Exec demo seed script", () => {
     expect(demoData.rows[0]?.attendance_sessions).toBeGreaterThanOrEqual(2);
     expect(demoData.rows[0]?.attendance_records).toBeGreaterThanOrEqual(4);
     expect(demoData.rows[0]?.notifications).toBeGreaterThanOrEqual(4);
+
+    const preferences = await pool.query<{
+      email: string;
+      whatsapp_phone_e164: string | null;
+      whatsapp_enabled: boolean;
+      whatsapp_opted_in_at: string | null;
+      whatsapp_opted_out_at: string | null;
+      source: string | null;
+    }>(
+      `
+        SELECT
+          lower(u.email) AS email,
+          p.whatsapp_phone_e164,
+          p.whatsapp_enabled,
+          p.whatsapp_opted_in_at::text AS whatsapp_opted_in_at,
+          p.whatsapp_opted_out_at::text AS whatsapp_opted_out_at,
+          p.source
+        FROM user_contact_preferences p
+        JOIN users u ON u.id = p.user_id
+        WHERE lower(u.email) = ANY($1::text[])
+        ORDER BY lower(u.email)
+      `,
+      [DEMO_WHATSAPP_PREFERENCES.map((item) => item.email)]
+    );
+
+    expect(preferences.rowCount).toBe(DEMO_WHATSAPP_PREFERENCES.length);
+    for (const expected of DEMO_WHATSAPP_PREFERENCES) {
+      const row = preferences.rows.find((item) => item.email === expected.email);
+      expect(row).toMatchObject({
+        whatsapp_phone_e164: expected.phone,
+        whatsapp_enabled: true,
+        whatsapp_opted_out_at: null,
+        source: "EXEC_DEMO_SEED",
+      });
+      expect(row?.whatsapp_opted_in_at).toBeTruthy();
+    }
+
+    const seedDeliveries = await pool.query<{ count: number }>(
+      `
+        SELECT COUNT(*)::int AS count
+        FROM notification_deliveries d
+        JOIN user_notifications n ON n.id = d.notification_id
+        WHERE n.source_key LIKE 'exec-demo:%'
+      `
+    );
+    expect(seedDeliveries.rows[0]?.count).toBe(0);
   });
 });

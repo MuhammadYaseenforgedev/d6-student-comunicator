@@ -366,6 +366,12 @@ const NOTIFICATION_SEEDS = [
   },
 ];
 
+const WHATSAPP_CONTACT_PREFERENCE_SEEDS = [
+  { actor: "academicAdmin", phone: "+27820000001" },
+  { actor: "parent", phone: "+27820000002" },
+  { actor: "student1", phone: "+27820000003" },
+];
+
 async function upsertDemoUser(pool, userSpec, summary) {
   const email = normalizeEmail(userSpec.email);
   const passwordHash = await bcrypt.hash(String(userSpec.password), 10);
@@ -1018,6 +1024,49 @@ async function ensureNotifications(pool, usersByKey, summary) {
   }
 }
 
+async function ensureWhatsAppContactPreferences(pool, usersByKey, summary) {
+  for (const seed of WHATSAPP_CONTACT_PREFERENCE_SEEDS) {
+    const userId = usersByKey[seed.actor]?.id;
+    if (!userId) continue;
+
+    const exists = await pool.query(
+      `
+        SELECT 1
+        FROM user_contact_preferences
+        WHERE user_id = $1
+        LIMIT 1
+      `,
+      [userId]
+    );
+
+    await pool.query(
+      `
+        INSERT INTO user_contact_preferences (
+          user_id,
+          whatsapp_phone_e164,
+          whatsapp_enabled,
+          whatsapp_opted_in_at,
+          whatsapp_opted_out_at,
+          source
+        )
+        VALUES ($1, $2, true, now(), NULL, 'EXEC_DEMO_SEED')
+        ON CONFLICT (user_id)
+        DO UPDATE SET
+          whatsapp_phone_e164 = EXCLUDED.whatsapp_phone_e164,
+          whatsapp_enabled = true,
+          whatsapp_opted_in_at = COALESCE(user_contact_preferences.whatsapp_opted_in_at, now()),
+          whatsapp_opted_out_at = NULL,
+          source = 'EXEC_DEMO_SEED',
+          updated_at = now()
+      `,
+      [userId, seed.phone]
+    );
+
+    if ((exists.rowCount || 0) === 0) summary.whatsAppContactPreferences.created += 1;
+    else summary.whatsAppContactPreferences.updated += 1;
+  }
+}
+
 async function ensureCalendar(pool, usersByKey, summary) {
   for (const seed of CALENDAR_SEEDS) {
     const userId = usersByKey[seed.actor].id;
@@ -1118,6 +1167,7 @@ async function run() {
     calendar: { created: 0, updated: 0 },
     uploads: { created: 0, updated: 0 },
     notifications: { created: 0, updated: 0 },
+    whatsAppContactPreferences: { created: 0, updated: 0 },
   };
 
   const usersByKey = {};
@@ -1214,6 +1264,7 @@ async function run() {
     await ensureCalendar(pool, usersByKey, summary);
     await ensureUploads(pool, usersByKey, summary);
     await ensureNotifications(pool, usersByKey, summary);
+    await ensureWhatsAppContactPreferences(pool, usersByKey, summary);
 
     console.log("");
     console.log("=== DEMO SEED SUMMARY ===");
