@@ -21,6 +21,7 @@ import {
   adminScopeLabel,
   isAcademicOrSuperAdmin,
   isFinanceAdmin,
+  isSuperAdmin,
 } from "../lib/adminAccess";
 import AppErrorBoundary from "./AppErrorBoundary";
 import { fetchMeProfile, type MeProfile } from "../lib/authService";
@@ -116,6 +117,7 @@ export default function AppShell() {
   const isStudent = user?.role === "STUDENT";
   const isLegacyLecturer = user?.role === "LECTURER";
   const financeAdmin = isFinanceAdmin(user);
+  const superAdmin = isSuperAdmin(user);
   const academicOrSuperAdmin = isAcademicOrSuperAdmin(user);
 
   const calendarTo =
@@ -375,6 +377,14 @@ export default function AppShell() {
                 label="Uploads"
                 onNavigate={closeMobileMenu}
               />
+              {superAdmin && (
+                <Item
+                  to="/app/admin/finance"
+                  label="Finance"
+                  badge={financeBadge}
+                  onNavigate={closeMobileMenu}
+                />
+              )}
               <Item
                 to="/app/messages"
                 label="Messages"
@@ -401,7 +411,7 @@ export default function AppShell() {
                 />
               )}
 
-              {academicOrSuperAdmin && (
+              {(user?.role === "LECTURER" || academicOrSuperAdmin) && (
                 <Item
                   to="/app/manage-results"
                   label="Manage Results"

@@ -4,7 +4,7 @@ import { requireAccess } from "../middleware/rbac";
 import { repos } from "../persistence";
 import type { FinanceDocument, FinanceStatusNotification, FinanceSummary, FinanceTransaction } from "../persistence/types";
 import { pgFinanceRepo } from "../repos/pgFinanceRepo";
-import { isFinanceAdmin } from "../lib/adminAccess";
+import { hasAdminScope } from "../lib/adminAccess";
 
 type AuthedRequest = Request & {
   user?: { id: string; role: string; adminScope?: string | null };
@@ -356,7 +356,7 @@ financeRouter.get("/finance/summary", async (req: AuthedRequest, res: Response) 
     let targetUserId = me;
 
     if (role === "ADMIN") {
-      if (!isFinanceAdmin(user)) {
+      if (!hasAdminScope(user, ["FINANCE", "SUPER"])) {
         return err(res, 403, "FORBIDDEN", "Only finance admins can access admin finance data");
       }
       if (req.query.userId) {
@@ -398,7 +398,7 @@ financeRouter.get("/finance/transactions", async (req: AuthedRequest, res: Respo
     let targetUserId = me;
 
     if (role === "ADMIN") {
-      if (!isFinanceAdmin(user)) {
+      if (!hasAdminScope(user, ["FINANCE", "SUPER"])) {
         return err(res, 403, "FORBIDDEN", "Only finance admins can access admin finance data");
       }
       if (req.query.userId) {
@@ -431,7 +431,7 @@ financeRouter.get("/finance/transactions", async (req: AuthedRequest, res: Respo
 
 financeRouter.get(
   "/finance/admin/accounts",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE", "SUPER"] }),
   async (req: AuthedRequest, res: Response) => {
   try {
     const q = String(req.query.q ?? "").trim().toLowerCase();
@@ -527,7 +527,7 @@ financeRouter.get(
 
 financeRouter.get(
   "/finance/admin/accounts/:studentId",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE", "SUPER"] }),
   async (req: AuthedRequest, res: Response) => {
   try {
     const studentId = String(req.params.studentId ?? "").trim();
@@ -545,7 +545,7 @@ financeRouter.get(
 
 financeRouter.patch(
   "/finance/admin/accounts/:studentId",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE", "SUPER"] }),
   async (req: AuthedRequest, res: Response) => {
   try {
     const studentId = String(req.params.studentId ?? "").trim();
@@ -615,7 +615,7 @@ financeRouter.patch(
 
 financeRouter.post(
   "/finance/admin/accounts/:studentId/transactions",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE", "SUPER"] }),
   async (req: AuthedRequest, res: Response) => {
     try {
       const studentId = String(req.params.studentId ?? "").trim();
@@ -669,7 +669,7 @@ financeRouter.post(
 
 financeRouter.post(
   "/finance/admin/accounts/:studentId/documents",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE", "SUPER"] }),
   async (req: AuthedRequest, res: Response) => {
     try {
       const studentId = String(req.params.studentId ?? "").trim();
@@ -748,7 +748,7 @@ financeRouter.post(
 
 financeRouter.post(
   "/finance/admin/accounts/:studentId/notifications",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE", "SUPER"] }),
   async (req: AuthedRequest, res: Response) => {
     try {
       const studentId = String(req.params.studentId ?? "").trim();
@@ -799,7 +799,7 @@ financeRouter.post(
 
 financeRouter.get(
   "/finance/admin/accounts/:studentId/statement",
-  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE"] }),
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["FINANCE", "SUPER"] }),
   async (req: AuthedRequest, res: Response) => {
     try {
       const studentId = String(req.params.studentId ?? "").trim();

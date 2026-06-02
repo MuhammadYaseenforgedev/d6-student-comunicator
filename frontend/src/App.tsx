@@ -129,7 +129,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["STUDENT", "ADMIN"]}
+                          roles={["STUDENT", "LECTURER", "ADMIN"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -159,7 +159,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["STUDENT", "ADMIN", "PARENT"]}
+                          roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -173,7 +173,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["STUDENT", "ADMIN", "PARENT"]}
+                          roles={["STUDENT", "LECTURER", "ADMIN", "PARENT"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -184,7 +184,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["STUDENT", "ADMIN"]}
+                          roles={["STUDENT", "LECTURER", "ADMIN"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -195,7 +195,7 @@ export default function App() {
                     <Route
                       element={
                         <RequireRole
-                          roles={["ADMIN"]}
+                          roles={["LECTURER", "ADMIN"]}
                           adminScopes={["ACADEMIC", "SUPER"]}
                         />
                       }
@@ -208,7 +208,7 @@ export default function App() {
 
                     <Route
                       element={
-                        <RequireRole roles={["ADMIN"]} adminScopes={["FINANCE"]} />
+                        <RequireRole roles={["ADMIN"]} adminScopes={["FINANCE", "SUPER"]} />
                       }
                     >
                       <Route
