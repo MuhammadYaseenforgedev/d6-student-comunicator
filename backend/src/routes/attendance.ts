@@ -2272,6 +2272,83 @@ attendanceRouter.post(
   }
 );
 
+attendanceRouter.post(
+  "/attendance/sessions/:id/close",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    const sessionId = String(req.params.id ?? "").trim();
+    if (!isUuid(sessionId)) return err(res, 400, "VALIDATION", "session id must be a UUID");
+
+    try {
+      const user = req.user!;
+      const session = await getAttendanceSessionContext(sessionId);
+      if (!session) return err(res, 404, "NOT_FOUND", "Attendance session not found");
+
+      await pool.query(
+        `
+          UPDATE attendance_sessions
+          SET
+            finalized_at = COALESCE(finalized_at, now()),
+            finalized_by = COALESCE(finalized_by, $2),
+            updated_at = now()
+          WHERE id = $1
+        `,
+        [sessionId, user.id]
+      );
+
+      const updatedSession = await loadOperationalAttendanceSession(sessionId);
+      return res.json({
+        ok: true,
+        closed: true,
+        session: updatedSession ? mapOperationalSession(updatedSession) : null,
+      });
+    } catch (e) {
+      console.error("[attendance] POST /attendance/sessions/:id/close error", e);
+      return err(res, 500, "INTERNAL", "Failed to close attendance session");
+    }
+  }
+);
+
+attendanceRouter.delete(
+  "/attendance/sessions/:id",
+  requireAccess({ roles: ["ADMIN"], adminScopes: ["ACADEMIC", "SUPER"] }),
+  async (req, res) => {
+    const sessionId = String(req.params.id ?? "").trim();
+    if (!isUuid(sessionId)) return err(res, 400, "VALIDATION", "session id must be a UUID");
+
+    try {
+      const session = await getAttendanceSessionContext(sessionId);
+      if (!session) return err(res, 404, "NOT_FOUND", "Attendance session not found");
+
+      const usage = await pool.query<{ records_count: number; checkins_count: number }>(
+        `
+          SELECT
+            (SELECT COUNT(*)::int FROM attendance_records WHERE session_id = $1) AS records_count,
+            (SELECT COUNT(*)::int FROM attendance_checkins WHERE session_id = $1) AS checkins_count
+        `,
+        [sessionId]
+      );
+
+      const recordsCount = Number(usage.rows[0]?.records_count ?? 0);
+      const checkinsCount = Number(usage.rows[0]?.checkins_count ?? 0);
+      if (recordsCount > 0 || checkinsCount > 0) {
+        return err(
+          res,
+          409,
+          "CONFLICT",
+          "Attendance session cannot be deleted because it already has attendance records or check-ins"
+        );
+      }
+
+      const deleted = await pool.query(`DELETE FROM attendance_sessions WHERE id = $1`, [sessionId]);
+      return res.json({ ok: true, deleted: (deleted.rowCount ?? 0) > 0 });
+    } catch (e) {
+      console.error("[attendance] DELETE /attendance/sessions/:id error", e);
+      return err(res, 500, "INTERNAL", "Failed to delete attendance session");
+    }
+  }
+);
+
 attendanceRouter.get(
   "/attendance/export",
   requireAccess({ roles: ["ADMIN", "LECTURER", "STUDENT", "PARENT"], adminScopes: ["ACADEMIC", "SUPER"] }),

@@ -215,6 +215,20 @@ export async function markAttendanceSession(
   }>(`/attendance/sessions/${encodeURIComponent(sessionId)}/mark`, rows);
 }
 
+export async function closeAttendanceSession(sessionId: string) {
+  return apiClient.post<{
+    ok: boolean;
+    closed: boolean;
+    session: AttendanceSession | null;
+  }>(`/attendance/sessions/${encodeURIComponent(sessionId)}/close`);
+}
+
+export async function deleteAttendanceSession(sessionId: string) {
+  return apiClient.delete<{ ok: boolean; deleted: boolean }>(
+    `/attendance/sessions/${encodeURIComponent(sessionId)}`
+  );
+}
+
 export async function assignLecturerToAttendanceModule(moduleId: string, lecturerId: string) {
   return apiClient.post<{ ok: boolean; created: boolean }>(
     `/attendance/modules/${encodeURIComponent(moduleId)}/lecturers`,

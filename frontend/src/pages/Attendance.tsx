@@ -2,10 +2,13 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import AttendanceStatusBadge from "../components/AttendanceStatusBadge";
 import PageHeader from "../components/PageHeader";
+import { isAcademicOrSuperAdmin } from "../lib/adminAccess";
 import { getUser } from "../lib/auth";
 import {
   checkInToAttendanceSession,
+  closeAttendanceSession,
   createAttendanceSession,
+  deleteAttendanceSession,
   downloadAttendanceExport,
   getAttendanceSession,
   getMyAttendance,
@@ -295,6 +298,7 @@ export default function AttendancePage() {
 }
 
 function StaffAttendanceView() {
+  const user = getUser();
   const [modules, setModules] = useState<AttendanceModule[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [sessionDetail, setSessionDetail] = useState<AttendanceSession | null>(null);
@@ -314,6 +318,9 @@ function StaffAttendanceView() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [sessionActionId, setSessionActionId] = useState<string | null>(null);
+
+  const canManageSessionLifecycle = isAcademicOrSuperAdmin(user);
 
   const selectedSession = useMemo(
     () => sessionDetail ?? sessions.find((session) => session.id === sessionId) ?? null,
@@ -445,6 +452,59 @@ function StaffAttendanceView() {
       setError(e instanceof Error ? e.message : "Failed to create session");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function refreshSessionState(targetSessionId?: string) {
+    await loadSessions(moduleId);
+    if (targetSessionId) {
+      await Promise.all([loadSessionDetail(targetSessionId), loadRoster(targetSessionId)]);
+    }
+  }
+
+  async function closeSession(targetSession: AttendanceSession) {
+    if (!canManageSessionLifecycle) return;
+
+    try {
+      setSessionActionId(targetSession.id);
+      setError(null);
+      setInfo(null);
+
+      await closeAttendanceSession(targetSession.id);
+      setInfo("Attendance session closed.");
+      setSessionId(targetSession.id);
+      await refreshSessionState(targetSession.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to close attendance session");
+    } finally {
+      setSessionActionId(null);
+    }
+  }
+
+  async function deleteSession(targetSession: AttendanceSession) {
+    if (!canManageSessionLifecycle) return;
+
+    const confirmed = window.confirm(
+      `Delete ${sessionTitle(targetSession)} on ${targetSession.date}? Sessions with attendance records or check-ins are blocked.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setSessionActionId(targetSession.id);
+      setError(null);
+      setInfo(null);
+
+      await deleteAttendanceSession(targetSession.id);
+      setInfo("Attendance session deleted.");
+      setRosterStudents([]);
+      setMarks({});
+      setSessionDetail(null);
+      setSessionId("");
+      await loadSessions(moduleId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete attendance session");
+    } finally {
+      setSessionActionId(null);
     }
   }
 
@@ -618,7 +678,7 @@ function StaffAttendanceView() {
             </select>
           </Field>
 
-          <div className="space-y-3">
+          <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1 lg:max-h-[34rem]">
             {sessionsLoading ? (
               <LoadingRows />
             ) : !moduleId ? (
@@ -674,6 +734,32 @@ function StaffAttendanceView() {
                       >
                         {isOpen ? "Session open" : "Open session"}
                       </button>
+                      {canManageSessionLifecycle && (
+                        <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
+                          {!session.finalizedAt && (
+                            <button
+                              type="button"
+                              onClick={() => void closeSession(session)}
+                              disabled={sessionActionId === session.id}
+                              className="btn-secondary px-3 py-2 text-xs disabled:opacity-60"
+                              title="Close attendance session"
+                              aria-label="Close attendance session"
+                            >
+                              {sessionActionId === session.id ? "Working..." : "Close session"}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void deleteSession(session)}
+                            disabled={sessionActionId === session.id}
+                            className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/16 disabled:opacity-60"
+                            title="Delete attendance session"
+                            aria-label="Delete attendance session"
+                          >
+                            {sessionActionId === session.id ? "Working..." : "Delete"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </article>
                 );
@@ -826,6 +912,7 @@ function StaffAttendanceView() {
                             title={`Attendance status for ${name}`}
                             aria-label={`Attendance status for ${name}`}
                             value={marks[student.id] ?? "PRESENT"}
+                            disabled={Boolean(selectedSession?.finalizedAt)}
                             onChange={(e) =>
                               setMarks((prev) => ({
                                 ...prev,
@@ -850,10 +937,10 @@ function StaffAttendanceView() {
           <button
             type="button"
             onClick={submitMarks}
-            disabled={busy || !sessionId || rosterStudents.length === 0}
+            disabled={busy || !sessionId || rosterStudents.length === 0 || Boolean(selectedSession?.finalizedAt)}
             className="btn-primary w-full px-4 py-2 text-sm disabled:opacity-60 sm:w-auto"
           >
-            {busy ? "Submitting..." : "Submit Attendance"}
+            {selectedSession?.finalizedAt ? "Session Closed" : busy ? "Submitting..." : "Submit Attendance"}
           </button>
 
           <div className="divider-soft" />
