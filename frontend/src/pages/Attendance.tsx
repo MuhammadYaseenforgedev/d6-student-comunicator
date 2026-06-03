@@ -699,8 +699,8 @@ function StaffAttendanceView() {
                         : "border-[rgba(140,235,255,0.18)] bg-[rgba(8,18,48,0.62)] hover:-translate-y-[1px] hover:border-[rgba(140,235,255,0.30)] hover:bg-[rgba(10,27,67,0.70)]",
                     ].join(" ")}
                   >
-                    <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="min-w-0 space-y-2">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0 flex-1 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-semibold text-white">
                             {sessionTitle(session)}
@@ -725,41 +725,45 @@ function StaffAttendanceView() {
                         <AttendanceSummaryPills session={session} />
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setSessionId(session.id)}
-                        className={isOpen ? "btn-primary" : "btn-secondary"}
-                        title="Open session detail"
-                        aria-label="Open session detail"
-                      >
-                        {isOpen ? "Session open" : "Open session"}
-                      </button>
-                      {canManageSessionLifecycle && (
-                        <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
-                          {!session.finalizedAt && (
-                            <button
-                              type="button"
-                              onClick={() => void closeSession(session)}
-                              disabled={sessionActionId === session.id}
-                              className="btn-secondary px-3 py-2 text-xs disabled:opacity-60"
-                              title="Close attendance session"
-                              aria-label="Close attendance session"
-                            >
-                              {sessionActionId === session.id ? "Working..." : "Close session"}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void deleteSession(session)}
-                            disabled={sessionActionId === session.id}
-                            className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/16 disabled:opacity-60"
-                            title="Delete attendance session"
-                            aria-label="Delete attendance session"
-                          >
-                            {sessionActionId === session.id ? "Working..." : "Delete"}
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex flex-wrap gap-2 border-t border-white/10 pt-3 xl:w-36 xl:shrink-0 xl:flex-col xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0">
+                        <button
+                          type="button"
+                          onClick={() => setSessionId(session.id)}
+                          className={`${isOpen ? "btn-primary" : "btn-secondary"} min-w-[8.25rem] flex-1 px-3 py-2 text-xs xl:w-full xl:flex-none`}
+                          title="Open session detail"
+                          aria-label="Open session detail"
+                        >
+                          {isOpen ? "Session open" : "Open session"}
+                        </button>
+                        {canManageSessionLifecycle && (
+                          <>
+                            {!session.finalizedAt && (
+                              <button
+                                type="button"
+                                onClick={() => void closeSession(session)}
+                                disabled={sessionActionId === session.id}
+                                className="btn-secondary min-w-[8.25rem] flex-1 px-3 py-2 text-xs disabled:opacity-60 xl:w-full xl:flex-none"
+                                title="Close attendance session"
+                                aria-label="Close attendance session"
+                              >
+                                {sessionActionId === session.id ? "Working..." : "Close session"}
+                              </button>
+                            )}
+                            <div className="w-full border-t border-rose-300/15 pt-2 xl:mt-1">
+                              <button
+                                type="button"
+                                onClick={() => void deleteSession(session)}
+                                disabled={sessionActionId === session.id}
+                                className="w-full rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/16 disabled:opacity-60"
+                                title="Delete attendance session"
+                                aria-label="Delete attendance session"
+                              >
+                                {sessionActionId === session.id ? "Working..." : "Delete"}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </article>
                 );
