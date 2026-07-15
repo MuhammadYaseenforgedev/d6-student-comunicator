@@ -364,8 +364,8 @@ export default function AdminFinance() {
       {error && <div className="error-banner">{error}</div>}
       {info && <div className="info-banner">{info}</div>}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[340px_1fr]">
-        <section className="teal-glow-card p-5">
+      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <section className="teal-glow-card min-w-0 self-start overflow-hidden p-5">
           <form
             className="flex flex-col gap-3 sm:flex-row"
             onSubmit={(e) => {
@@ -392,7 +392,7 @@ export default function AdminFinance() {
 
           <div className="divider-soft my-5" />
 
-          <div className="space-y-3">
+          <div className="max-h-[calc(100vh-260px)] min-h-0 space-y-3 overflow-y-auto overflow-x-hidden overscroll-contain pr-2 [scrollbar-gutter:stable]">
             {loadingAccounts ? (
               <div className="info-banner">Loading finance accounts...</div>
             ) : accounts.length === 0 ? (
